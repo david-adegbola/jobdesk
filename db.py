@@ -252,7 +252,7 @@ def list_applications(user_id=1):
 def applications_per_role(user_id=1):
     with connect() as conn:
         rows = conn.execute("""SELECT cv_role, COUNT(*) AS n FROM applications
-                               WHERE user_id=? AND cv_role!='' AND max_stage>=2 GROUP BY cv_role""",
+                               WHERE user_id=? AND cv_role!='' GROUP BY cv_role""",
                             (user_id,)).fetchall()
         return {r["cv_role"]: r["n"] for r in rows}
 
