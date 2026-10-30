@@ -4,5 +4,6 @@ import "./pages/jobs.js";
 import "./pages/tracker.js";
 import "./pages/cvs.js";
 import "./pages/prompt.js";
+import "./pages/insights.js";
 
 start();
