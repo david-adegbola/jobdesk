@@ -2,5 +2,7 @@
 import { start } from "./core.js";
 import "./pages/jobs.js";
 import "./pages/tracker.js";
+import "./pages/cvs.js";
+import "./pages/prompt.js";
 
 start();
