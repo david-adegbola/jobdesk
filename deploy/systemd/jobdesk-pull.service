@@ -1,0 +1,7 @@
+[Unit]
+Description=JobDesk: pull the public cv repo (new roles and facts.json)
+
+[Service]
+Type=oneshot
+User=jobdesk
+ExecStart=/usr/bin/git -C /srv/jobdesk/cv pull --ff-only -q

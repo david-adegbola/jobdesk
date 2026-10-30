@@ -1,0 +1,7 @@
+[Unit]
+Description=JobDesk: daily database backup (14 days kept)
+
+[Service]
+Type=oneshot
+User=jobdesk
+ExecStart=/bin/sh -c 'test -f /srv/jobdesk/data/jobdesk.db || exit 0; sqlite3 /srv/jobdesk/data/jobdesk.db ".backup /srv/jobdesk/backups/jobdesk-$(date +%%F).db" && find /srv/jobdesk/backups -name "jobdesk-*.db" -mtime +14 -delete'

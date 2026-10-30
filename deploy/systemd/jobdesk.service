@@ -1,0 +1,20 @@
+[Unit]
+Description=JobDesk, David's private job dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=jobdesk
+Group=jobdesk
+EnvironmentFile=/srv/jobdesk/app/deploy/jobdesk.env
+ExecStart=/usr/bin/python3 /srv/jobdesk/app/server.py --no-browser
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/jobdesk/data
+
+[Install]
+WantedBy=multi-user.target

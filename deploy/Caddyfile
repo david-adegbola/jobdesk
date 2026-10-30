@@ -1,0 +1,16 @@
+# JobDesk. Written by deploy/install.sh from deploy/Caddyfile in the jobdesk repo; edit that, not this.
+{{DOMAIN}} {
+	basicauth {
+		{{LOGIN}} {{HASH}}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Robots-Tag "noindex, nofollow"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	encode gzip
+	reverse_proxy 127.0.0.1:8765
+}
