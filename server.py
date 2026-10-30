@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""JobDesk: David's private job dashboard. Run from the repo root:
+"""JobDesk: David's private job dashboard.
 
-    python3 app/server.py            # opens http://localhost:8765
-    python3 app/server.py --no-browser
+    python3 server.py            # opens http://localhost:8765
+    python3 server.py --no-browser
 
-Local only: it listens on 127.0.0.1, keeps its data in app/data/jobdesk.db (git-ignored),
-and nothing it stores is ever pushed or published.
+It listens on 127.0.0.1 and keeps its data in data/jobdesk.db (git-ignored). On the server the same
+holds, with Caddy in front for HTTPS and the login (see deploy/). Paths and port: config.py.
 """
 
 import json
@@ -25,6 +25,7 @@ sys.dont_write_bytecode = True      # no __pycache__ folders in the repo
 APP = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP))
 
+import config   # noqa: E402
 import db       # noqa: E402
 import facts    # noqa: E402
 import ics      # noqa: E402
@@ -32,7 +33,6 @@ import prompt   # noqa: E402
 import match    # noqa: E402
 import scraper  # noqa: E402
 
-HOST, PORT = "127.0.0.1", 8765
 STATIC = APP / "static"
 USER_ID = 1     # single user for now; every db call takes user_id so this can become a login later
 
@@ -190,7 +190,7 @@ def api_calendar(h, m):
 
 # ---------------------------------------------------------------- CVs
 
-REPO = APP.parent
+REPO = config.CV_REPO
 
 
 def last_updated(slug):
@@ -219,7 +219,7 @@ def api_roles(h, m):
 @route("POST", "/api/build")
 def api_build(h, m):
     if not shutil.which("pdflatex"):
-        return {"ok": False, "message": "pdflatex isn't installed here. Push to GitHub to build the PDFs."}
+        return {"ok": False, "message": "pdflatex isn't installed here. Push the cv repo to GitHub to build the PDFs."}
     built, failed = [], []
     for tex in sorted((REPO / "roles").glob("*/cv-*.tex")):
         name = tex.stem
@@ -345,6 +345,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def dispatch(self, method):
         path = urlparse(self.path).path
+        # The hosted copy sits behind a browser login, so refuse changes sent from other sites
+        origin = self.headers.get("Origin")
+        if method == "POST" and origin and urlparse(origin).netloc != self.headers.get("Host"):
+            return self.send(403, {"error": "Cross-site request refused."})
         for meth, pattern, fn in ROUTES:
             mt = pattern.match(path)
             if meth == method and mt:
@@ -381,9 +385,9 @@ def main():
     _, warning = facts.load()
     if warning:
         print("Warning:", warning)
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    url = f"http://localhost:{PORT}"
-    print(f"JobDesk running at {url} (local only). Press Ctrl+C to stop.")
+    server = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
+    url = f"http://localhost:{config.PORT}"
+    print(f"JobDesk running at {url} (cv repo: {config.CV_REPO}). Press Ctrl+C to stop.")
     if "--no-browser" not in sys.argv:
         threading.Timer(0.5, webbrowser.open, [url]).start()
     try:

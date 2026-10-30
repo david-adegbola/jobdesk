@@ -3,7 +3,6 @@ waits 10 s between requests as Jobly's robots.txt asks, and stores jobs in SQLit
 A job is NEW when the latest check is the first one that saw it.
 """
 
-import json
 import os
 import re
 import ssl
@@ -12,7 +11,6 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from html.parser import HTMLParser
-from pathlib import Path
 
 import db
 
@@ -41,7 +39,6 @@ MAX_PAGES = 3          # about 20 jobs per page
 DELAY_SECONDS = 10     # Jobly robots.txt asks for 10 s between requests
 BASE = "https://www.jobly.fi"
 USER_AGENT = "Mozilla/5.0 (personal job check; low volume)"
-OLD_SEEN_FILE = Path(__file__).resolve().parent.parent / "jobs_seen.json"   # from the old job_check.py
 
 JOB_PATH = re.compile(r"/(?:en/job|tyopaikka)/([a-z0-9-]+-(\d+))/?$")
 VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
@@ -183,18 +180,10 @@ def fetch_ad_text(url):
     return "\n".join(p.parts)[:20000]
 
 
-def _old_seen_ids():
-    try:
-        return set(json.loads(OLD_SEEN_FILE.read_text()))
-    except (OSError, json.JSONDecodeError):
-        return set()
-
-
 def run(progress=None, user_id=1):
     """One full check. progress(message, done, total) is called as pages are read."""
     pages = [(cat, slug) for cat, slugs in JOB_TYPES.items() for slug in slugs]
     check_id = db.start_check(user_id)
-    old_seen = _old_seen_ids()
     found = new = 0
     seen_now = set()
     error = None
@@ -226,7 +215,7 @@ def run(progress=None, user_id=1):
                         {"source": "Jobly", "external_id": j["id"], "url": j["url"], "title": j["title"],
                          "company": j["company"], "location": j["location"], "posted": j["posted"],
                          "category": cat},
-                        check_id, already_seen=j["id"] in old_seen, user_id=user_id)
+                        check_id, user_id=user_id)
                     found += 1
                     new += is_new
     except Exception as e:      # keep what was saved; report the error in the dashboard

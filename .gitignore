@@ -1,0 +1,13 @@
+# JobDesk data never goes into git: job ads, recruiter contacts and the tracker live in data/
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Python caches
+__pycache__/
+*.pyc
+
+.DS_Store
+.env

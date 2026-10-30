@@ -1,4 +1,4 @@
-"""All JobDesk data access. SQLite file: app/data/jobdesk.db (git-ignored, never pushed).
+"""All JobDesk data access. SQLite file: data/jobdesk.db (git-ignored, never pushed; see config.py).
 
 Every table has a user_id column (default 1) so the app can become multi-user later;
 every function takes user_id and only touches that user's rows.
@@ -6,9 +6,9 @@ every function takes user_id and only touches that user's rows.
 
 import sqlite3
 from datetime import date, datetime
-from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
+from config import DATA_DIR
+
 DB_FILE = DATA_DIR / "jobdesk.db"
 
 STATUSES = ["Saved", "Applied", "Interview", "Offer", "Rejected"]
@@ -118,7 +118,7 @@ def latest_check(user_id=1):
 
 # ---------------------------------------------------------------- jobs
 
-def upsert_scraped(job, check_id, already_seen=False, user_id=1):
+def upsert_scraped(job, check_id, user_id=1):
     """Insert or refresh a scraped job. Returns True if it is new (never seen before)."""
     today = date.today().isoformat()
     with connect() as conn:
@@ -142,8 +142,8 @@ def upsert_scraped(job, check_id, already_seen=False, user_id=1):
                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                      (user_id, job["source"], job["external_id"], job["url"], job["title"],
                       job["company"], job["location"], job["posted"], job["category"],
-                      0 if already_seen else check_id, today, today))
-        return not already_seen
+                      check_id, today, today))
+        return True
 
 
 def add_manual(fields, user_id=1):

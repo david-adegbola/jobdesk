@@ -9,10 +9,8 @@ lists in CV-RULES.md (via facts.json), plus two the ads often ask for: C licence
 """
 
 import re
-from pathlib import Path
+from config import ROLES_DIR
 
-REPO = Path(__file__).resolve().parent.parent
-ROLES_DIR = REPO / "roles"
 PUBLIC_BASE = "https://david-adegbola.github.io/cv"
 
 WORD = re.compile(r"[a-zåäö0-9][a-zåäö0-9-]*[a-zåäö0-9]|[a-zåäö]", re.I)
