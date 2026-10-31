@@ -29,6 +29,7 @@ import config   # noqa: E402
 import db       # noqa: E402
 import facts    # noqa: E402
 import ics      # noqa: E402
+import prep     # noqa: E402
 import prompt   # noqa: E402
 import match    # noqa: E402
 import scraper  # noqa: E402
@@ -303,6 +304,38 @@ def api_prompt_build(h, m):
         return analysis
     text, missing = prompt.build(analysis, body.get("answers") or {})
     return {"prompt": text, "missing": missing, "analysis": analysis}
+
+
+# ---------------------------------------------------------------- prep (call script and interview answers)
+
+@route("GET", r"/api/prep/(\d+)(?:/(\w+))?")
+def api_prep(h, m):
+    """Prep for one job. The type comes from the CV used (or the job's category) unless given in the path."""
+    f, _, roles = context()
+    job = next((j for j in db.list_jobs(USER_ID) if j["id"] == int(m.group(1))), None)
+    if not job:
+        raise KeyError(m.group(1))
+    e = enrich(job, roles, f)
+    job_type = m.group(2) or prep.type_for(e["use_cv"], job.get("category"))
+    if job_type not in prep.TYPES:
+        return h.error(400, f"Unknown job type {job_type!r}.")
+    app = db.get_application(job["id"], USER_ID)
+    if not job.get("contact_name") and app and app["contact"]:       # e.g. "Esa Räsänen 040 123 4567"
+        job = {**job, "contact_name": re.sub(r"[+\d\s()-]+$", "", app["contact"]).strip()}
+    return {"job": {k: job.get(k) or "" for k in ("id", "title", "company", "location", "url", "contact_name",
+                                                  "contact_phone", "deadline")},
+            "status": job.get("status") or "", "cv": e["use_cv"],
+            "types": prep.labels(), **prep.build(job, job_type, e["blockers"], db.prep_answers(job_type, USER_ID))}
+
+
+@route("POST", "/api/prep/answer")
+def api_prep_answer(h, m):
+    body = h.json()
+    job_type, qid = body.get("type") or "", body.get("id") or ""
+    if job_type not in prep.TYPES or qid not in prep.question_ids(job_type):
+        return h.error(400, "Unknown question.")
+    db.save_prep_answer(job_type, qid, body.get("a_fi") or "", body.get("a_en") or "", USER_ID)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- insights

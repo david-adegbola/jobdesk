@@ -277,3 +277,40 @@ pre.prompt {
 .app-card input, .app-card select, .app-card textarea { width: 100%; }
 .app-card textarea { min-height: 96px; }
 .app-card form button { justify-self: start; }
+
+/* ------------------------------------------------------------------ prep page (call script, answers, print) */
+.eyebrow { margin: 0 0 8px; font-family: var(--font-mono); font-size: .75rem; letter-spacing: .32px; color: var(--text-secondary); }
+.offscreen { position: fixed; left: -9999px; top: 0; }
+label.field.narrow { max-width: 480px; }
+label.field.inline { grid-auto-flow: column; align-items: center; gap: 8px; }
+label.field.inline > select { min-height: 40px; }
+.script { margin: 0; padding: 16px 16px 16px 48px; display: grid; gap: 12px; }
+.script li::marker { font-family: var(--font-mono); color: var(--text-secondary); }
+.script p, .qa p { margin: 0; }
+.fi { font-size: 1rem; line-height: 1.5; letter-spacing: 0; }
+.en { display: block; color: var(--text-secondary); font-size: .875rem; font-weight: 400; }
+.qa { display: grid; gap: 1px; background: var(--border-subtle); border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+.qa-item { background: var(--layer-01); padding: 16px; display: grid; gap: 8px; break-inside: avoid; }
+.qa-item h3 { margin: 0; font-size: 1rem; line-height: 1.375; font-weight: 600; }
+.qa-item h3 .num { font-family: var(--font-mono); font-weight: 400; color: var(--text-secondary); }
+.answer { display: grid; gap: 4px; padding-left: 16px; box-shadow: inset 2px 0 0 var(--interactive); }
+.answer .hint { font-style: italic; }
+.answer-actions { display: flex; gap: 12px; align-items: center; margin-top: 4px; }
+.answer-form { display: grid; gap: 12px; }
+.answer-form textarea { min-height: 72px; }
+.answer-form .row { margin: 0; }
+.app-card .prep-link { font-size: .75rem; letter-spacing: .32px; }
+
+@media print {
+  .top, .banner, .no-print { display: none !important; }
+  body { background: #fff; color: #000; font-size: 11pt; }
+  main { max-width: none; padding: 0; }
+  h1 { font-size: 18pt; } h2 { font-size: 13pt; margin: 18pt 0 6pt; break-after: avoid; }
+  .card, .qa-item, .qa { background: none; border: 0; padding-left: 0; padding-right: 0; }
+  .script { padding-left: 20pt; }
+  .script li, .qa-item { break-inside: avoid; }
+  .en, .muted, .eyebrow { color: #444; }
+  .answer { box-shadow: inset 2px 0 0 #000; }
+  .tag { border: 1px solid #000; background: none !important; color: #000 !important; }
+  a { color: #000; }
+}

@@ -1,0 +1,22 @@
+# Call script for the Prep page: short sentences to read aloud, Finnish first, English underneath.
+# Filled in per job: {name} = the contact's first name (left out when there is none),
+# {title} = the job title, {intro_fi} / {intro_en} = the intro line from the job type's file.
+lines:
+  - fi: "Hei {name}! Nimeni on David Adegbola."
+    en: "Hi {name}! My name is David Adegbola."
+  - fi: "{intro_fi}"
+    en: "{intro_en}"
+  - fi: "Soitan työpaikkailmoituksestanne: {title}."
+    en: "I'm calling about your job ad: {title}."
+  - fi: "Onko paikka vielä auki?"
+    en: "Is the job still open?"
+  - fi: "Suomen kielen taitoni on vielä perustasolla, ja opiskelen sitä aktiivisesti."
+    en: "My Finnish is still basic, and I'm actively studying it."
+  - fi: "Käykö se teille?"
+    en: "Is that OK for you?"
+  - fi: "Koulutatteko uudet työntekijät?"
+    en: "Do you train new workers?"
+  - fi: "Mikä on seuraava askel?"
+    en: "What is the next step?"
+  - fi: "Kiitos paljon! Hyvää päivänjatkoa."
+    en: "Thank you very much! Have a nice day."

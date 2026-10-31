@@ -270,7 +270,8 @@ register({
                  ? h("div", { class: "muted small", title: `The employer page and the PDF to send open in English (${j.use_cv_language})` },
                      j.use_cv_language === "en-only" ? "EN only" : "EN first") : ""],
           h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}` }, "CV prompt")),
-          h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}&kind=email` }, "Email prompt"))),
+          h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}&kind=email` }, "Email prompt")),
+          h("div", null, h("a", { class: "small", href: `#/prep?job=${j.id}` }, "Prep"))),
         h("td", null, h("select", { class: "status", "data-status": j.status || "", "aria-label": `Status for ${j.title}`, onchange: async e => {
             await api(`/api/jobs/${j.id}/status`, { method: "POST", body: { status: e.target.value } });
             load();

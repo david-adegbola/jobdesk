@@ -25,6 +25,12 @@ Python 3 standard library, SQLite and plain HTML/CSS/JS: nothing to install.
 - **New CV prompt:** pick a job or paste an ad. It asks what your facts don't answer, then writes the
   Claude Code prompt for the cv repo. Its Language choice (en-first for ads written in English,
   otherwise fi-first) sets the role's language, the emails and the commit message.
+- **Prep:** for one job (the "Prep" link on the Jobs page, and on tracker cards at Applied or
+  Interview): a call script in Finnish with the English underneath ("Copy call script"), 8–10 likely
+  questions with draft answers, an honest answer for each of the job's blockers, and questions to ask.
+  No AI: the templates are in `prep/` (one file per job type), with drafts built only from the
+  CV-RULES.md facts. Answers you edit are saved per job type and reused for the next job. "Print"
+  gives a clean sheet.
 - **Insights:** the most common blockers (what to learn next) and the funnel per CV.
 
 ## Where it runs
@@ -106,6 +112,8 @@ jobdesk/
 ├── scraper.py       Jobly reader
 ├── match.py         match score, blockers, employer and PDF links
 ├── prompt.py        new-CV questions and prompt
+├── prep.py          Prep page: reads prep/*.yaml, fills in the job, applies saved answers
+├── prep/            call script, questions and blocker answers per job type (YAML subset)
 ├── ics.py           calendar export
 ├── facts.py         reads facts.json from the cv repo
 ├── static/          HTML, CSS, JS (one file per page in static/pages/)

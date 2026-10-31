@@ -20,6 +20,8 @@ function card(a, roles, statuses, reload) {
       h("strong", null, a.overdue ? "Overdue: " : "Next: "), a.next_action || "(no action)",
       a.next_action_date ? ` · ${a.next_action_date}` : "") : "",
     a.follow_up ? h("div", { class: "reminder" }, a.follow_up) : "",
+    a.status === "Applied" || a.status === "Interview"
+      ? h("a", { class: "prep-link", href: `#/prep?job=${a.job_id}` }, "Prep: call script and answers") : "",
     h("label", { class: "move" }, "Move to",
       h("select", { class: "status", "data-status": a.status, "aria-label": `Status for ${a.title}`, onchange: async e => {
           await api(`/api/applications/${a.id}`, { method: "POST", body: { status: e.target.value } }); reload();

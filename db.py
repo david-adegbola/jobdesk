@@ -68,6 +68,16 @@ CREATE TABLE IF NOT EXISTS applications (
   updated_at TEXT NOT NULL,
   UNIQUE (user_id, job_id)
 );
+CREATE TABLE IF NOT EXISTS prep_answers (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
+  job_type TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  a_fi TEXT DEFAULT '',
+  a_en TEXT DEFAULT '',
+  updated_at TEXT NOT NULL,
+  UNIQUE (user_id, job_type, question_id)
+);
 CREATE INDEX IF NOT EXISTS jobs_user ON jobs (user_id, deadline, posted);
 CREATE INDEX IF NOT EXISTS applications_user ON applications (user_id, status);
 """
@@ -266,6 +276,35 @@ def save_email_prompt(job_id, text, defaults, user_id=1):
     block = f"{EMAIL_PROMPT_START}\n{text.strip()}\n{EMAIL_PROMPT_END}"
     update_application(app_id, {"notes": (notes + "\n\n" + block).strip()}, user_id=user_id)
     return app_id
+
+
+def get_application(job_id, user_id=1):
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM applications WHERE job_id=? AND user_id=?", (job_id, user_id)).fetchone()
+        return dict(row) if row else None
+
+
+# ---------------------------------------------------------------- prep answers (David's edits, per job type)
+
+def prep_answers(job_type, user_id=1):
+    with connect() as conn:
+        rows = conn.execute("SELECT question_id, a_fi, a_en FROM prep_answers WHERE user_id=? AND job_type=?",
+                            (user_id, job_type)).fetchall()
+        return {r["question_id"]: {"a_fi": r["a_fi"], "a_en": r["a_en"]} for r in rows}
+
+
+def save_prep_answer(job_type, question_id, a_fi, a_en, user_id=1):
+    """Save an edited answer; empty in both languages goes back to the draft."""
+    with connect() as conn:
+        if not (a_fi.strip() or a_en.strip()):
+            conn.execute("DELETE FROM prep_answers WHERE user_id=? AND job_type=? AND question_id=?",
+                         (user_id, job_type, question_id))
+            return
+        conn.execute("""INSERT INTO prep_answers (user_id, job_type, question_id, a_fi, a_en, updated_at)
+                        VALUES (?,?,?,?,?,?)
+                        ON CONFLICT (user_id, job_type, question_id)
+                        DO UPDATE SET a_fi=excluded.a_fi, a_en=excluded.a_en, updated_at=excluded.updated_at""",
+                     (user_id, job_type, question_id, a_fi.strip(), a_en.strip(), now()))
 
 
 def list_applications(user_id=1):
