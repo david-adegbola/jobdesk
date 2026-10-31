@@ -10,6 +10,11 @@ never writes to it. A new CV pushed to the cv repo shows up here on the next pul
 
 Python 3 standard library, SQLite and plain HTML/CSS/JS: nothing to install.
 
+## Tests
+
+Run `python3 -m unittest discover -s tests -v`. Database tests use temporary SQLite files and
+exercise data isolation across 100 users; the HTTP API tests use only a local test server.
+
 ## Pages
 
 - **Jobs:** "Check for new jobs" reads Jobly's Finland-wide category pages, waiting 10 s between
@@ -117,6 +122,7 @@ jobdesk/
 ├── ics.py           calendar export
 ├── facts.py         reads facts.json from the cv repo
 ├── static/          HTML, CSS, JS (one file per page in static/pages/)
+├── tests/           isolated database and HTTP API tests
 ├── deploy/          install.sh, deploy.sh, upload-data.sh, backup.sh, Caddyfile, systemd/
 └── data/            git-ignored: jobdesk.db, backups/
 ```
