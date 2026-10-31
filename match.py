@@ -1,8 +1,9 @@
 """Explainable job matching and blocker detection.
 
 Match: each role's keywords come from its public job.md (Role, Job type) and its CVs (Skills rows
-and tags). Score = matched keywords / min(keywords, 10), capped at 100. The matched words are shown,
-so every score can be checked by eye.
+and tags). Score = matched keywords / min(keywords, 10) for a title, or / min(keywords, 25) once the full
+ad is read (a long ad would otherwise give every role 100), capped at 100. Ties go to the role with more
+matched words. The matched words are shown, so every score can be checked by eye.
 
 Blockers: things an ad asks for that David doesn't have, from the "Not held" and "NOT confirmed"
 lists in CV-RULES.md (via facts.json), plus two the ads often ask for: C licence and fluent Finnish.
@@ -21,6 +22,7 @@ työ työt työn töitä työssä työhön tehtävä tehtäviin tehtävät haemm
 cv master role job type sent unchanged similar jobs including want learn opettelen haluan oppia
 basic perustaidot tietotekniikan tietotekniikka computer skills it
 worker workers henkilöstö henkilöstöpalvelut staff
+through under companies employers general projects projektit
 """.split())
 # Skills-section labels whose rows are not job skills
 SKIP_LABELS = re.compile(r"kielet|languages|sijainti|location|puhelin|phone|sähköposti|email|links|"
@@ -40,6 +42,13 @@ BLOCKERS = [
      r"sujuva\w* suome|hyvä\w* suomen kiel|erinomai\w* suomen kiel|fluent finnish|native finnish|"
      r"suomen kielen taito on (?:edellytys|välttämätön)"),
     ("electrician qualification", None, r"sähköasentaja|sähköpätevyy|sähköalan tutkin"),
+    ("1+ years' experience", None,
+     r"at least (?:one|two|three|\d+) years?\b|\b\d+\+? years?(?:'|’)? (?:of )?(?:relevant |similar |work )?experience|"
+     r"(?:one|two|three) years? of (?:relevant |similar |work )?experience|"
+     r"vähintään (?:vuoden|\d+ vuoden|kahden|kolmen)|(?:usean|useamman) vuoden (?:työ)?kokemus"),
+    ("vocational qualification", None,
+     r"vocational (?:education|qualification|degree)|technical/vocational|ammatillinen (?:tutkinto|koulutus)|"
+     r"alan (?:ammatillinen|perus)tutkinto|alalle soveltuva koulutus"),
     ("brush saw experience", None, r"raivaussah|brush ?saw|clearing saw"),
     ("chainsaw", None, r"moottorisah|chain ?saw"),
     ("forest machine operator qualification", None, r"metsäkoneenkuljettaj|forest machine operator"),
@@ -47,6 +56,9 @@ BLOCKERS = [
      r"metsä\w* \w*tutkin|metsätalousinsinöö|metsänhoitaj|metsätieteiden|forestry degree|degree in forestry|"
      r"(?:bsc|msc|bachelor|master)\W+(?:\w+\W+)?forestry"),
 ]
+
+
+FULL_AD_WORDS = 60   # fewer words than this = a title or short listing, so the smaller cap is used
 
 
 def tokens(text):
@@ -111,13 +123,15 @@ def load_roles():
 
 def match(text, roles):
     """Score every role against an ad; best first. Each result lists the matched words."""
-    ad = {stem(w) for w in tokens(text) if w not in STOPWORDS}
+    words = [w for w in tokens(text) if w not in STOPWORDS]
+    ad = {stem(w) for w in words}
+    cap = 10 if len(words) < FULL_AD_WORDS else 25
     results = []
     for r in roles:
         hit = sorted({r["keywords"][s] for s in r["keywords"] if s in ad})
-        base = max(1, min(len(r["keywords"]), 10))
+        base = max(1, min(len(r["keywords"]), cap))
         results.append({"slug": r["slug"], "score": min(100, round(100 * len(hit) / base)), "words": hit})
-    results.sort(key=lambda x: (-x["score"], x["slug"]))
+    results.sort(key=lambda x: (-x["score"], -len(x["words"]), x["slug"]))
     return results
 
 

@@ -266,6 +266,11 @@ def api_prompt_build(h, m):
     job = db.get_job(int(m.group(1)), USER_ID) if m.group(1) else (body.get("job") or {})
     if m.group(1) and not job:
         raise KeyError(m.group(1))
+    if m.group(1) and not job.get("ad_text") and job.get("url"):
+        text = scraper.fetch_ad_text(job["url"])     # one request; stored, so it's read only once
+        if text:
+            db.add_manual({**job, "ad_text": text}, USER_ID)
+            job = db.get_job(job["id"], USER_ID)
     analysis = prompt.analyse(job, roles, f)
     if body.get("analyse_only"):
         return analysis

@@ -36,6 +36,12 @@ EN_WORDS = set("the and you we our with for will are your experience work team s
 FI_WORDS = set("ja on sekä olet meillä työ tehtävä haemme kokemus taitoa tarjoamme".split())
 
 
+def role_titles(heading):
+    """(Finnish, English) from a job.md heading like "Asentaja ja tuotantotyöntekijä / Assembly and Production Worker"."""
+    parts = [p.strip() for p in heading.split(" / ")]
+    return (parts[0], parts[1]) if len(parts) > 1 else ("", parts[0])
+
+
 def ad_language(text):
     """en-first for ads written in English, otherwise fi-first (the default)."""
     words = match.tokens(text or "")
@@ -77,6 +83,8 @@ def analyse(job, roles, facts):
         if pattern is None or re.search(pattern, text.lower()):
             questions.append({"id": qid, "question": q, "kind": kind})
     base_title = re.split(r"[,/(–-]", job.get("title") or "")[0].strip()
+    language = ad_language(text)
+    role_fi, role_en = role_titles(role["title"]) if role else ("", "")
     return {
         "job": {k: job.get(k) or "" for k in ("title", "company", "location", "url", "deadline",
                                              "contact_name", "contact_phone")},
@@ -87,9 +95,9 @@ def analyse(job, roles, facts):
         "blockers": blockers,
         "tags": _tags(best["slug"]) if best else [],
         "questions": questions,
-        "defaults": {"mode": "new", "language": ad_language(text), "slug": slugify(base_title) or "new-role",
-                     "role_fi": base_title,
-                     "role_en": role["title"].split("/")[0].strip() if role else ""},
+        "defaults": {"mode": "new", "language": language, "slug": slugify(base_title) or "new-role",
+                     "role_fi": base_title if language == "fi-first" else role_fi,
+                     "role_en": base_title if language != "fi-first" else role_en},
         "has_ad_text": bool(job.get("ad_text")),
     }
 
