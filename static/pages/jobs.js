@@ -247,11 +247,10 @@ register({
       };
 
       const rows = shown.map(j => h("tr", null,
-        h("td", null, j.is_new ? h("span", { class: "tag new" }, "NEW") : ""),
-        h("td", null, j.url ? h("a", { href: j.url, target: "_blank", rel: "noopener" }, j.title) : j.title,
+        h("td", null, j.is_new ? h("div", null, h("span", { class: "tag new" }, "NEW")) : "",
+          j.url ? h("a", { href: j.url, target: "_blank", rel: "noopener" }, j.title) : j.title,
           j.source !== "Jobly" || j.manual ? h("div", { class: "muted small" }, j.manual ? "added by hand" : j.source) : ""),
-        h("td", null, j.company),
-        h("td", null, places(j.location)),
+        h("td", null, j.company, j.location ? h("div", { class: "muted small" }, places(j.location)) : ""),
         h("td", { class: "nowrap" }, j.posted),
         h("td", { class: "nowrap" + (j.days_left != null && j.days_left <= 3 && j.days_left >= 0 ? " overdue" : "") },
           j.deadline, j.deadline ? h("div", { class: "small" }, daysText(j.days_left)) : ""),
@@ -264,12 +263,12 @@ register({
             catch (err) { e.target.textContent = err.message; }
           } }, "read full ad")) : ""),
         h("td", null, j.blockers.map(b => h("span", { class: "tag bad" }, b))),
-        h("td", { class: "nowrap" }, !j.use_cv ? "" : !j.cv_ready
+        h("td", null, !j.use_cv ? "" : !j.cv_ready
             ? h("span", { class: "tag warn", title: `roles/${j.use_cv} doesn't exist in the cv repo yet` }, "CV not ready")
             : [h("a", { href: j.use_cv_link, target: "_blank", rel: "noopener" }, j.use_cv),
                j.use_cv_language && j.use_cv_language !== "fi-first"
-                 ? h("span", { class: "muted small", title: `The employer page and the PDF to send open in English (${j.use_cv_language})` },
-                     ` · ${j.use_cv_language === "en-only" ? "EN only" : "EN first"}`) : ""],
+                 ? h("div", { class: "muted small", title: `The employer page and the PDF to send open in English (${j.use_cv_language})` },
+                     j.use_cv_language === "en-only" ? "EN only" : "EN first") : ""],
           h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}` }, "CV prompt"))),
         h("td", null, h("select", { "aria-label": `Status for ${j.title}`, onchange: async e => {
             await api(`/api/jobs/${j.id}/status`, { method: "POST", body: { status: e.target.value } });
@@ -281,8 +280,8 @@ register({
           "Match and Blockers read the title, company and place, plus the ad text when there is one. " +
           "For Jobly jobs, “read full ad” fetches the ad page for a better check."),
         h("div", { class: "scroll" }, h("table", null,
-          h("thead", null, h("tr", null, ["", "Job", "Company", "Location", "Posted", "Deadline", "Type", "Match", "Blockers", "Use CV", "Status"].map(header))),
-          h("tbody", null, rows.length ? rows : h("tr", null, h("td", { colspan: 11, class: "empty" },
+          h("thead", null, h("tr", null, ["Job", "Company", "Posted", "Deadline", "Type", "Match", "Blockers", "Use CV", "Status"].map(header))),
+          h("tbody", null, rows.length ? rows : h("tr", null, h("td", { colspan: 9, class: "empty" },
             jobs.length ? "No jobs match these filters." : "No jobs yet. Press “Check for new jobs” or add one by hand."))))));
 
       const again = focusKey && [...listArea.querySelectorAll("[data-focus]")].find(el => el.dataset.focus === focusKey);
