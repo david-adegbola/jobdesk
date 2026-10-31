@@ -271,7 +271,7 @@ register({
                      j.use_cv_language === "en-only" ? "EN only" : "EN first") : ""],
           h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}` }, "CV prompt")),
           h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}&kind=email` }, "Email prompt"))),
-        h("td", null, h("select", { "aria-label": `Status for ${j.title}`, onchange: async e => {
+        h("td", null, h("select", { class: "status", "data-status": j.status || "", "aria-label": `Status for ${j.title}`, onchange: async e => {
             await api(`/api/jobs/${j.id}/status`, { method: "POST", body: { status: e.target.value } });
             load();
           } }, h("option", { value: "" }, "—"), state.statuses.map(s => h("option", { value: s, selected: j.status === s }, s))))));
