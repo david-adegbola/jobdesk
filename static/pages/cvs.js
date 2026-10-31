@@ -26,20 +26,21 @@ register({
         buildBtn.disabled = false; buildBtn.textContent = "Build PDFs";
       } }, "Build PDFs");
     main.append(h("h1", null, "CVs"),
-      h("p", { class: "muted" }, "Send employers the employer link: one page with your contact details and that role's CV only. " +
+      h("p", { class: "muted" }, "Send employers the employer link: one page with your contact details and that role's CV only, main language first. " +
         "PDF links point at the published site, so they show the version last pushed to GitHub."),
       h("div", { class: "row" }, buildBtn,
         h("span", { class: "muted small" }, pdflatex ? "Compiles every CV here with pdflatex." : "pdflatex isn't installed here: push to GitHub to build.")),
       out,
       h("div", { class: "scroll" }, h("table", null,
-        h("thead", null, h("tr", null, ["Role", "PDFs", "Employer link", "Last updated", "Applications"].map(t => h("th", null, t)))),
+        h("thead", null, h("tr", null, ["Role", "Language", "PDFs", "Employer link", "Last updated", "Applications"].map(t => h("th", null, t)))),
         h("tbody", null, roles.map(r => {
           const btn = h("button", { class: "secondary small", onclick: e => copy(r.employer_link, e.target) }, "Copy employer link");
           const pdf = (key, label) => r.pdfs[key] ? h("a", { class: "tag", href: r.pdfs[key], target: "_blank", rel: "noopener" }, label) : "";
           return h("tr", null,
             h("td", null, h("strong", null, r.title), h("div", { class: "muted small" }, `roles/${r.slug}/`)),
-            h("td", null, pdf("combined", "FI + EN"), pdf("fi", "FI"), pdf("en", "EN"),
-              !r.pdfs.combined ? h("div", { class: "muted small" }, "No combined PDF: needs both languages") : ""),
+            h("td", { class: "nowrap" }, r.language),
+            h("td", null, pdf("combined", r.combined_label), r.langs.map(l => pdf(l, l.toUpperCase())),
+              !r.pdfs.combined ? h("div", { class: "muted small" }, `No combined PDF: ${r.language} needs cv-${r.language === "en-only" ? "en" : "fi and cv-en"}.tex`) : ""),
             h("td", null, h("a", { href: r.employer_link, target: "_blank", rel: "noopener", class: "small" }, r.employer_link),
               h("div", null, btn)),
             h("td", { class: "nowrap" }, r.updated),

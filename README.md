@@ -19,10 +19,12 @@ Python 3 standard library, SQLite and plain HTML/CSS/JS: nothing to install.
 - **Tracker:** Saved / Applied / Interview / Offer / Rejected. Each card holds the date applied, CV,
   link sent, contact, notes and the next action. Overdue actions are red; "Applied" with no change
   for 5 days shows a `Call <contact>` reminder. Deadlines and interviews export as `.ics`.
-- **CVs:** every role with its PDF links and employer link (copy button), last update and how many
-  applications used it.
+- **CVs:** every role with its language (fi-first, en-first or en-only, from its `job.md`), its PDF
+  links (the file to send first), employer link (copy button), last update and how many applications
+  used it. On the Jobs page, "Use CV" marks roles that open in English ("EN first", "EN only").
 - **New CV prompt:** pick a job or paste an ad. It asks what your facts don't answer, then writes the
-  Claude Code prompt for the cv repo.
+  Claude Code prompt for the cv repo. Its Language choice (en-first for ads written in English,
+  otherwise fi-first) sets the role's language, the emails and the commit message.
 - **Insights:** the most common blockers (what to learn next) and the funnel per CV.
 
 ## Where it runs

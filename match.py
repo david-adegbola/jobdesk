@@ -68,6 +68,20 @@ def _tex_keywords(tex):
     return words
 
 
+# Each role's language, from the "- **Language:** ..." line in its job.md (cv repo, CV-RULES.md section 1).
+# Same rules as the cv repo's site/language.py; read as data here, never run.
+LANGUAGE_ORDER = {"fi-first": ["fi", "en"], "en-first": ["en", "fi"], "en-only": ["en"]}
+LANGUAGE_DEFAULT = "fi-first"
+LANGUAGE_FIELD = re.compile(r"^\W*language\W*:\W*([a-z]+-[a-z]+)", re.I | re.M)
+COMBINED_LABEL = {"fi-first": "FI + EN", "en-first": "EN + FI", "en-only": "EN (to send)"}
+
+
+def language_of(job_md_text):
+    m = LANGUAGE_FIELD.search(job_md_text)
+    value = m.group(1).lower() if m else LANGUAGE_DEFAULT
+    return value if value in LANGUAGE_ORDER else LANGUAGE_DEFAULT
+
+
 def load_roles():
     """Every roles/<slug>/ with its title and keyword list."""
     roles = []
@@ -88,8 +102,10 @@ def load_roles():
         for w in words:
             if len(w) > 2 and w not in STOPWORDS and not w.isdigit():
                 keywords.setdefault(stem(w), w)
-        langs = sorted(p.stem[3:] for p in d.glob("cv-*.tex"))
-        roles.append({"slug": d.name, "title": title, "keywords": keywords, "langs": langs})
+        language = language_of(md)
+        # the languages the cv repo builds for this role, main version first
+        langs = [lang for lang in LANGUAGE_ORDER[language] if (d / f"cv-{lang}.tex").exists()]
+        roles.append({"slug": d.name, "title": title, "keywords": keywords, "language": language, "langs": langs})
     return roles
 
 
@@ -122,8 +138,10 @@ def employer_link(slug):
 
 
 def pdf_links(role):
+    """The file to send first (combined, main language first; for en-only the English CV), then each language."""
     base = f"{PUBLIC_BASE}/david-adegbola-{role['slug']}"
-    links = {lang: f"{base}-{lang}.pdf" for lang in role["langs"]}
-    if "fi" in role["langs"] and "en" in role["langs"]:
+    links = {}
+    if role["langs"] == LANGUAGE_ORDER[role["language"]]:      # every file the setting needs exists
         links["combined"] = f"{base}.pdf"
+    links.update({lang: f"{base}-{lang}.pdf" for lang in role["langs"]})
     return links

@@ -51,6 +51,11 @@ register({
         h("option", { value: "new" }, "Make a new tailored CV"),
         h("option", { value: "existing" }, `Use the existing CV: ${an.closest}`));
       inputs.mode = mode;
+      const languageNotes = { "fi-first": "Finnish main, combined PDF Finnish then English",
+        "en-first": "English main, combined PDF English then Finnish", "en-only": "English only, no Finnish CV" };
+      const language = h("select", null, Object.entries(languageNotes).map(([v, note]) =>
+        h("option", { value: v, selected: v === an.defaults.language }, `${v}: ${note}`)));
+      inputs.language = language;
       const questions = an.questions.map(q => q.kind === "yesno"
         ? h("label", { class: "field" }, q.question, inputs[q.id] = h("select", null,
             h("option", { value: "" }, "Choose…"), h("option", { value: "yes" }, "Yes"), h("option", { value: "no" }, "No")))
@@ -83,8 +88,9 @@ register({
             out.replaceChildren(h("div", { class: "row" }, copyBtn), h("pre", { class: "prompt" }, r.prompt));
           } },
           h("label", { class: "field" }, "What to do", mode),
+          h("label", { class: "field" }, "Language (new CV; an existing CV keeps its own: " + an.closest_language + ")", language),
           text("slug", "New role folder (job type, not the employer)", an.defaults.slug),
-          text("role_fi", "Finnish role title (footer)", an.defaults.role_fi),
+          text("role_fi", "Finnish role title (footer; not needed for en-only)", an.defaults.role_fi),
           text("role_en", "English role title (footer)", an.defaults.role_en),
           questions,
           h("div", { style: "grid-column: 1 / -1" }, h("button", { type: "submit" }, "Make the prompt"))),

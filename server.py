@@ -80,6 +80,7 @@ def enrich(job, roles, f):
     return {**job, "is_new": bool(job.get("is_new")), "match": best, "blockers": match.blockers(blocker_text, f),
             "use_cv": use_cv, "cv_ready": use_cv in ready,
             "use_cv_link": match.employer_link(use_cv) if use_cv in ready else "",
+            "use_cv_language": next((r["language"] for r in roles if r["slug"] == use_cv), ""),
             "days_left": days_left, "has_ad_text": bool(job.get("ad_text"))}
 
 
@@ -213,7 +214,8 @@ def api_roles(h, m):
     used = db.applications_per_role(USER_ID)
     out = []
     for r in match.load_roles():
-        out.append({"slug": r["slug"], "title": r["title"], "langs": r["langs"], "pdfs": match.pdf_links(r),
+        out.append({"slug": r["slug"], "title": r["title"], "langs": r["langs"], "language": r["language"],
+                    "combined_label": match.COMBINED_LABEL[r["language"]], "pdfs": match.pdf_links(r),
                     "employer_link": match.employer_link(r["slug"]), "updated": last_updated(r["slug"]),
                     "applications": used.get(r["slug"], 0)})
     return {"roles": out, "pdflatex": bool(shutil.which("pdflatex"))}
@@ -230,7 +232,7 @@ def api_build(h, m):
                                 cwd=tex.parent, capture_output=True, timeout=120).returncode == 0 for _ in range(2))
         (built if ok else failed).append(f"{tex.parent.name}/{name}")
     for d in sorted((REPO / "roles").glob("*/")):
-        if (d / "cv-fi.pdf").exists() and (d / "cv-en.pdf").exists() and shutil.which("pdfunite"):
+        if shutil.which("pdfunite"):        # combine.sh follows the role's Language line (and skips if a PDF is missing)
             subprocess.run(["sh", str(REPO / "shared" / "combine.sh"), str(d)], cwd=REPO, capture_output=True)
     msg = f"Built {len(built)} PDFs locally (in each roles/<role>/ folder; they are git-ignored)."
     if failed:

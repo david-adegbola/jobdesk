@@ -266,7 +266,10 @@ register({
         h("td", null, j.blockers.map(b => h("span", { class: "tag bad" }, b))),
         h("td", { class: "nowrap" }, !j.use_cv ? "" : !j.cv_ready
             ? h("span", { class: "tag warn", title: `roles/${j.use_cv} doesn't exist in the cv repo yet` }, "CV not ready")
-            : h("a", { href: j.use_cv_link, target: "_blank", rel: "noopener" }, j.use_cv),
+            : [h("a", { href: j.use_cv_link, target: "_blank", rel: "noopener" }, j.use_cv),
+               j.use_cv_language && j.use_cv_language !== "fi-first"
+                 ? h("span", { class: "muted small", title: `The employer page and the PDF to send open in English (${j.use_cv_language})` },
+                     ` · ${j.use_cv_language === "en-only" ? "EN only" : "EN first"}`) : ""],
           h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}` }, "CV prompt"))),
         h("td", null, h("select", { "aria-label": `Status for ${j.title}`, onchange: async e => {
             await api(`/api/jobs/${j.id}/status`, { method: "POST", body: { status: e.target.value } });
