@@ -1,9 +1,10 @@
 """Explainable job matching and blocker detection.
 
 Match: each role's keywords come from its public job.md (Role, Job type) and its CVs (Skills rows
-and tags). Score = matched keywords / min(keywords, 10) for a title, or / min(keywords, 25) once the full
-ad is read (a long ad would otherwise give every role 100), capped at 100. Ties go to the role with more
-matched words. The matched words are shown, so every score can be checked by eye.
+and tags). Score = (matched keywords + 3 x those also in the job title) / min(keywords, 10) for a title, or
+/ min(keywords, 25) once the full ad is read (a long ad would otherwise give every role 100), capped at 100.
+Ties go to the role that matches the title, then to the one with more matched words. Matching allows
+Finnish case endings and compounds (word_matches). The matched words are shown, so every score can be checked by eye.
 
 Blockers: things an ad asks for that David doesn't have, from the "Not held" and "NOT confirmed"
 lists in CV-RULES.md (via facts.json), plus two the ads often ask for: C licence and fluent Finnish.
@@ -43,6 +44,8 @@ BLOCKERS = [
      r"sujuva\w* suome|hyvä\w* suomen kiel|erinomai\w* suomen kiel|fluent finnish|native finnish|"
      r"suomen kielen taito on (?:edellytys|välttämätön)"),
     ("electrician qualification", None, r"sähköasentaja|sähköpätevyy|sähköalan tutkin"),
+    ("electrical safety card", None, r"sähkötyöturvallisuu|sfs ?6002|electrical safety (?:card|training)"),
+    ("first aid card", None, r"\bea ?1\b|ensiapukortti|ensiapukoulutus|first aid"),
     ("1+ years' experience", None,
      r"at least (?:one|two|three|\d+) years?\b|\b\d+\+? years?(?:'|’)? (?:of )?(?:relevant |similar |work )?experience|"
      r"(?:one|two|three) years? of (?:relevant |similar |work )?experience|"
@@ -63,7 +66,18 @@ FULL_AD_WORDS = 60   # fewer words than this = a title or short listing, so the 
 
 
 def tokens(text):
+    text = BOILERPLATE.sub(" ", text or "")
     return [w.lower() for w in WORD.findall(text or "")]
+
+
+# Lines every Jobly ad page has ("Tämä tiivistelmä on luotu tekoälyn avulla" would match the AI skills)
+BOILERPLATE = re.compile(r"tiivistelmä työpaikkailmoituksesta:?|tämä tiivistelmä on luotu tekoälyn avulla\.?|"
+                         r"hae paikkaa|tallenna työpaikka|skip to main content", re.I)
+# Stems of words that are in almost every Finnish ad and say nothing about the job:
+# itsenäinen/itsenäisesti, työskentely/työskentelet, sujuva (usually "sujuva suomen kieli"), perus-
+STOP_STEMS = {"itsenä", "työske", "sujuva", "perust", "tehtäv", "yhteis", "turval", "opiske", "koulut"}
+TITLE_WEIGHT = 3   # a skill word that matches the job title is the strongest sign of the right CV
+COMPOUND_MIN = 6   # a skill word this long also matches inside a longer ad word ("asennus" in "sähköasennustyöt")
 
 
 def stem(word):
@@ -71,9 +85,23 @@ def stem(word):
     return word[:6] if len(word) > 6 else word
 
 
-def _tex_keywords(tex):
+LEARN_LABELS = re.compile(r"haluan oppia|want to learn", re.I)
+
+
+def _learn_words(tex):
+    """Words from the "want to learn" rows: they help find the closest CV, but they aren't facts."""
+    words = set()
+    for label, value in re.findall(r"\\cvline(?:\[[^\]]*\])?\{([^}]*)\}\{([^}]*)\}", tex):
+        if LEARN_LABELS.search(label):
+            words |= set(tokens(re.sub(r"\\[a-z]+", " ", value)))
+    return words
+
+
+def _tex_keywords(tex, facts_only=False):
     words = []
     for label, value in re.findall(r"\\cvline(?:\[[^\]]*\])?\{([^}]*)\}\{([^}]*)\}", tex):
+        if facts_only and LEARN_LABELS.search(label):
+            continue
         if not SKIP_LABELS.search(label) and "\\href" not in value:
             words += tokens(re.sub(r"\\[a-z]+", " ", value))
     for tags in re.findall(r"\\sotagrow\{([^}]*)\}", tex):
@@ -109,30 +137,63 @@ def load_roles():
             m = re.search(rf"^- \*\*{field}:\*\* (.+)$", md, re.M)
             if m:
                 words += tokens(m.group(1))
+        learn, facts = set(), set(words)
         for tex in sorted(d.glob("cv-*.tex")):
             words += _tex_keywords(tex.read_text(encoding="utf-8"))
+            learn |= _learn_words(tex.read_text(encoding="utf-8"))
+            facts |= set(_tex_keywords(tex.read_text(encoding="utf-8"), facts_only=True))
         keywords = {}
         for w in words:
-            if len(w) > 2 and w not in STOPWORDS and not w.isdigit():
+            if len(w) > 2 and w not in STOPWORDS and not w.isdigit() and stem(w) not in STOP_STEMS:
                 keywords.setdefault(stem(w), w)
         language = language_of(md)
         # the languages the cv repo builds for this role, main version first
         langs = [lang for lang in LANGUAGE_ORDER[language] if (d / f"cv-{lang}.tex").exists()]
-        roles.append({"slug": d.name, "title": title, "keywords": keywords, "language": language, "langs": langs})
+        footers = {}
+        for lang in langs:
+            m = re.search(r"\\cvrole\{([^}]*)\}", (d / f"cv-{lang}.tex").read_text(encoding="utf-8"))
+            if m:
+                footers[lang] = m.group(1).strip()
+        roles.append({"slug": d.name, "title": title, "keywords": keywords, "language": language, "langs": langs,
+                      "footers": footers, "learn": learn - facts})   # words only on the want-to-learn rows
     return roles
 
 
-def match(text, roles):
-    """Score every role against an ad; best first. Each result lists the matched words."""
-    words = [w for w in tokens(text) if w not in STOPWORDS]
-    ad = {stem(w) for w in words}
+def word_matches(word, keyword):
+    """Does an ad word match one of David's skill words?
+
+    - Finnish case endings: the ad word starts with the skill word minus its last 3 letters (at least 6),
+      and adds no more than 6 letters ("asentajaa", "kokoonpanotöissä"); short skill words up to 4.
+    - Compounds: a skill word of 6+ letters inside a longer ad word ("asennus" in "sähköasennustyöt").
+    The old rule (same first 6 letters) matched "asiakaskiinteistöissä" to "asiakaspalvelu".
+    """
+    if word == keyword:
+        return True
+    root = keyword if len(keyword) <= 6 else keyword[:max(6, len(keyword) - 3)]
+    # short words ("sähkö") take case endings only ("sähköä", "sähkön"), not a second word ("sähköalalla")
+    if word.startswith(root) and len(word) - len(root) <= (4 if len(keyword) <= 6 else 6):
+        return True
+    return len(keyword) >= COMPOUND_MIN and len(word) > len(keyword) + 2 and keyword in word
+
+
+def match(text, roles, title=""):
+    """Score every role against an ad; best first. Each result lists the matched words.
+    A skill word that also matches a word in the job title counts 1 + TITLE_WEIGHT times."""
+    words = {w for w in tokens(text) if w not in STOPWORDS}
+    title_words = {w for w in tokens(title) if w not in STOPWORDS}
     cap = 10 if len(words) < FULL_AD_WORDS else 25
     results = []
     for r in roles:
-        hit = sorted({r["keywords"][s] for s in r["keywords"] if s in ad})
+        hit, in_title = [], 0
+        for kw in sorted(set(r["keywords"].values())):
+            found = [w for w in words if word_matches(w, kw)]
+            if found:
+                hit.append(kw)
+                in_title += any(w in title_words for w in found)
         base = max(1, min(len(r["keywords"]), cap))
-        results.append({"slug": r["slug"], "score": min(100, round(100 * len(hit) / base)), "words": hit})
-    results.sort(key=lambda x: (-x["score"], -len(x["words"]), x["slug"]))
+        results.append({"slug": r["slug"], "score": min(100, round(100 * (len(hit) + TITLE_WEIGHT * in_title) / base)), "words": hit,
+                        "in_title": in_title})
+    results.sort(key=lambda x: (-x["score"], -x["in_title"], -len(x["words"]), x["slug"]))
     return results
 
 

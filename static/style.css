@@ -32,9 +32,11 @@ button:disabled { opacity: .55; cursor: default; }
 button.link { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; text-decoration: underline; }
 input, select, textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
 textarea { width: 100%; min-height: 120px; }
-label.field { display: grid; gap: 4px; font-weight: 600; font-size: .9rem; align-content: end; }
+label.field { display: grid; gap: 4px; font-weight: 600; font-size: .9rem; align-content: end; min-width: 0; }
+label.field > input, label.field > select, label.field > textarea { width: 100%; min-width: 0; }
 label.check { display: inline-flex; gap: 6px; align-items: center; }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.grid > * { min-width: 0; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
 details.card > summary { cursor: pointer; font-weight: 700; }
 .scroll { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }

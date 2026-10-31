@@ -36,10 +36,10 @@ EN_WORDS = set("the and you we our with for will are your experience work team s
 FI_WORDS = set("ja on sekä olet meillä työ tehtävä haemme kokemus taitoa tarjoamme".split())
 
 
-def role_titles(heading):
-    """(Finnish, English) from a job.md heading like "Asentaja ja tuotantotyöntekijä / Assembly and Production Worker"."""
-    parts = [p.strip() for p in heading.split(" / ")]
-    return (parts[0], parts[1]) if len(parts) > 1 else ("", parts[0])
+def role_titles(role):
+    """(Finnish, English) role titles: each CV's own footer text (\\cvrole), not the job.md heading,
+    whose order varies ("Salesperson / Myyjä")."""
+    return role["footers"].get("fi", ""), role["footers"].get("en", "")
 
 
 def ad_language(text):
@@ -57,7 +57,8 @@ def _ad_keywords(text, role):
     """Words as written in the ad whose stem matches the role's keywords (Finnish forms kept)."""
     out = []
     for w in match.tokens(text):
-        if match.stem(w) in role["keywords"] and w not in match.STOPWORDS and w not in out and not _is_blocker(w):
+        if w not in match.STOPWORDS and w not in out and not _is_blocker(w) and \
+                any(match.word_matches(w, kw) for kw in role["keywords"].values() if kw not in role["learn"]):
             out.append(w)
     return out[:14]
 
@@ -76,7 +77,7 @@ def _tags(slug):
 
 def analyse(job, roles, facts):
     text = " ".join(job.get(k) or "" for k in ("title", "ad_text"))
-    scores = match.match(text, roles)
+    scores = match.match(text, roles, job.get("title") or "")
     best = scores[0] if scores else None
     role = next((r for r in roles if best and r["slug"] == best["slug"]), None)
     blockers = match.blockers(text, facts)
@@ -89,7 +90,7 @@ def analyse(job, roles, facts):
             questions.append({"id": qid, "question": q, "kind": kind})
     base_title = re.split(r"[,/(–-]", job.get("title") or "")[0].strip()
     language = ad_language(text)
-    role_fi, role_en = role_titles(role["title"]) if role else ("", "")
+    role_fi, role_en = role_titles(role) if role else ("", "")
     return {
         "job": {k: job.get(k) or "" for k in ("title", "company", "location", "url", "deadline",
                                              "contact_name", "contact_phone")},
@@ -209,9 +210,10 @@ def _finnish_keywords(job, role):
     tex = Path(match.ROLES_DIR, role["slug"], "cv-fi.tex")
     if not tex.exists():
         return None
-    fi = {match.stem(w) for w in match.tokens(tex.read_text(encoding="utf-8"))}
+    fi_tokens = set(match.tokens(tex.read_text(encoding="utf-8")))
+    fi = [kw for kw in role["keywords"].values() if kw in fi_tokens]
     text = " ".join(job.get(k) or "" for k in ("title", "ad_text"))
-    return [w for w in _ad_keywords(text, role) if match.stem(w) in fi]
+    return [w for w in _ad_keywords(text, role) if any(match.word_matches(w, kw) for kw in fi)]
 
 
 def build_email(job, analysis, answers, roles):

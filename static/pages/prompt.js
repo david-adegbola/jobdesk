@@ -50,7 +50,7 @@ register({
       const emailEndpoint = jobId ? `/api/email-prompt/${jobId}` : "/api/email-prompt";
       const { roles } = await getState();
       const sendCv = an.suggested_cv || an.closest;
-      inputs.cv_role = h("select", null, roles.map(r => h("option", { value: r.slug, selected: r.slug === sendCv }, `${r.slug} (${r.title})`)));
+      inputs.cv_role = h("select", null, roles.map(r => h("option", { value: r.slug, selected: r.slug === sendCv, title: r.title }, r.slug)));
       async function run(url) {
         const answers = Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.value]));
         const r = await api(url, { method: "POST", body: { answers, job: pasted } });
@@ -71,10 +71,9 @@ register({
         h("option", { value: "new" }, "Make a new tailored CV"),
         h("option", { value: "existing" }, `Use the existing CV: ${an.closest}`));
       inputs.mode = mode;
-      const languageNotes = { "fi-first": "Finnish main, combined PDF Finnish then English",
-        "en-first": "English main, combined PDF English then Finnish", "en-only": "English only, no Finnish CV" };
+      const languageNotes = { "fi-first": "Finnish main", "en-first": "English main", "en-only": "English only" };
       const language = h("select", null, Object.entries(languageNotes).map(([v, note]) =>
-        h("option", { value: v, selected: v === an.defaults.language }, `${v}: ${note}`)));
+        h("option", { value: v, selected: v === an.defaults.language }, `${v} (${note})`)));
       inputs.language = language;
       const questions = an.questions.map(q => q.kind === "yesno"
         ? h("label", { class: "field" }, q.question, inputs[q.id] = h("select", null,

@@ -65,7 +65,7 @@ def job_text(job):
 
 def enrich(job, roles, f):
     text = job_text(job)
-    scores = match.match(text, roles)
+    scores = match.match(text, roles, job.get("title") or "")
     blocker_text = " ".join(job.get(k) or "" for k in ("title", "ad_text"))
     best = scores[0] if scores else {"slug": "", "score": 0, "words": []}
     default_cv = scraper.CV_FOR_TYPE.get(job.get("category") or "", "")
@@ -117,7 +117,7 @@ def api_add_job(h, m):
     fields = {**body, "url": url, "source": source, "external_id": external}
     if not fields.get("category"):
         f, _, roles = context()
-        best = match.match(job_text(fields), roles)
+        best = match.match(job_text(fields), roles, fields.get("title") or "")
         fields["category"] = ROLE_TYPE.get(best[0]["slug"], "Other") if best and best[0]["score"] else "Other"
     return {"id": db.add_manual(fields, USER_ID)}
 
