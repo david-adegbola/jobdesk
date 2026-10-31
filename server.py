@@ -259,6 +259,33 @@ def api_prompt_analyse(h, m):
     return prompt.analyse(_prompt_job(h, m), roles, f)
 
 
+@route("POST", r"/api/email-prompt(?:/(\d+))?")
+def api_email_prompt(h, m):
+    """Application email prompt. With a job id it is also saved in that job's tracker notes."""
+    f, _, roles = context()
+    body = h.json()
+    job = db.get_job(int(m.group(1)), USER_ID) if m.group(1) else (body.get("job") or {})
+    if m.group(1) and not job:
+        raise KeyError(m.group(1))
+    if m.group(1) and not job.get("ad_text") and job.get("url"):
+        text = scraper.fetch_ad_text(job["url"])
+        if text:
+            db.add_manual({**job, "ad_text": text}, USER_ID)
+            job = db.get_job(job["id"], USER_ID)
+    analysis = prompt.analyse(job, roles, f)
+    if m.group(1):
+        analysis["suggested_cv"] = enrich(job, roles, f)["use_cv"]
+    if body.get("analyse_only"):
+        return analysis
+    text, missing = prompt.build_email(job, analysis, body.get("answers") or {}, roles)
+    saved = False
+    if text and m.group(1):
+        slug = (body.get("answers") or {}).get("cv_role") or analysis.get("suggested_cv") or analysis["closest"]
+        db.save_email_prompt(job["id"], text, {"cv_role": slug, "employer_link": match.employer_link(slug)}, USER_ID)
+        saved = True
+    return {"prompt": text, "missing": missing, "saved": saved}
+
+
 @route("POST", r"/api/prompt(?:/(\d+))?")
 def api_prompt_build(h, m):
     f, _, roles = context()

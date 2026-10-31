@@ -23,6 +23,7 @@ cv master role job type sent unchanged similar jobs including want learn opettel
 basic perustaidot tietotekniikan tietotekniikka computer skills it
 worker workers henkilöstö henkilöstöpalvelut staff
 through under companies employers general projects projektit
+vastaan vastaava vastaavaa vastaavalta käyttö käyttöä
 """.split())
 # Skills-section labels whose rows are not job skills
 SKIP_LABELS = re.compile(r"kielet|languages|sijainti|location|puhelin|phone|sähköposti|email|links|"

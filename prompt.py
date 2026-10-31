@@ -57,9 +57,14 @@ def _ad_keywords(text, role):
     """Words as written in the ad whose stem matches the role's keywords (Finnish forms kept)."""
     out = []
     for w in match.tokens(text):
-        if match.stem(w) in role["keywords"] and w not in match.STOPWORDS and w not in out:
+        if match.stem(w) in role["keywords"] and w not in match.STOPWORDS and w not in out and not _is_blocker(w):
             out.append(w)
     return out[:14]
+
+
+def _is_blocker(word):
+    """Ad words for things David doesn't have (e.g. "hitsauspätevyydet") are never keywords to use."""
+    return any(re.search(pattern, word) for _, _, pattern in match.BLOCKERS)
 
 
 def _tags(slug):
@@ -189,5 +194,73 @@ def build(analysis, answers):
     lines += [
         f"Report: the employer link https://david-adegbola.github.io/cv/r/{slug if mode == 'new' else closest}/ first, "
         f"then {pdfs}, and any facts that differ from my other CVs.",
+    ]
+    return "\n".join(lines) + "\n", []
+
+
+EMAILS = {"fi-first": "a Finnish email (max 120 words) and an English copy",
+          "en-first": "an English email (max 120 words) and a Finnish copy",
+          "en-only": "an English email (max 120 words)"}
+
+
+def _finnish_keywords(job, role):
+    """Ad words (as written) that match the role's Finnish CV. None when the role has no Finnish CV."""
+    from pathlib import Path
+    tex = Path(match.ROLES_DIR, role["slug"], "cv-fi.tex")
+    if not tex.exists():
+        return None
+    fi = {match.stem(w) for w in match.tokens(tex.read_text(encoding="utf-8"))}
+    text = " ".join(job.get(k) or "" for k in ("title", "ad_text"))
+    return [w for w in _ad_keywords(text, role) if match.stem(w) in fi]
+
+
+def build_email(job, analysis, answers, roles):
+    """Prompt for the application emails only. Returns (prompt, missing); prompt is None while anything is missing."""
+    a = {k: (v or "").strip() if isinstance(v, str) else v for k, v in (answers or {}).items()}
+    missing = [q["question"] for q in analysis["questions"] if not a.get(q["id"])]
+    slug = a.get("cv_role") or analysis.get("suggested_cv") or analysis["closest"]
+    role = next((r for r in roles if r["slug"] == slug), None)
+    if not role:
+        missing.append("CV to send (a role that exists in the cv repo)")
+    j = analysis["job"]
+    if not j["title"]:
+        missing.append("Job title")
+    if missing:
+        return None, missing
+
+    language = role["language"]
+    keywords = _finnish_keywords(job, role)
+    if keywords is None:
+        kw_line = "Ad keywords to use (this CV is English only; from the ad, only where they match my facts): " + \
+                  (", ".join(_ad_keywords(" ".join(job.get(k) or "" for k in ("title", "ad_text")), role)) or "none found")
+    else:
+        kw_line = "Finnish keywords from the ad to use (only where they match my facts): " + \
+                  (", ".join(keywords) or "none (the ad has no Finnish wording that matches my facts)")
+    link = match.employer_link(slug)
+    contact = " ".join(x for x in (j["contact_name"], j["contact_phone"]) if x)
+    target = ", ".join(x for x in (j["company"], j["title"], j["location"]) if x)
+    extras = [x for x in (j["url"], f"contact {contact}" if contact else "", f"deadline {j['deadline']}" if j["deadline"] else "") if x]
+    answer_lines = [f"- {q['question']} {'Yes' if a[q['id']] == 'yes' else 'No' if a[q['id']] == 'no' else a[q['id']]}"
+                    for q in analysis["questions"]]
+    licence = a.get("b_licence") == "yes"
+    blockers = [b for b in analysis["blockers"] if not (b == "B licence" and licence)]
+    if licence:
+        answer_lines.append("  (CV-RULES.md section 6 says the B driving licence is NOT confirmed. Ask me whether this is a "
+                            "correction for all CVs before the email mentions it.)")
+    lines = [
+        "In my repo david-adegbola/cv, read CV-RULES.md in full first and follow it exactly.",
+        "If anything below conflicts with CV-RULES.md or its facts, stop and ask me.",
+        "",
+        "Task: application email only. Don't create or change any CV.",
+        f"CV to send: roles/{slug}/ (Language: {language}), employer link {link}",
+        f"Target job: {target}" + (f" ({'; '.join(extras)})" if extras else ""),
+        kw_line,
+        "Blockers in the ad (do NOT claim them): " + (", ".join(blockers) or "none"),
+        "My answers to what the ad asks:",
+        *answer_lines,
+        f"Applications (applications/, never committed): {EMAILS[language]} for {j['company'] or 'this employer'}, "
+        "with the employer link, using my answers above and the same honesty rules as the CV.",
+        f"Private details (company, contact, link, deadline) go in applications/job-details/{slug}.md, never in job.md.",
+        f"Report: the employer link {link} first, then the email text.",
     ]
     return "\n".join(lines) + "\n", []

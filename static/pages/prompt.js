@@ -1,4 +1,4 @@
-import { api, h, register, message } from "../core.js";
+import { api, h, register, message, getState } from "../core.js";
 
 register({
   id: "prompt", title: "New CV prompt",
@@ -24,7 +24,7 @@ register({
       area.textContent = "";
       if (picker.value === "paste") return pasteForm();
       if (!picker.value) return;
-      const analysis = await api(`/api/prompt/${picker.value}`, { method: "POST", body: { analyse_only: true } });
+      const analysis = await api(`/api/email-prompt/${picker.value}`, { method: "POST", body: { analyse_only: true } });
       showForm(analysis, `/api/prompt/${picker.value}`, Number(picker.value));
     }
 
@@ -34,7 +34,7 @@ register({
       area.append(h("form", { class: "card grid", onsubmit: async e => {
           e.preventDefault();
           pasted = Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value]));
-          const analysis = await api("/api/prompt", { method: "POST", body: { job: pasted, analyse_only: true } });
+          const analysis = await api("/api/email-prompt", { method: "POST", body: { job: pasted, analyse_only: true } });
           area.querySelector(".prompt-form")?.remove();
           showForm(analysis, "/api/prompt", null);
         } },
@@ -43,9 +43,29 @@ register({
         h("div", null, h("button", { type: "submit" }, "Read the ad"))));
     }
 
-    function showForm(an, endpoint, jobId) {
+    async function showForm(an, endpoint, jobId) {
       const out = h("div");
       const inputs = {};
+      const emailOnly = params.get("kind") === "email";      // opened from a job row's "Email prompt" link
+      const emailEndpoint = jobId ? `/api/email-prompt/${jobId}` : "/api/email-prompt";
+      const { roles } = await getState();
+      const sendCv = an.suggested_cv || an.closest;
+      inputs.cv_role = h("select", null, roles.map(r => h("option", { value: r.slug, selected: r.slug === sendCv }, `${r.slug} (${r.title})`)));
+      async function run(url) {
+        const answers = Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.value]));
+        const r = await api(url, { method: "POST", body: { answers, job: pasted } });
+        if (r.missing && r.missing.length) {
+          out.replaceChildren(h("div", { class: "msg err", role: "alert" }, "Still needed:", h("ul", null, r.missing.map(x => h("li", null, x)))));
+          return;
+        }
+        const copyBtn = h("button", { onclick: async () => {
+            try { await navigator.clipboard.writeText(r.prompt); copyBtn.textContent = "Copied"; }
+            catch (err) { copyBtn.textContent = "Select the text and copy it"; }
+          } }, "Copy prompt");
+        out.replaceChildren(h("div", { class: "row" }, copyBtn,
+            r.saved ? h("span", { class: "muted small" }, "Saved in this job's tracker notes.") : ""),
+          h("pre", { class: "prompt" }, r.prompt));
+      }
       const text = (id, label, value) => h("label", { class: "field" }, label, inputs[id] = h("input", { value: value || "" }));
       const mode = h("select", null,
         h("option", { value: "new" }, "Make a new tailored CV"),
@@ -73,27 +93,19 @@ register({
           h("p", null, h("strong", null, "Blockers: "), an.blockers.length ? an.blockers.map(b => h("span", { class: "tag bad" }, b)) : "none"),
           h("p", null, h("strong", null, "Tags: "), an.tags.join(", ") || "none")),
         h("h2", null, "Answer before the prompt is made"),
-        h("form", { class: "grid", onsubmit: async e => {
-            e.preventDefault();
-            const answers = Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.value]));
-            const r = await api(endpoint, { method: "POST", body: { answers, job: pasted } });
-            if (r.missing && r.missing.length) {
-              out.replaceChildren(h("div", { class: "msg err", role: "alert" }, "Still needed:", h("ul", null, r.missing.map(x => h("li", null, x)))));
-              return;
-            }
-            const copyBtn = h("button", { onclick: async () => {
-                try { await navigator.clipboard.writeText(r.prompt); copyBtn.textContent = "Copied"; }
-                catch (err) { copyBtn.textContent = "Select the text and copy it"; }
-              } }, "Copy prompt");
-            out.replaceChildren(h("div", { class: "row" }, copyBtn), h("pre", { class: "prompt" }, r.prompt));
-          } },
-          h("label", { class: "field" }, "What to do", mode),
-          h("label", { class: "field" }, "Language (new CV; an existing CV keeps its own: " + an.closest_language + ")", language),
-          text("slug", "New role folder (job type, not the employer)", an.defaults.slug),
-          text("role_fi", "Finnish role title (footer; not needed for en-only)", an.defaults.role_fi),
-          text("role_en", "English role title (footer)", an.defaults.role_en),
+        h("form", { class: "grid", onsubmit: e => { e.preventDefault(); run(emailOnly ? emailEndpoint : endpoint); } },
+          emailOnly ? "" : [
+            h("label", { class: "field" }, "What to do", mode),
+            h("label", { class: "field" }, "Language (new CV; an existing CV keeps its own: " + an.closest_language + ")", language),
+            text("slug", "New role folder (job type, not the employer)", an.defaults.slug),
+            text("role_fi", "Finnish role title (footer; not needed for en-only)", an.defaults.role_fi),
+            text("role_en", "English role title (footer)", an.defaults.role_en)],
           questions,
-          h("div", { style: "grid-column: 1 / -1" }, h("button", { type: "submit" }, "Make the prompt"))),
+          h("label", { class: "field" }, "CV to send (for the application email)", inputs.cv_role),
+          h("div", { class: "row", style: "grid-column: 1 / -1" },
+            emailOnly ? "" : h("button", { type: "submit" }, "Make the prompt"),
+            h("button", { type: emailOnly ? "submit" : "button", class: emailOnly ? "" : "secondary",
+              onclick: emailOnly ? null : () => run(emailEndpoint) }, "Application email prompt"))),
         out));
     }
 

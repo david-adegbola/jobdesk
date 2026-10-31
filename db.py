@@ -250,6 +250,24 @@ def update_application(app_id, fields, user_id=1):
                      list(changes.values()) + [app_id])
 
 
+EMAIL_PROMPT_START = "--- Application email prompt ---"
+EMAIL_PROMPT_END = "--- end of email prompt ---"
+
+
+def save_email_prompt(job_id, text, defaults, user_id=1):
+    """Keep the latest application email prompt in the job's tracker notes (creates a Saved entry if needed)."""
+    with connect() as conn:
+        row = conn.execute("SELECT id, notes FROM applications WHERE job_id=? AND user_id=?", (job_id, user_id)).fetchone()
+    app_id = row["id"] if row else set_status(job_id, "Saved", defaults, user_id=user_id)
+    notes = row["notes"] if row else ""
+    start, end = notes.find(EMAIL_PROMPT_START), notes.find(EMAIL_PROMPT_END)
+    if start != -1 and end > start:                      # replace the earlier one
+        notes = (notes[:start] + notes[end + len(EMAIL_PROMPT_END):]).strip()
+    block = f"{EMAIL_PROMPT_START}\n{text.strip()}\n{EMAIL_PROMPT_END}"
+    update_application(app_id, {"notes": (notes + "\n\n" + block).strip()}, user_id=user_id)
+    return app_id
+
+
 def list_applications(user_id=1):
     with connect() as conn:
         rows = conn.execute("""
