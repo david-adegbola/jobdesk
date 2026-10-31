@@ -68,7 +68,9 @@ def enrich(job, roles, f):
     blocker_text = " ".join(job.get(k) or "" for k in ("title", "ad_text"))
     best = scores[0] if scores else {"slug": "", "score": 0, "words": []}
     default_cv = scraper.CV_FOR_TYPE.get(job.get("category") or "", "")
-    use_cv = job.get("app_cv_role") or (best["slug"] if best["score"] >= 20 or not default_cv else default_cv)
+    ready = {r["slug"] for r in roles}
+    use_cv = job.get("app_cv_role") or (best["slug"] if (best["score"] >= 20 and default_cv in ready) or not default_cv
+                                        else default_cv)
     days_left = None
     if job.get("deadline"):
         try:
@@ -76,7 +78,8 @@ def enrich(job, roles, f):
         except ValueError:
             pass
     return {**job, "is_new": bool(job.get("is_new")), "match": best, "blockers": match.blockers(blocker_text, f),
-            "use_cv": use_cv, "use_cv_link": match.employer_link(use_cv) if use_cv else "",
+            "use_cv": use_cv, "cv_ready": use_cv in ready,
+            "use_cv_link": match.employer_link(use_cv) if use_cv in ready else "",
             "days_left": days_left, "has_ad_text": bool(job.get("ad_text"))}
 
 

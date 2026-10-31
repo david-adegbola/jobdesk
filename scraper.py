@@ -19,6 +19,7 @@ JOB_TYPES = {
     "Industrial": ["asentaja", "kokoonpanija", "tuotantotyontekija"],
     "Construction": ["rakennustyontekija", "rakennusmies"],
     "Warehouse": ["varastotyontekija", "logistiikkatyontekija"],
+    "Forestry": ["metsuri", "metsatyontekija", "paikkatietoasiantuntija"],
     "IT-Data centre": ["it"],
 }
 # Default CV for each job type (the Match column may suggest a better one)
@@ -26,13 +27,19 @@ CV_FOR_TYPE = {
     "Industrial": "industrial-master",
     "Construction": "construction-master",
     "Warehouse": "warehouse-master",
+    "Forestry": "forestry-master",
     "IT-Data centre": "it-field-technician",
 }
 # Broad categories: keep only titles containing one of these words (lower-case)
+FORESTRY_WORDS = ["metsä", "metsuri", "puunhankin", "taimikon", "istutus", "raivaus", "paikkatieto", "gis", "forest",
+                  "forestry", "bioeconomy", "biotalous"]
 TITLE_MUST_MATCH = {
     "it": ["tuki", "support", "asentaja", "kenttä", "field", "lähituki", "helpdesk", "service desk",
            "teknikko", "technician", "datakeskus", "data center", "data centre", "laite"],
+    **{slug: FORESTRY_WORDS for slug in JOB_TYPES["Forestry"]},
 }
+# Words matched as whole words only ("gis" is inside "logistiikka")
+WHOLE_WORDS = {"gis"}
 DATA_CENTRE_WORDS = ["datakeskus", "data center", "data centre"]
 
 MAX_PAGES = 3          # about 20 jobs per page
@@ -155,6 +162,11 @@ def to_iso(text):
         return ""
 
 
+def title_has(title, word):
+    t = title.lower()
+    return re.search(rf"\b{re.escape(word)}\b", t) is not None if word in WHOLE_WORDS else word in t
+
+
 def jobly_id(url):
     m = JOB_PATH.search((url or "").split("?")[0].replace("https://www.jobly.fi", ""))
     return m.group(2) if m else None
@@ -208,7 +220,7 @@ def run(progress=None, user_id=1):
                 for j in fresh:
                     seen_now.add(j["id"])
                     words = TITLE_MUST_MATCH.get(slug)
-                    if words and not any(w in j["title"].lower() for w in words):
+                    if words and not any(title_has(j["title"], w) for w in words):
                         continue
                     cat = "IT-Data centre" if any(w in j["title"].lower() for w in DATA_CENTRE_WORDS) else category
                     is_new = db.upsert_scraped(

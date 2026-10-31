@@ -40,6 +40,12 @@ BLOCKERS = [
      r"sujuva\w* suome|hyvä\w* suomen kiel|erinomai\w* suomen kiel|fluent finnish|native finnish|"
      r"suomen kielen taito on (?:edellytys|välttämätön)"),
     ("electrician qualification", None, r"sähköasentaja|sähköpätevyy|sähköalan tutkin"),
+    ("brush saw experience", None, r"raivaussah|brush ?saw|clearing saw"),
+    ("chainsaw", None, r"moottorisah|chain ?saw"),
+    ("forest machine operator qualification", None, r"metsäkoneenkuljettaj|forest machine operator"),
+    ("forestry degree", None,
+     r"metsä\w* \w*tutkin|metsätalousinsinöö|metsänhoitaj|metsätieteiden|forestry degree|degree in forestry|"
+     r"(?:bsc|msc|bachelor|master)\W+(?:\w+\W+)?forestry"),
 ]
 
 

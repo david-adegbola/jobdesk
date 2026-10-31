@@ -52,3 +52,14 @@ thead th { border-top: 0; color: var(--muted); font-weight: 600; white-space: no
 .msg { padding: 8px 12px; border-radius: 8px; background: var(--ok-bg); color: var(--ok-fg); }
 .msg.err { background: var(--bad-bg); color: var(--bad-fg); }
 pre.prompt { white-space: pre-wrap; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; font-size: .85rem; }
+th > button.sort { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; border-radius: 0; text-decoration: underline dotted; text-underline-offset: 3px; }
+th[aria-sort] > button.sort, th > button.sort:hover { color: var(--fg); }
+.chip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-size: .82rem; font-weight: 600; }
+span.chip { cursor: grab; user-select: none; }
+button.chip[aria-pressed="false"] { color: var(--muted); }
+button.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.chip-x { font: inherit; background: none; border: 0; padding: 0 2px; color: var(--muted); font-size: 1rem; line-height: 1; }
+details.menu { position: relative; }
+details.menu > summary { cursor: pointer; color: var(--accent); }
+details.menu > ol { position: absolute; z-index: 4; margin: 6px 0 0; padding: 10px 14px 10px 32px; min-width: 220px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+details.menu li { padding: 2px 0; }
