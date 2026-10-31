@@ -37,8 +37,9 @@ STATIC = APP / "static"
 USER_ID = 1     # single user for now; every db call takes user_id so this can become a login later
 
 # Which job type a role belongs to (for manual jobs, when no type is chosen)
-ROLE_TYPE = {**{v: k for k, v in scraper.CV_FOR_TYPE.items()},
-             "assembly-worker": "Industrial", "steel-installer": "Industrial", "salesperson": "Sales"}
+ROLE_TYPE = {"salesperson": "Sales"}
+for _type, _cv in scraper.CV_FOR_TYPE.items():
+    ROLE_TYPE.setdefault(_cv, _type)        # first type wins: industrial-master is Industrial, not Construction
 
 ROUTES = []
 
@@ -385,8 +386,20 @@ class Handler(BaseHTTPRequestHandler):
         self.dispatch("POST")
 
 
+def merged_roles():
+    """site/redirects.json from the cv repo (data only): {old slug: new slug} for merged roles."""
+    try:
+        data = json.loads(config.REDIRECTS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {k: v for k, v in data.items() if not k.startswith("_") and isinstance(v, str)}
+
+
 def main():
     db.init()
+    moved = db.rename_roles(merged_roles(), USER_ID)
+    if moved:
+        print(f"Moved {moved} tracker entr{'y' if moved == 1 else 'ies'} from merged CVs to the CV that absorbed them.")
     _, warning = facts.load()
     if warning:
         print("Warning:", warning)

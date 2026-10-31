@@ -95,6 +95,17 @@ def init():
         conn.execute("INSERT OR IGNORE INTO users (id, name) VALUES (1, 'David Adegbola')")
 
 
+def rename_roles(mapping, user_id=1):
+    """Move tracker entries from merged (old) roles to the role that absorbed them. Returns rows changed."""
+    changed = 0
+    with connect() as conn:
+        for old, new in mapping.items():
+            changed += conn.execute(
+                """UPDATE applications SET cv_role=?, employer_link=REPLACE(employer_link, ?, ?)
+                   WHERE user_id=? AND cv_role=?""", (new, f"/r/{old}/", f"/r/{new}/", user_id, old)).rowcount
+    return changed
+
+
 # ---------------------------------------------------------------- checks (scraper runs)
 
 def start_check(user_id=1):

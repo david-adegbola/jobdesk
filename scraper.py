@@ -25,7 +25,7 @@ JOB_TYPES = {
 # Default CV for each job type (the Match column may suggest a better one)
 CV_FOR_TYPE = {
     "Industrial": "industrial-master",
-    "Construction": "construction-master",
+    "Construction": "industrial-master",     # construction-master was merged into it (cv repo, 2026-10-31)
     "Warehouse": "warehouse-master",
     "Forestry": "forestry-master",
     "IT-Data centre": "it-field-technician",
