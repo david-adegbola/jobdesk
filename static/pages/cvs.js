@@ -45,7 +45,8 @@ register({
   id: "cvs", title: "My CVs",
   async render(main) {
     main.append(h("h1", null, "My CVs"),
-      h("p", { class: "muted" }, "Private to your account. Create separate Finnish and English CVs, then print or save as PDF from your browser."));
+      h("p", { class: "muted" }, "Private to your account. Create separate Finnish and English CVs, then build a formatted PDF with the shared LaTeX template or print from your browser."),
+      h("p", { class: "muted small" }, "Imported CVs keep their original LaTeX source and formatted PDF. Editing the portal copy does not change the original template files."));
     let cvs = [];
     let editor = null;
     const area = h("div");
@@ -78,6 +79,21 @@ register({
         h("article", { class: "card cv-card" },
           h("h2", null, cv.title),
           h("p", { class: "muted small" }, `${cv.language.toUpperCase()} · Updated ${cv.updated_at || "recently"}`),
+          h("p", { class: "row cv-original-links" },
+            h("a", {
+              href: `/api/cvs/${cv.id}/formatted.pdf`,
+              download: "",
+            }, "Build and download formatted PDF")),
+          cv.has_original ? h("p", { class: "row cv-original-links" },
+            h("a", {
+              href: `/api/cvs/${cv.id}/original.pdf`,
+              target: "_blank",
+              rel: "noopener",
+            }, "Open original formatted PDF"),
+            h("a", {
+              href: `/api/cvs/${cv.id}/source.tex`,
+              download: "",
+            }, "Download LaTeX source")) : "",
           h("div", { class: "row" },
             h("button", { onclick: () => { editor = { ...cv, content: { ...cv.content } }; draw(); } }, "Edit"),
             h("button", { class: "secondary", onclick: () => printCv(cv) }, "Print / Save PDF"),

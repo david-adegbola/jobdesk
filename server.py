@@ -28,6 +28,7 @@ sys.path.insert(0, str(APP))
 
 import config
 import cv_import   # noqa: E402
+import cv_latex  # noqa: E402
 import auth     # noqa: E402
 import db       # noqa: E402
 import facts    # noqa: E402
@@ -286,6 +287,51 @@ def api_create_invitation(h, m):
 @route("GET", "/api/cvs")
 def api_list_cvs(h, m):
     return {"cvs": db.list_cvs(h.user["id"])}
+
+
+@route("GET", r"/api/cvs/(\d+)/formatted\.pdf")
+def api_build_user_cv(h, m):
+    cv = db.get_cv(int(m.group(1)), h.user["id"])
+    if not cv:
+        return h.error(404, "CV not found.")
+    try:
+        pdf = cv_latex.build_pdf(cv)
+    except FileNotFoundError:
+        return h.error(
+            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+        )
+    except cv_latex.PdfBuildError as error:
+        return h.error(422, str(error))
+    filename = cv_latex.safe_filename(cv["title"])
+    return (
+        pdf, "application/pdf",
+        {"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@route("GET", r"/api/cvs/(\d+)/(original\.pdf|source\.tex)")
+def api_original_cv_file(h, m):
+    source_path = db.get_cv_import_source(int(m.group(1)), h.user["id"])
+    if not source_path:
+        return h.error(404, "Original CV files are not available for this CV.")
+
+    repo = config.CV_REPO.resolve()
+    source = (repo / source_path).resolve()
+    if not source.is_relative_to(repo) or source.suffix.lower() != ".tex":
+        return h.error(404, "Original CV files are not available for this CV.")
+    is_pdf = m.group(2) == "original.pdf"
+    file = source.with_suffix(".pdf") if is_pdf else source
+    try:
+        content = file.read_bytes()
+    except OSError:
+        return h.error(404, "Original formatted PDF or LaTeX source is not available.")
+    filename = re.sub(r"[^A-Za-z0-9._-]", "_", file.name)
+    disposition = "inline" if is_pdf else "attachment"
+    content_type = "application/pdf" if is_pdf else "application/x-tex; charset=utf-8"
+    return (
+        content, content_type,
+        {"Content-Disposition": f'{disposition}; filename="{filename}"'},
+    )
 
 
 def _validated_cv(body):

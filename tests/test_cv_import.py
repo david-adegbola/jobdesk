@@ -59,18 +59,43 @@ class CvImportTests(unittest.TestCase):
         repo = Path(self.temp_dir.name) / "cv-repo"
         role_dir = repo / "roles" / "forest-role"
         role_dir.mkdir(parents=True)
-        (role_dir / "cv-en.tex").write_text(
+        tex = role_dir / "cv-en.tex"
+        tex.write_text(
             r"\cvrole{Forest analyst}\begin{document}"
             r"{\Huge \textsc{Alex Forest}}\section{Summary}Forestry work."
             r"\end{document}",
             encoding="utf-8",
         )
+        tex.with_suffix(".pdf").write_bytes(b"%PDF original template output")
 
         self.assertEqual(cv_import.import_admin_cv_repo(repo), 1)
         self.assertEqual(cv_import.import_admin_cv_repo(repo), 0)
         cvs = db.list_cvs(1)
         self.assertEqual(len(cvs), 1)
         self.assertEqual(cvs[0]["content"]["full_name"], "Alex Forest")
+        self.assertTrue(cvs[0]["has_original"])
+        self.assertEqual(db.get_cv_import_source(cvs[0]["id"], 1), "roles/forest-role/cv-en.tex")
+        self.assertIsNone(db.get_cv_import_source(cvs[0]["id"], 2))
+
+    def test_existing_imports_are_linked_to_their_cv_without_reimporting(self):
+        timestamp = db.now()
+        with db.connect() as conn:
+            conn.execute(
+                """INSERT INTO cvs
+                   (id, user_id, title, language, content_json, created_at, updated_at)
+                   VALUES (1, 1, ?, 'en', ?, ?, ?)""",
+                ("Forest analyst (English)", '{"full_name":"Alex Forest"}', timestamp, timestamp),
+            )
+            conn.execute(
+                "INSERT INTO cv_imports (user_id, source_path, imported_at) VALUES (1, ?, ?)",
+                ("roles/forest-role/cv-en.tex", timestamp),
+            )
+
+        self.assertFalse(db.import_cv_for_admin(
+            "roles/forest-role/cv-en.tex", "Forest analyst (English)", "en", {},
+        ))
+        self.assertEqual(db.get_cv_import_source(1, 1), "roles/forest-role/cv-en.tex")
+        self.assertEqual(len(db.list_cvs(1)), 1)
 
         with db.connect() as conn:
             conn.execute("INSERT INTO users (id, name) VALUES (2, 'Member')")

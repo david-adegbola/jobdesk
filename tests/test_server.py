@@ -182,6 +182,82 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(db.get_cv(created["id"], second_user)["content"]["full_name"], "Second User")
 
+    def test_imported_cv_original_pdf_and_latex_source_stay_owner_private(self):
+        cv_repo = Path(self.temp_dir.name) / "cv-repo"
+        role_dir = cv_repo / "roles" / "forest-role"
+        role_dir.mkdir(parents=True)
+        (role_dir / "cv-en.tex").write_text(r"\cvrole{Forest analyst}", encoding="utf-8")
+        (role_dir / "cv-en.pdf").write_bytes(b"%PDF original formatted CV")
+        db.import_cv_for_admin(
+            "roles/forest-role/cv-en.tex", "Forest analyst (English)", "en",
+            {"full_name": "Admin"},
+        )
+        patcher = patch.object(server.config, "CV_REPO", cv_repo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        status, original_pdf, headers = self.request(
+            "GET", "/api/cvs/1/original.pdf", include_headers=True,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(original_pdf, b"%PDF original formatted CV")
+        self.assertEqual(headers["Content-Type"], "application/pdf")
+        self.assertIn("inline;", headers["Content-Disposition"])
+
+        status, latex_source, headers = self.request(
+            "GET", "/api/cvs/1/source.tex", include_headers=True,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(latex_source, b"\\cvrole{Forest analyst}")
+        self.assertIn("attachment;", headers["Content-Disposition"])
+
+        invite = "original-cv-access-invitation"
+        db.create_invitation(1, invite, (datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
+        second_user = db.create_user(
+            "Second User", "second@example.test",
+            auth.hash_password("second-user-password"), invite,
+        )
+        token, _ = auth.new_session(second_user)
+        status, error = self.request(
+            "GET", "/api/cvs/1/original.pdf",
+            headers={"Cookie": f"jobdesk_session={token}"},
+        )
+        self.assertEqual(status, 404)
+        self.assertIn("not available", error["error"])
+
+    def test_formatted_cv_pdf_is_generated_from_private_saved_cv(self):
+        cv_id = db.save_cv(1, "Forestry CV", "en", {"full_name": "Admin"})
+        with patch.object(server.cv_latex, "build_pdf", return_value=b"%PDF-built CV") as build:
+            status, pdf, headers = self.request(
+                "GET", f"/api/cvs/{cv_id}/formatted.pdf", include_headers=True,
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(pdf, b"%PDF-built CV")
+        self.assertEqual(headers["Content-Type"], "application/pdf")
+        self.assertEqual(headers["Content-Disposition"], 'attachment; filename="Forestry-CV.pdf"')
+        build.assert_called_once()
+
+        invite = "formatted-cv-private-invitation"
+        db.create_invitation(1, invite, (datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
+        second_user = db.create_user(
+            "Second User", "second@example.test",
+            auth.hash_password("second-user-password"), invite,
+        )
+        token, _ = auth.new_session(second_user)
+        status, error = self.request(
+            "GET", f"/api/cvs/{cv_id}/formatted.pdf",
+            headers={"Cookie": f"jobdesk_session={token}"},
+        )
+        self.assertEqual(status, 404)
+        self.assertEqual(error["error"], "CV not found.")
+
+    def test_formatted_cv_route_reports_missing_latex_runtime(self):
+        cv_id = db.save_cv(1, "Forestry CV", "en", {"full_name": "Admin"})
+        with patch.object(server.cv_latex, "build_pdf", side_effect=FileNotFoundError):
+            status, error = self.request("GET", f"/api/cvs/{cv_id}/formatted.pdf")
+        self.assertEqual(status, 503)
+        self.assertIn("LaTeX packages", error["error"])
+
     def test_cross_site_job_creation_is_rejected(self):
         status, error = self.request(
             "POST",

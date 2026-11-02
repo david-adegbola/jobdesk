@@ -39,7 +39,20 @@ configure_caddy() {
   rm -f /etc/caddy/Caddyfile.new
 }
 
+install_latex_packages() {
+  if command -v pdflatex >/dev/null && command -v kpsewhich >/dev/null \
+    && kpsewhich libertine.sty >/dev/null && kpsewhich fontawesome.sty >/dev/null \
+    && kpsewhich tikz.sty >/dev/null && kpsewhich finnish.ldf >/dev/null; then
+    return
+  fi
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq --no-install-recommends \
+    texlive-latex-extra texlive-fonts-extra texlive-lang-european >/dev/null
+}
+
 if [ "${1:-}" = "--update" ]; then
+  install_latex_packages
   install_units
   configure_caddy
   systemctl reload-or-restart caddy
@@ -50,7 +63,9 @@ fi
 echo "== Packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 git sqlite3 curl caddy unattended-upgrades >/dev/null
+apt-get install -y -qq --no-install-recommends \
+  python3 git sqlite3 curl caddy unattended-upgrades \
+  texlive-latex-extra texlive-fonts-extra texlive-lang-european >/dev/null
 
 echo "== Firewall"
 # Oracle's Ubuntu images reject everything but SSH in iptables. Open 80 (certificate check and

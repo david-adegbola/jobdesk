@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS cv_imports (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   source_path TEXT NOT NULL,
   imported_at TEXT NOT NULL,
+  cv_id INTEGER REFERENCES cvs(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, source_path)
 );
 CREATE TABLE IF NOT EXISTS news_items (
@@ -191,6 +192,9 @@ def init():
         for column, definition in migrations.items():
             if column not in columns:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
+        cv_import_columns = {row["name"] for row in conn.execute("PRAGMA table_info(cv_imports)")}
+        if "cv_id" not in cv_import_columns:
+            conn.execute("ALTER TABLE cv_imports ADD COLUMN cv_id INTEGER REFERENCES cvs(id) ON DELETE CASCADE")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email COLLATE NOCASE) WHERE email IS NOT NULL")
         conn.execute("INSERT OR IGNORE INTO users (id, name, is_admin) VALUES (1, 'David Adegbola', 1)")
         conn.execute("UPDATE users SET is_admin=1 WHERE id=1 AND email IS NULL")
@@ -330,15 +334,28 @@ def update_user_preferences(user_id, preferences):
 def list_cvs(user_id):
     with connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM cvs WHERE user_id=? ORDER BY updated_at DESC, id DESC",
+            """SELECT cvs.*, cv_imports.source_path AS original_source
+               FROM cvs LEFT JOIN cv_imports
+                 ON cv_imports.user_id=cvs.user_id AND cv_imports.cv_id=cvs.id
+               WHERE cvs.user_id=? ORDER BY cvs.updated_at DESC, cvs.id DESC""",
             (user_id,),
         ).fetchall()
         result = []
         for row in rows:
             item = dict(row)
+            item["has_original"] = bool(item.pop("original_source"))
             item["content"] = json.loads(item.pop("content_json"))
             result.append(item)
         return result
+
+
+def get_cv_import_source(cv_id, user_id):
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT source_path FROM cv_imports WHERE cv_id=? AND user_id=?",
+            (cv_id, user_id),
+        ).fetchone()
+        return row["source_path"] if row else None
 
 
 def get_cv(cv_id, user_id):
@@ -377,20 +394,32 @@ def import_cv_for_admin(source_path, title, language, content):
         if not admin or not admin["is_admin"]:
             raise PermissionError("Existing role CVs can only be imported to the administrator account.")
         exists = conn.execute(
-            "SELECT 1 FROM cv_imports WHERE user_id=1 AND source_path=?",
+            "SELECT cv_id, imported_at FROM cv_imports WHERE user_id=1 AND source_path=?",
             (source_path,),
         ).fetchone()
         if exists:
+            if exists["cv_id"] is None:
+                imported_cv = conn.execute(
+                    """SELECT id FROM cvs
+                       WHERE user_id=1 AND title=? AND language=? AND created_at=?
+                       ORDER BY id DESC LIMIT 1""",
+                    (title, language, exists["imported_at"]),
+                ).fetchone()
+                if imported_cv:
+                    conn.execute(
+                        "UPDATE cv_imports SET cv_id=? WHERE user_id=1 AND source_path=?",
+                        (imported_cv["id"], source_path),
+                    )
             return False
         timestamp = now()
-        conn.execute(
+        cv_id = conn.execute(
             """INSERT INTO cvs (user_id, title, language, content_json, created_at, updated_at)
                VALUES (1, ?, ?, ?, ?, ?)""",
             (title, language, json.dumps(content, ensure_ascii=False), timestamp, timestamp),
-        )
+        ).lastrowid
         conn.execute(
-            "INSERT INTO cv_imports (user_id, source_path, imported_at) VALUES (1, ?, ?)",
-            (source_path, timestamp),
+            "INSERT INTO cv_imports (user_id, source_path, imported_at, cv_id) VALUES (1, ?, ?, ?)",
+            (source_path, timestamp, cv_id),
         )
         return True
 

@@ -55,7 +55,11 @@ server; they cover authentication, ownership boundaries, forestry filtering and 
   print it or choose **Save as PDF** in the browser's print dialog. On startup, Woodesk imports the
   administrator's existing Finnish and English role CVs from the configured CV repository once,
   including forestry, industrial, IT, sales, trainee and warehouse versions. These are editable text
-  copies stored only in the administrator's account.
+  copies stored only in the administrator's account. The original formatted PDFs and LaTeX source
+  files remain unchanged in the CV repository and are available from each imported CV card; editing
+  the Woodesk copy does not alter the original template or files. Every member can also build a
+  private PDF from their saved CV using the shared LaTeX style. The PDF is compiled on the server
+  from that member's own saved CV data; it is not uploaded to the shared CV repository.
 - **Account:** change your password, download your private data and sign out. Administrators can
   create single-use, seven-day invitation codes to onboard classmates.
 
@@ -87,9 +91,9 @@ Paths, host and port come from environment variables; see `config.py`.
    ```bash
    deploy/deploy.sh ubuntu@<ip> --setup
    ```
-   It installs Python, git, SQLite and Caddy, opens the firewall, clones the public CV repository,
-   configures HTTPS and starts the app. It prints the address at the end. The HTTPS certificate is
-   fetched on the first visit.
+   It installs Python, git, SQLite, Caddy and the LaTeX packages used by the shared CV template,
+   opens the firewall, clones the public CV repository, configures HTTPS and starts the app. It
+   prints the address at the end. The HTTPS certificate is fetched on the first visit.
 5. **Copy your data up**, once:
    ```bash
    deploy/upload-data.sh ubuntu@<ip>
