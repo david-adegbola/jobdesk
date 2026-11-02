@@ -14,20 +14,17 @@ class PdfBuildError(Exception):
     """A CV could not be compiled with the installed LaTeX toolchain."""
 
 
-SECTION_LABELS = {
-    "summary": ("Summary", "Yhteenveto"),
-    "education": ("Education", "Koulutus"),
-    "experience": ("Work Experience", "Työkokemus"),
-    "skills": ("Skills", "Taidot"),
-    "projects": ("Projects and Research", "Projektit ja tutkimus"),
-    "certifications": ("Certificates", "Todistukset"),
-    "languages": ("Languages", "Kielet"),
-    "links": ("Links", "Linkit"),
+SECTION_KEYS = {
+    "summary": "summary",
+    "education": "education",
+    "experience": "experience",
+    "skills": "skills",
+    "projects": "volunteering",
+    "certifications": "certificates",
+    "languages": "languages",
+    "links": "links",
 }
-SECTION_ORDER = (
-    "summary", "education", "experience", "skills", "projects",
-    "certifications", "languages", "links",
-)
+SECTION_ORDER = tuple(SECTION_KEYS)
 LATEX_ESCAPES = {
     "\\": r"\textbackslash{}",
     "{": r"\{",
@@ -48,6 +45,31 @@ def escape_latex(value):
 
 def _rows(value):
     return [line.strip() for line in value.splitlines() if line.strip()]
+
+
+def _render_cvline(line):
+    label, separator, value = line.partition(":")
+    if separator and label.strip():
+        return rf"\cvline{{{escape_latex(label.strip())}:}}{{{escape_latex(value.strip())}}}"
+    return rf"\cvline[0cm]{{}}{{{escape_latex(line)}}}"
+
+
+def _render_experience(line):
+    label, separator, value = line.partition(":")
+    if separator and label.strip():
+        return (
+            rf"\begin{{cventry}}{{{escape_latex(label.strip())}}}"
+            rf"{{{escape_latex(value.strip())}}}\end{{cventry}}"
+        )
+    date, separator, role = line.partition(" — ")
+    if not separator:
+        date, separator, role = line.partition(" – ")
+    if separator and date.strip() and role.strip():
+        return (
+            rf"\begin{{cventry}}{{{escape_latex(date.strip())}}}"
+            rf"{{{escape_latex(role.strip())}}}\end{{cventry}}"
+        )
+    return rf"\cvline[0cm]{{}}{{{escape_latex(line)}}}"
 
 
 def render_tex(cv, style_source):
@@ -91,15 +113,23 @@ def render_tex(cv, style_source):
         rows = _rows(value)
         if not rows:
             continue
-        title = SECTION_LABELS[field][language == "fi"]
-        sections.extend((rf"\section{{{escape_latex(title)}}}",))
-        sections.extend(rf"\cvline{{}}{{{escape_latex(row)}}}" for row in rows)
+        section_key = SECTION_KEYS[field]
+        sections.append(rf"\section{{\cvt{{{section_key}}}}}")
+        if field == "summary":
+            sections.extend((
+                r"\begin{tabular}{p{0.9\textwidth}}",
+                r"\\\\".join(escape_latex(row) for row in rows),
+                r"\end{tabular}",
+            ))
+        else:
+            renderer = _render_experience if field == "experience" else _render_cvline
+            sections.extend(renderer(row) for row in rows)
 
     source = "\n".join((
         r"\documentclass[a4paper,11pt]{article}",
         r"\usepackage{cv-style}",
         r"\cvlang{fi}" if language == "fi" else "",
-        rf"\cvrole{{{escape_latex(role.strip())}}}",
+        r"\cvrole{" + escape_latex(role.strip()) + "}",
         rf"\newcommand{{\cvname}}{{{escape_latex(name.strip())}}}",
         r"\begin{document}",
         r"\small",

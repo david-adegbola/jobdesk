@@ -11,7 +11,9 @@ class CvLatexTests(unittest.TestCase):
             "content": {
                 "full_name": "A&B_#1",
                 "target_role": r"Researcher \input{secrets}",
-                "summary": r"100% ready & skilled",
+                "summary": "100% ready & skilled\nSecond paragraph",
+                "education": "2024--present: MSc, Forestry",
+                "experience": "2025 — Forest researcher",
                 "skills": "GIS\nRemote sensing",
             },
         }
@@ -22,8 +24,14 @@ class CvLatexTests(unittest.TestCase):
         self.assertIn(r"A\&B\_\#1", tex)
         self.assertIn(r"Researcher \textbackslash{}input\{secrets\}", tex)
         self.assertIn(r"100\% ready \& skilled", tex)
-        self.assertIn(r"\section{Summary}", tex)
-        self.assertIn(r"\cvline{}{Remote sensing}", tex)
+        self.assertIn(r"\section{\cvt{summary}}", tex)
+        self.assertIn(r"\begin{tabular}{p{0.9\textwidth}}", tex)
+        self.assertIn(r"100\% ready \& skilled\\\\Second paragraph", tex)
+        self.assertIn(r"\cvline{2024--present:}{MSc, Forestry}", tex)
+        self.assertIn(r"\begin{cventry}{2025}{Forest researcher}\end{cventry}", tex)
+        self.assertIn(r"\cvline[0cm]{}{Remote sensing}", tex)
+        self.assertIn(r"\setlength{\cvlabelw}{3.9cm}", tex)
+        self.assertIn(r"\titlespacing{\section}{0pt}{0.55em}{2pt}", tex)
         self.assertIn(r"\fancyfoot[L]{\cvname}", customized_style)
         self.assertEqual(style, r"\fancyfoot[L]{David Adegbola}")
 
@@ -37,7 +45,7 @@ class CvLatexTests(unittest.TestCase):
         tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{David Adegbola}")
 
         self.assertIn(r"\cvlang{fi}", tex)
-        self.assertIn(r"\section{Taidot}", tex)
+        self.assertIn(r"\section{\cvt{skills}}", tex)
 
     def test_pdf_filename_is_safe_and_has_one_extension(self):
         self.assertEqual(cv_latex.safe_filename("Ä CV / #1"), "CV-1.pdf")

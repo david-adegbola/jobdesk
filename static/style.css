@@ -433,26 +433,7 @@ label.field.inline > select { min-height: 40px; }
 .cv-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
 .cv-editor .cv-actions { grid-column: 1 / -1; }
 .cv-editor textarea { min-height: 132px; }
-.cv-preview, .print-only { max-width: 210mm; margin: 24px auto; padding: 18mm; background: var(--white); color: #161616; border: 1px solid var(--border-subtle); }
-.cv-print-view { overflow-wrap: anywhere; }
-.cv-heading { padding-bottom: 12px; border-bottom: 2px solid #393939; }
-.cv-heading h1 { margin: 0; font-size: 2rem; font-weight: 600; }
-.cv-target { margin: 4px 0; font-size: 1.125rem; }
-.cv-contact { margin: 8px 0 0; color: #393939; }
-.cv-section { break-inside: avoid; }
-.cv-section h2 { margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #c6c6c6; font-size: 1.125rem; }
-.cv-section p { margin: 6px 0; white-space: pre-wrap; }
-.print-only { display: none; }
 @media (max-width: 600px) {
   .auth-card { padding: 24px 16px; }
-  .cv-preview { padding: 24px 16px; }
   .cv-actions button { flex: 1 1 100%; }
-}
-@media print {
-  @page { size: A4; margin: 16mm; }
-  body.printing-cv .top, body.printing-cv .banner,
-  body.printing-cv #page > :not(.print-only) { display: none !important; }
-  body.printing-cv #page { display: block; max-width: none; margin: 0; padding: 0; }
-  body.printing-cv .print-only { display: block; max-width: none; margin: 0; padding: 0; border: 0; }
-  body.printing-cv .cv-section { break-inside: avoid; }
 }

@@ -22,31 +22,11 @@ const blankCv = () => ({
   content: Object.fromEntries(fields.map(([key]) => [key, ""])),
 });
 
-function printableText(value) {
-  return String(value || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-}
-
-function preview(cv) {
-  const content = cv.content || {};
-  const finnish = cv.language === "fi";
-  return h("article", { class: "cv-print-view" },
-    h("header", { class: "cv-heading" },
-      h("h1", null, content.full_name || cv.title || "Curriculum vitae"),
-      content.target_role ? h("p", { class: "cv-target" }, content.target_role) : "",
-      h("p", { class: "cv-contact" }, [content.email, content.phone, content.location].filter(Boolean).join(" · "))),
-    ...fields.filter(([key]) => !["full_name", "email", "phone", "location", "target_role"].includes(key))
-      .filter(([key]) => printableText(content[key]).length)
-      .map(([key, label, labelFi]) => h("section", { class: "cv-section" },
-        h("h2", null, finnish ? labelFi : label),
-        ...printableText(content[key]).map(line => h("p", null, line)))));
-}
-
 register({
   id: "cvs", title: "My CVs",
   async render(main) {
     main.append(h("h1", null, "My CVs"),
-      h("p", { class: "muted" }, "Private to your account. Create separate Finnish and English CVs, then build a formatted PDF with the shared LaTeX template or print from your browser."),
-      h("p", { class: "muted small" }, "Imported CVs keep their original LaTeX source and formatted PDF. Editing the portal copy does not change the original template files."));
+      h("p", { class: "muted" }, "Private to your account. Create Finnish or English CVs and download them as PDFs using the original Woodesk LaTeX template."));
     let cvs = [];
     let editor = null;
     const area = h("div");
@@ -79,24 +59,13 @@ register({
         h("article", { class: "card cv-card" },
           h("h2", null, cv.title),
           h("p", { class: "muted small" }, `${cv.language.toUpperCase()} · Updated ${cv.updated_at || "recently"}`),
-          h("p", { class: "row cv-original-links" },
+          h("p", { class: "row" },
             h("a", {
               href: `/api/cvs/${cv.id}/formatted.pdf`,
               download: "",
-            }, "Build and download formatted PDF")),
-          cv.has_original ? h("p", { class: "row cv-original-links" },
-            h("a", {
-              href: `/api/cvs/${cv.id}/original.pdf`,
-              target: "_blank",
-              rel: "noopener",
-            }, "Open original formatted PDF"),
-            h("a", {
-              href: `/api/cvs/${cv.id}/source.tex`,
-              download: "",
-            }, "Download LaTeX source")) : "",
+            }, "Download formatted CV PDF")),
           h("div", { class: "row" },
             h("button", { onclick: () => { editor = { ...cv, content: { ...cv.content } }; draw(); } }, "Edit"),
-            h("button", { class: "secondary", onclick: () => printCv(cv) }, "Print / Save PDF"),
             h("button", { class: "secondary", onclick: () => {
               editor = { ...cv, id: undefined, title: `${cv.title} (copy)`, content: { ...cv.content } };
               draw();
@@ -152,31 +121,8 @@ register({
             : h("input", { name: key, type, maxlength: 500, value: values[key] || "" }))),
       h("div", { class: "row cv-actions" },
         h("button", { type: "submit" }, "Save CV"),
-        h("button", { type: "button", class: "secondary", onclick: () => { editor = null; draw(); } }, "Cancel"),
-        current.id ? h("button", { type: "button", class: "secondary", onclick: () => printCv(current) }, "Print / Save PDF") : ""));
-      area.append(form,
-        h("h2", null, "Preview"),
-        h("p", { class: "muted small" }, "Use your browser’s print dialog and choose “Save as PDF” to download this CV."),
-        h("div", { class: "cv-preview" }, preview(current)));
-    }
-
-    function printCv(cv) {
-      const printArea = area.querySelector(".cv-preview");
-      if (editor) {
-        const values = editor.content || {};
-        for (const [key] of fields) values[key] = area.querySelector(`[name="${key}"]`)?.value || values[key] || "";
-        editor.title = area.querySelector(".cv-editor input")?.value || editor.title;
-        editor.language = area.querySelector(".cv-editor select")?.value || editor.language;
-        printArea?.replaceChildren(preview(editor));
-      }
-      const printOnly = h("div", { class: "print-only" }, preview(editor || cv));
-      main.append(printOnly);
-      document.body.classList.add("printing-cv");
-      window.print();
-      window.setTimeout(() => {
-        printOnly.remove();
-        document.body.classList.remove("printing-cv");
-      }, 1000);
+        h("button", { type: "button", class: "secondary", onclick: () => { editor = null; draw(); } }, "Cancel")));
+      area.append(form);
     }
 
     await refresh();

@@ -51,15 +51,13 @@ server; they cover authentication, ownership boundaries, forestry filtering and 
   link sent, contact, notes and the next action. Overdue actions are red; "Applied" with no change
   for 5 days shows a `Call <contact>` reminder. Deadlines and interviews export as `.ics`.
 - **My CVs:** create multiple private Finnish or English CVs with profile, education, experience,
-  skills, research/projects, certifications, languages and links. Preview, edit, copy or delete a CV;
-  print it or choose **Save as PDF** in the browser's print dialog. On startup, Woodesk imports the
-  administrator's existing Finnish and English role CVs from the configured CV repository once,
-  including forestry, industrial, IT, sales, trainee and warehouse versions. These are editable text
-  copies stored only in the administrator's account. The original formatted PDFs and LaTeX source
-  files remain unchanged in the CV repository and are available from each imported CV card; editing
-  the Woodesk copy does not alter the original template or files. Every member can also build a
-  private PDF from their saved CV using the shared LaTeX style. The PDF is compiled on the server
-  from that member's own saved CV data; it is not uploaded to the shared CV repository.
+  skills, research/projects, certifications, languages and links. Edit, copy or delete a CV, then
+  download its single formatted PDF using the same LaTeX document layout and shared style as the
+  original role CVs. On startup, Woodesk imports the administrator's existing Finnish and English
+  role CVs from the configured CV repository once, including forestry, industrial, IT, sales, trainee
+  and warehouse versions. These are editable text copies stored only in the administrator's account.
+  The original LaTeX source files remain unchanged in the CV repository. Each PDF is compiled on the
+  server from that member's own saved CV data; it is not uploaded to the shared CV repository.
 - **Account:** change your password, download your private data and sign out. Administrators can
   create single-use, seven-day invitation codes to onboard classmates.
 
