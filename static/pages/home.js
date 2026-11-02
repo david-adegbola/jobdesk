@@ -125,7 +125,7 @@ function profileForm(profile, isSaved, onSave) {
         h("option", { value: "finland", selected: profile.region === "finland" }, "Finland"),
         h("option", { value: "north-karelia", selected: profile.region === "north-karelia" }, "Joensuu / North Karelia")),
       h("span", { class: "muted small" }, "Local matches are prioritized; other listings remain visible.")),
-    h("div", { class: "row" }, h("button", { type: "submit" }, "Save my focus"),
+    h("div", { class: "row" }, h("button", { type: "submit", "data-focus": "profile-save" }, "Save my focus"),
       isSaved ? h("span", { class: "muted small" }, "Saved to your account.") : ""),
     status);
   return form;
@@ -147,7 +147,7 @@ function recommendationCard(item, kind, score, action) {
     h("div", { class: "home-item-actions" }, action));
 }
 
-function planForm(application, onSave) {
+function planForm(application, onSave, context) {
   const task = h("input", { value: application.next_action || "", maxlength: 180, "aria-label": "Next step",
     placeholder: "e.g. Follow up with the hiring manager" });
   const due = h("input", { type: "date", value: application.next_action_date || "", "aria-label": "Follow-up date" });
@@ -162,15 +162,20 @@ function planForm(application, onSave) {
         await api(`/api/applications/${application.id}`, {
           method: "POST", body: { next_action: task.value, next_action_date: due.value },
         });
-        await onSave();
+        await onSave(`reminder-save:${context}:${application.id}`);
       } catch (error) {
         status.replaceChildren(message(error.message, true));
         button.disabled = false;
+        button.focus();
       }
     } },
       h("label", { class: "field" }, "Next step", task),
       h("label", { class: "field" }, "Remind me", due),
-      h("button", { type: "submit", class: "secondary home-action" }, "Save reminder"),
+      h("button", {
+        type: "submit",
+        class: "secondary home-action",
+        "data-focus": `reminder-save:${context}:${application.id}`,
+      }, "Save reminder"),
       status));
 }
 
@@ -192,7 +197,8 @@ register({
     const storedProfile = await api("/api/account/profile");
     let { profile, saved } = readProfile(storedProfile.preferences);
 
-    async function load() {
+    async function load(restoreKey) {
+      const focusKey = restoreKey || document.activeElement?.dataset.focus;
       const [jobData, newsData, applicationData] = await Promise.all([
         api("/api/jobs"), api("/api/news"), api("/api/applications"),
       ]);
@@ -245,7 +251,7 @@ register({
             h("p", { class: "home-intro" }, "A focused view of opportunities, research and next steps—shaped around what you care about.")),
           h("a", { class: "btn secondary home-browse", href: "#/jobs" }, "Browse all jobs")),
         h("details", { class: "card home-preferences", open: !saved },
-          h("summary", null, saved ? "Your focus" : "Set up your focus"),
+          h("summary", { "data-focus": "focus-summary" }, saved ? "Your focus" : "Set up your focus"),
           h("p", { class: "muted small" },
             `${selectedAudiences.length ? selectedAudiences.join(" · ") : "No audience selected"}${selectedTopics.length ? " — " + selectedTopics.map(topic => topic.label).join(" · ") : ""}`),
           profileEditor,
@@ -263,17 +269,20 @@ register({
               h("h2", null, "Jobs to explore")), h("a", { href: "#/jobs" }, "All jobs")),
             jobRecommendations.length ? h("div", { class: "home-list" }, jobRecommendations.map(({ item, match }) => {
               const actionArea = h("div");
-              const saveButton = h("button", { type: "button", class: "secondary home-action",
+              const actionFeedback = h("div");
+              const saveButton = h("button", { type: "button", class: "secondary home-action", "data-focus": `job-save:${item.id}`,
                 onclick: async event => {
                   event.target.disabled = true;
                   try {
                     await api(`/api/jobs/${item.id}/status`, { method: "POST", body: { status: "Saved" } });
-                    await load();
+                    await load(`job-save:${item.id}`);
                   } catch (error) {
-                    actionArea.replaceChildren(message(error.message, true));
+                    event.target.disabled = false;
+                    event.target.focus();
+                    actionFeedback.replaceChildren(message(error.message, true));
                   }
                 } }, "Save job");
-              actionArea.append(saveButton);
+              actionArea.append(saveButton, actionFeedback);
               return recommendationCard(item, "job", match, actionArea);
             })) : h("p", { class: "empty" }, "No clear job matches yet. Update your focus or browse all current listings."),
             h("div", { class: "home-section-footer" }, h("a", { href: "#/jobs" }, "Check for new jobs →"))),
@@ -282,7 +291,8 @@ register({
               h("h2", null, "Worth a read")), h("a", { href: "#/news" }, "All news")),
             newsRecommendations.length ? h("div", { class: "home-list" }, newsRecommendations.map(({ item, match }) => {
               const actionArea = h("div");
-              actionArea.append(h("button", { type: "button", class: "secondary home-action",
+              const actionFeedback = h("div");
+              actionArea.append(h("button", { type: "button", class: "secondary home-action", "data-focus": `news-save:${item.id}`,
                 "aria-pressed": item.is_saved ? "true" : "false",
                 onclick: async event => {
                   event.target.disabled = true;
@@ -290,17 +300,19 @@ register({
                     await api(`/api/news/${item.id}/state`, {
                       method: "POST", body: { is_saved: !item.is_saved },
                     });
-                    await load();
+                    await load(`news-save:${item.id}`);
                   } catch (error) {
-                    actionArea.replaceChildren(message(error.message, true));
+                    event.target.disabled = false;
+                    event.target.focus();
+                    actionFeedback.replaceChildren(message(error.message, true));
                   }
-                } }, item.is_saved ? "Saved" : "Save story"));
+                } }, item.is_saved ? "Saved" : "Save story"), actionFeedback);
               return recommendationCard(item, "news", match, actionArea);
             })) : h("p", { class: "empty" }, "No recent stories match your focus. Visit News and refresh the feeds."),
             h("div", { class: "home-section-footer" }, h("a", { href: "#/news" }, "Open the News desk →")))),
         h("section", { class: "card home-section home-deadlines" },
           h("div", { class: "home-section-heading" }, h("div", null, h("p", { class: "home-eyebrow" }, "KEEP MOMENTUM"),
-            h("h2", null, "Deadlines & next steps")), h("a", { href: "#/tracker" }, "Open tracker")),
+            h("h2", { tabindex: "-1", "data-focus": "plan-section:planner" }, "Deadlines & next steps")), h("a", { href: "#/tracker" }, "Open tracker")),
           upcoming.length ? h("ul", { class: "home-deadline-list" }, upcoming.slice(0, 8).map(deadlineEntry))
             : h("p", { class: "empty" }, "No deadlines or reminders coming up. Save an opportunity and add a next step in the Tracker."),
           activeApps.length ? h("details", { class: "home-planner" },
@@ -309,21 +321,21 @@ register({
               h("article", { class: "home-planner-item" },
                 h("strong", null, application.title),
                 h("span", { class: "muted small" }, application.status),
-                planForm(application, load))))) : ""),
+                planForm(application, load, "planner"))))) : ""),
         h("section", { class: "card home-section home-saved" },
           h("div", { class: "home-section-heading" }, h("div", null, h("p", { class: "home-eyebrow" }, "YOUR READING & JOB LIST"),
-            h("h2", null, "Saved opportunities")), h("a", { href: "#/tracker" }, "Manage saved jobs")),
+            h("h2", { tabindex: "-1", "data-focus": "plan-section:saved" }, "Saved opportunities")), h("a", { href: "#/tracker" }, "Manage saved jobs")),
           savedJobs.length || savedNews.length
             ? h("div", { class: "home-saved-grid" },
               ...savedJobs.slice(0, 6).map(application => h("article", { class: "home-saved-item" },
                 h("span", { class: "tag status", "data-status": application.status }, application.status),
-                h("h3", null, application.url
+                h("h3", { tabindex: "-1", "data-focus": `saved-job:${application.id}` }, application.url
                   ? h("a", { href: application.url, target: "_blank", rel: "noopener" }, application.title)
                   : application.title),
                 h("p", { class: "muted small" }, [application.company, application.deadline ? `Deadline ${dateLabel(application.deadline)}` : ""].filter(Boolean).join(" · ")),
                 application.next_action ? h("p", null, application.next_action,
                   application.next_action_date ? ` · ${dateLabel(application.next_action_date)}` : "") : "",
-                planForm(application, load))),
+                planForm(application, load, "saved"))),
               ...savedNews.slice(0, 6).map(item => h("article", { class: "home-saved-item" },
                 h("span", { class: "tag" }, "News"),
                 h("h3", null, h("a", { href: item.url, target: "_blank", rel: "noopener" }, item.title)),
@@ -331,6 +343,17 @@ register({
                 h("a", { href: "#/news" }, "Open in News"))))
             : h("p", { class: "empty" }, "Save jobs to your Tracker or stories from News and they will be collected here.")),
         h("p", { class: "muted small home-footnote" }, "This weekly view is based on your current Jobs, News and Tracker data. Keyword matching may miss relevant opportunities."));
+      if (focusKey) {
+        const restoreKey = focusKey.startsWith("job-save:")
+          ? `saved-job:${focusKey.slice("job-save:".length)}`
+          : focusKey.startsWith("reminder-save:")
+            ? `plan-section:${focusKey.split(":")[1]}`
+            : focusKey === "profile-save" ? "focus-summary" : focusKey;
+        const targets = [...root.querySelectorAll("[data-focus]")];
+        const target = targets.find(el => el.dataset.focus === restoreKey)
+          || targets.find(el => el.dataset.focus === focusKey);
+        target?.focus();
+      }
     }
 
     await load();

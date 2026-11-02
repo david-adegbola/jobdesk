@@ -66,7 +66,10 @@ register({
             } }, "Copy code"));
           await loadInvitations();
         } catch (error) { codeArea.replaceChildren(message(error.message, true)); }
-        finally { createInvite.disabled = false; }
+        finally {
+          createInvite.disabled = false;
+          createInvite.focus();
+        }
       } }, "Create invitation");
       invitationArea.append(
         h("p", { class: "muted" }, "Each invitation is single-use and expires after seven days. The code is displayed once; share it directly with a classmate."),

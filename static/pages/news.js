@@ -267,6 +267,7 @@ register({
       } finally {
         refreshButton.disabled = false;
         refreshButton.textContent = "Refresh news";
+        refreshButton.focus();
       }
     }
   },

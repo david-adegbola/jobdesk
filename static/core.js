@@ -94,7 +94,12 @@ function renderLogin(main) {
         ? "Create your private account with the invitation code you received."
         : "Sign in to see shared forestry opportunities and your private CVs and applications."),
       feedback, form,
-      h("button", { class: "secondary auth-switch", type: "button", onclick: () => { signup = !signup; feedback.replaceChildren(); draw(); } },
+      h("button", { class: "secondary auth-switch", type: "button", onclick: () => {
+        signup = !signup;
+        feedback.replaceChildren();
+        draw();
+        card.querySelector("input")?.focus();
+      } },
         signup ? "Already have an account? Sign in" : "Have an invitation? Create an account"));
   }
   draw();
@@ -108,10 +113,11 @@ function mountNav() {
   for (const page of pages) nav.append(h("a", { href: `#/${page.id}`, "data-id": page.id }, page.title));
 }
 
-async function show() {
+async function show(focusMain = false) {
   const main = document.getElementById("page");
   if (!currentUser) {
     renderLogin(main);
+    if (focusMain) main.focus();
     return;
   }
   const id = (location.hash.match(/^#\/([\w-]+)/) || [])[1] || "home";
@@ -125,6 +131,7 @@ async function show() {
   document.title = `${page.title} · Woodesk`;
   try { await page.render(main, location.hash.split("?")[1] || ""); }
   catch (error) { main.append(message(error.message, true)); }
+  if (focusMain) main.focus();
 }
 
 export async function start() {
@@ -136,6 +143,6 @@ export async function start() {
     renderLogin(document.getElementById("page"));
     document.getElementById("page").prepend(message(error.message, true));
   }
-  window.addEventListener("hashchange", show);
+  window.addEventListener("hashchange", () => show(true));
   await show();
 }

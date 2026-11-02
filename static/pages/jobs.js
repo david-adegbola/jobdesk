@@ -109,7 +109,10 @@ register({
         ? `${s.message} (${s.done}/${s.total} sources; Jobly asks for 10 s between pages)`
         : (s.result ? `Finished: ${s.result.found} jobs, ${s.result.new} new.` : "");
       if (s.running) setTimeout(poll, 3000);
-      else if (s.result) load();
+      else if (s.result) {
+        load();
+        checkBtn.focus();
+      }
     }
 
     const filters = { status: store("jobs.status") || "" };
@@ -119,7 +122,7 @@ register({
     let jobs = [];
     const saveView = () => store("jobs.view", JSON.stringify(view));
 
-    async function load() {
+    async function load(restoreKey) {
       const data = await api("/api/jobs");
       jobs = data.jobs;
       const c = data.latest_check;
@@ -127,7 +130,7 @@ register({
       if (!checkBtn?.disabled) status.textContent = c
         ? `Last checked: ${c.finished_at.replace("T", " ")}, ${newCount} new` + (c.error ? ` (error: ${c.error})` : "")
         : "Not checked yet.";
-      draw();
+      draw(restoreKey);
     }
 
     // skip: leave one filter out (the Type chips count jobs that pass every other filter)
@@ -172,7 +175,7 @@ register({
     const controls = h("div"), typeChips = h("div", { class: "row" }), sortChips = h("div", { class: "row" }), tableArea = h("div");
     listArea.replaceChildren(controls, typeChips, sortChips, tableArea);
 
-    function draw() {
+    function draw(restoreKey) {
       const sel = (value, onchange, options) => h("select", { onchange: e => { onchange(e.target.value); update(); } },
         options.map(([v, t]) => h("option", { value: v, selected: value === v }, t)));
       const setView = key => v => { view[key] = v; saveView(); };
@@ -188,16 +191,16 @@ register({
           oninput: e => { view.minMatch = +e.target.value; matchOut.textContent = view.minMatch; saveView(); update(); } }), matchOut),
         h("label", { class: "check" }, "Status ", sel(filters.status, v => { filters.status = v; store("jobs.status", v); },
           [["", "All"], ["none", "Not saved"], ...state.statuses.map(s => [s, s])])),
-        h("button", { class: "secondary", onclick: () => {
+        h("button", { class: "secondary", "data-focus": "reset", onclick: () => {
           view = defaultView(); filters.status = "";
-          saveView(); store("jobs.status", ""); draw();
+          saveView(); store("jobs.status", ""); draw("reset");
         } }, "Reset")));
-      update();
+      update(restoreKey);
     }
 
-    function update() {
+    function update(restoreKey) {
       // Re-rendering replaces the buttons, so put keyboard focus back on the same one
-      const focusKey = document.activeElement && document.activeElement.dataset.focus;
+      const focusKey = restoreKey || (document.activeElement && document.activeElement.dataset.focus);
 
       const counts = {};
       for (const j of jobs) if (j.category && passes(j, "type")) counts[j.category] = (counts[j.category] || 0) + 1;
@@ -253,18 +256,22 @@ register({
         h("td", { class: "nowrap" }, j.category),
         h("td", null, h("span", { class: "score" }, j.match.score), " ", h("span", { class: "small" }, j.match.score ? j.match.slug : "–"),
           j.match.words.length ? h("div", { class: "muted small" }, j.match.words.join(", ")) : "",
-          !j.has_ad_text && j.url ? h("div", null, h("button", { class: "link small", onclick: async e => {
+          !j.has_ad_text && j.url ? h("div", null, h("button", { class: "link small", "data-focus": `fetch:${j.id}`, onclick: async e => {
             e.target.disabled = true; e.target.textContent = "reading…";
-            try { await api(`/api/jobs/${j.id}/fetch`, { method: "POST" }); load(); }
-            catch (err) { e.target.textContent = err.message; }
+            try { await api(`/api/jobs/${j.id}/fetch`, { method: "POST" }); load(`fetch:${j.id}`); }
+            catch (err) {
+              e.target.disabled = false;
+              e.target.textContent = `Retry: ${err.message}`;
+              e.target.focus();
+            }
           } }, "read full ad")) : ""),
         h("td", null, !j.use_cv ? "" : !j.cv_ready
             ? ""
             : h("span", null, j.use_cv, h("div", { class: "muted small" }, j.use_cv_language.toUpperCase())),
           h("div", null, h("a", { class: "small", href: "#/cvs" }, "Create or edit your CV"))),
-        h("td", null, h("select", { class: "status", "data-status": j.status || "", "aria-label": `Status for ${j.title}`, onchange: async e => {
+        h("td", null, h("select", { class: "status", "data-status": j.status || "", "data-focus": `status:${j.id}`, "aria-label": `Status for ${j.title}`, onchange: async e => {
             await api(`/api/jobs/${j.id}/status`, { method: "POST", body: { status: e.target.value } });
-            load();
+          load(`status:${j.id}`);
           } }, h("option", { value: "" }, "—"), state.statuses.map(s => h("option", { value: s, selected: j.status === s }, s))))));
 
       tableArea.replaceChildren(
@@ -275,8 +282,12 @@ register({
           h("tbody", null, rows.length ? rows : h("tr", null, h("td", { colspan: 8, class: "empty" },
             jobs.length ? "No jobs match these filters." : "No forestry jobs loaded yet. Refresh the listings or share a public opportunity."))))));
 
-      const again = focusKey && [...listArea.querySelectorAll("[data-focus]")].find(el => el.dataset.focus === focusKey);
-      if (again) again.focus();
+      const focusTargets = [...listArea.querySelectorAll("[data-focus]")];
+      const again = focusKey && focusTargets.find(el => el.dataset.focus === focusKey);
+      const fetchFallback = focusKey?.startsWith("fetch:")
+        ? focusTargets.find(el => el.dataset.focus === `status:${focusKey.slice("fetch:".length)}`)
+        : null;
+      (again || fetchFallback)?.focus();
     }
 
     await load();

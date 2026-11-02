@@ -22,14 +22,14 @@ function card(a, roles, statuses, reload) {
       a.next_action_date ? ` · ${a.next_action_date}` : "") : "",
     a.follow_up ? h("div", { class: "reminder" }, a.follow_up) : "",
     h("label", { class: "move" }, "Move to",
-      h("select", { class: "status", "data-status": a.status, "aria-label": `Status for ${a.title}`, onchange: async e => {
-          await api(`/api/applications/${a.id}`, { method: "POST", body: { status: e.target.value } }); reload();
+      h("select", { class: "status", "data-status": a.status, "data-focus": `status:${a.id}`, "aria-label": `Status for ${a.title}`, onchange: async e => {
+          await api(`/api/applications/${a.id}`, { method: "POST", body: { status: e.target.value } }); reload(`status:${a.id}`);
         } }, statuses.map(s => h("option", { value: s, selected: s === a.status }, s)))),
-    h("details", null, h("summary", null, "Details"),
+    h("details", null, h("summary", { "data-focus": `details:${a.id}` }, "Details"),
       h("form", { onsubmit: async e => {
           e.preventDefault();
           const body = Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value]));
-          try { await api(`/api/applications/${a.id}`, { method: "POST", body }); reload(); }
+          try { await api(`/api/applications/${a.id}`, { method: "POST", body }); reload(`details:${a.id}`); }
           catch (err) { out.replaceChildren(message(err.message, true)); }
         } },
         input("date_applied", "Date applied", "date"),
@@ -55,7 +55,8 @@ register({
         h("span", { class: "muted small" }, `Drag cards between columns or use "Move to". Applied with no change for 5 days shows a follow-up reminder. Today: ${today()}`)),
       board);
 
-    async function load() {
+    async function load(restoreKey) {
+      const focusKey = restoreKey || document.activeElement?.dataset.focus;
       const { applications, statuses } = await api("/api/applications");
       board.replaceChildren(...statuses.map(status => {
         const items = applications.filter(a => a.status === status);
@@ -73,6 +74,10 @@ register({
                          : h("p", { class: "empty" }, status === "Saved" ? "Save jobs from the Jobs page." : "Drag a card here.")));
         return col;
       }));
+      if (focusKey) {
+        const target = [...board.querySelectorAll("[data-focus]")].find(el => el.dataset.focus === focusKey);
+        target?.focus();
+      }
     }
     await load();
   },

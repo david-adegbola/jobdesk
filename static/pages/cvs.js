@@ -32,11 +32,12 @@ const fieldGuidance = {
 register({
   id: "cvs", title: "My CVs",
   async render(main) {
-    main.append(h("h1", null, "My CVs"),
+    main.append(h("h1", { tabindex: "-1", "data-focus": "cv-heading" }, "My CVs"),
       h("p", { class: "muted" }, "Private to your account. Create Finnish or English CVs and view their formatted PDFs. Use your browser's PDF viewer to download a copy."));
     let cvs = [];
     let example = null;
     let editor = null;
+    let returnFocus = null;
     const area = h("div");
     const status = h("div", { role: "status" });
     main.append(status, area);
@@ -53,6 +54,7 @@ register({
         draw();
       } catch (err) {
         status.replaceChildren(message(err.message, true));
+        returnFocus = null;
       }
     }
 
@@ -62,6 +64,13 @@ register({
         renderEditor();
         return;
       }
+      const restoreFocus = () => {
+        if (!returnFocus) return;
+        const target = [...main.querySelectorAll("[data-focus]")].find(el => el.dataset.focus === returnFocus)
+          || main.querySelector('[data-focus="cv-heading"]');
+        target?.focus();
+        returnFocus = null;
+      };
       area.append(h("article", { class: "card cv-example" },
         h("h2", null, "Start with a two-page example"),
         h("p", null, "Preview a sample CV in the original LaTeX style. Its details are fictional; Create yours opens an editable draft with the same structure. Nothing is saved until you save it."),
@@ -72,16 +81,18 @@ register({
             target: "_blank",
             rel: "noopener",
           }, "View 2-page example"),
-          h("button", { onclick: () => {
+          h("button", { "data-focus": "cv-create", onclick: () => {
+            returnFocus = "cv-create";
             editor = createEditorState(example, "create");
             editor.fromExample = true;
             draw();
           } }, "Create yours"))));
       if (!cvs.length) {
         area.append(h("p", { class: "empty" }, "Your saved CVs will appear here."));
+        restoreFocus();
         return;
       }
-      area.append(h("h2", null, "Your CVs"),
+      area.append(h("h2", { "data-focus": "cv-list-heading", tabindex: "-1" }, "Your CVs"),
         h("div", { class: "grid cv-list" }, ...cvs.map(cv =>
         h("article", { class: "card cv-card" },
           h("h2", null, cv.title),
@@ -94,11 +105,13 @@ register({
             }, "View CV")),
           h("p", { class: "muted small" }, "Edit changes this CV. Make a copy creates a separate CV with the same details."),
           h("div", { class: "row" },
-            h("button", { onclick: () => {
+            h("button", { "data-focus": `cv-edit:${cv.id}`, onclick: () => {
+              returnFocus = `cv-edit:${cv.id}`;
               editor = createEditorState(cv, "edit");
               draw();
             } }, "Edit"),
-            h("button", { class: "secondary", onclick: () => {
+            h("button", { class: "secondary", "data-focus": `cv-copy:${cv.id}`, onclick: () => {
+              returnFocus = `cv-copy:${cv.id}`;
               editor = createEditorState(
                 { ...cv, id: undefined, title: `${cv.title} (copy)` },
                 "copy",
@@ -109,9 +122,11 @@ register({
               if (!window.confirm(`Delete "${cv.title}"? This cannot be undone.`)) return;
               try {
                 await api(`/api/cvs/${cv.id}/delete`, { method: "POST" });
+                returnFocus = "cv-list-heading";
                 await refresh();
               } catch (err) { status.replaceChildren(message(err.message, true)); }
-            } }, "Delete"))))));
+            }, "data-focus": `cv-delete:${cv.id}` }, "Delete"))))));
+      restoreFocus();
     }
 
     function renderEditor() {
@@ -153,6 +168,7 @@ register({
         try {
           cvs = (await api("/api/cvs")).cvs;
           editor = null;
+          returnFocus = `cv-edit:${saved.id}`;
           draw();
         } catch (err) {
           status.replaceChildren(message(`CV saved, but the list could not be refreshed: ${err.message}`, true));
@@ -160,7 +176,7 @@ register({
       } },
       h("div", { class: "row cv-actions" },
         h("button", { type: "button", class: "secondary", onclick: returnToList }, "Back to My CVs")),
-      h("h2", null, current.mode === "edit"
+      h("h2", { tabindex: "-1" }, current.mode === "edit"
         ? `Editing ${current.title}`
         : current.mode === "copy"
           ? `Create a copy of ${current.title.replace(/ \(copy\)$/, "")}`
@@ -192,6 +208,7 @@ register({
         h("button", { type: "submit" }, current.mode === "edit" ? "Save changes" : "Create CV"),
         h("button", { type: "button", class: "secondary", onclick: returnToList }, "Back to My CVs")));
       area.append(form);
+      form.querySelector("h2")?.focus();
     }
 
     function createEditorState(cv, mode) {

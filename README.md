@@ -11,6 +11,16 @@ Python 3 standard library, SQLite and plain HTML/CSS/JS: nothing to install.
 Run `python3 -m unittest discover -s tests -v`. Tests use temporary SQLite files and a local HTTP
 server; they cover authentication, ownership boundaries, forestry filtering and API behavior.
 
+## Accessibility requirements
+
+Digital accessibility is a key product requirement. Woodesk targets **WCAG 2.1 Level AA** for
+all user-facing flows. Changes should preserve keyboard operation and visible focus, accessible
+names and form labels, sufficient text and control contrast, and content reflow at 320 CSS pixels
+and 200% zoom. Do not rely on color alone to convey meaning. Verify the affected flow with keyboard
+navigation and the available automated and manual accessibility checks; document any known gaps.
+This is a development target, not a conformance claim: the complete app has not been independently
+evaluated or certified against WCAG 2.1 Level AA.
+
 ## Pages
 
 - **For you:** a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
