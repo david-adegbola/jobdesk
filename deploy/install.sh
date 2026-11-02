@@ -39,6 +39,33 @@ configure_caddy() {
   rm -f /etc/caddy/Caddyfile.new
 }
 
+apt_get() {
+  local waited=0 output status
+  while true; do
+    if output=$(apt-get "$@" 2>&1); then
+      [ -z "$output" ] || printf '%s\n' "$output"
+      return 0
+    else
+      status=$?
+    fi
+    printf '%s\n' "$output" >&2
+    case "$output" in
+      *"Could not get lock"*|*"Unable to acquire the dpkg frontend lock"*|*"is another process using it"*)
+        if [ "$waited" -ge 1800 ]; then
+          echo "Timed out waiting for the package manager after 30 minutes." >&2
+          return "$status"
+        fi
+        echo "Another package operation is running; retrying in 15 seconds (waited ${waited}s)." >&2
+        sleep 15
+        waited=$((waited + 15))
+        ;;
+      *)
+        return "$status"
+        ;;
+    esac
+  done
+}
+
 install_latex_packages() {
   if command -v pdflatex >/dev/null && command -v kpsewhich >/dev/null \
     && kpsewhich libertine.sty >/dev/null && kpsewhich fontawesome.sty >/dev/null \
@@ -46,8 +73,8 @@ install_latex_packages() {
     return
   fi
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
-  apt-get install -y -qq --no-install-recommends \
+  apt_get update -qq
+  apt_get install -y -qq --no-install-recommends \
     texlive-latex-extra texlive-fonts-extra texlive-lang-european >/dev/null
 }
 
@@ -62,8 +89,8 @@ fi
 
 echo "== Packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq --no-install-recommends \
+apt_get update -qq
+apt_get install -y -qq --no-install-recommends \
   python3 git sqlite3 curl caddy unattended-upgrades \
   texlive-latex-extra texlive-fonts-extra texlive-lang-european >/dev/null
 
