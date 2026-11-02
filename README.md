@@ -65,8 +65,9 @@ evaluated or certified against WCAG 2.1 Level AA.
   profile, education, experience, skills, research/projects, certifications, languages and links.
   Edit, copy or delete a CV, then
   view its formatted PDF using the same LaTeX document layout and shared style as the
-  original role CVs. On startup, Woodesk imports the administrator's existing Finnish and English
-  role CVs from the configured CV repository once, including forestry, industrial, IT, sales, trainee
+  original role CVs. Imported role PDFs are compiled on demand from their original LaTeX source when
+  a prebuilt PDF is not present in the CV repository. On startup, Woodesk imports the administrator's
+  existing Finnish and English role CVs from the configured CV repository once, including forestry, industrial, IT, sales, trainee
   and warehouse versions. These are editable text copies stored only in the administrator's account.
   Their download uses the exact original, role-specific PDF compiled from the LaTeX source in the
   CV repository. New CVs created by members use that same LaTeX style and document structure:

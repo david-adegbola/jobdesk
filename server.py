@@ -320,12 +320,17 @@ def api_build_user_cv(h, m):
         return h.error(404, "CV not found.")
     source_path = db.get_cv_import_source(cv_id, user_id)
     if source_path:
-        original_pdf = _resolve_imported_cv_file(source_path, ".pdf")
-        if not original_pdf:
-            return h.error(404, "The original formatted PDF is not available for this CV.")
         try:
-            pdf = original_pdf.read_bytes()
+            pdf = _read_imported_cv_pdf(source_path)
+        except FileNotFoundError:
+            return h.error(
+                503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+            )
+        except cv_latex.PdfBuildError as error:
+            return h.error(422, str(error))
         except OSError:
+            return h.error(404, "The original formatted PDF is not available for this CV.")
+        if pdf is None:
             return h.error(404, "The original formatted PDF is not available for this CV.")
         filename = cv_latex.safe_filename(cv["title"])
         return (
@@ -356,6 +361,17 @@ def _resolve_imported_cv_file(source_path, suffix):
     return file if file.is_relative_to(repo) else None
 
 
+def _read_imported_cv_pdf(source_path):
+    original_pdf = _resolve_imported_cv_file(source_path, ".pdf")
+    if original_pdf and original_pdf.is_file():
+        return original_pdf.read_bytes()
+
+    source = _resolve_imported_cv_file(source_path, ".tex")
+    if not source or not source.is_file():
+        return None
+    return cv_latex.build_original_pdf(source)
+
+
 @route("GET", r"/api/cvs/(\d+)/(original\.pdf|source\.tex)")
 def api_original_cv_file(h, m):
     source_path = db.get_cv_import_source(int(m.group(1)), h.user["id"])
@@ -366,8 +382,16 @@ def api_original_cv_file(h, m):
     if not file:
         return h.error(404, "Original CV files are not available for this CV.")
     try:
-        content = file.read_bytes()
+        content = _read_imported_cv_pdf(source_path) if is_pdf else file.read_bytes()
+    except FileNotFoundError:
+        return h.error(
+            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+        )
+    except cv_latex.PdfBuildError as error:
+        return h.error(422, str(error))
     except OSError:
+        return h.error(404, "Original formatted PDF or LaTeX source is not available.")
+    if content is None:
         return h.error(404, "Original formatted PDF or LaTeX source is not available.")
     filename = re.sub(r"[^A-Za-z0-9._-]", "_", file.name)
     disposition = "inline" if is_pdf else "attachment"

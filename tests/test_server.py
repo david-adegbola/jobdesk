@@ -246,7 +246,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(error["error"], "CV not found.")
 
-    def test_imported_cv_view_reports_missing_original_pdf(self):
+    def test_imported_cv_view_compiles_original_tex_when_pdf_is_missing(self):
         cv_repo = Path(self.temp_dir.name) / "cv-repo"
         role_dir = cv_repo / "roles" / "forest-role"
         role_dir.mkdir(parents=True)
@@ -259,11 +259,19 @@ class JobApiTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-        with patch.object(server.cv_latex, "build_pdf") as build:
-            status, error = self.request("GET", "/api/cvs/1/formatted.pdf")
-        self.assertEqual(status, 404)
-        self.assertIn("original formatted PDF is not available", error["error"])
-        build.assert_not_called()
+        with patch.object(server.cv_latex, "build_original_pdf", return_value=b"%PDF compiled original") as build:
+            with patch.object(server.cv_latex, "build_pdf") as generated:
+                status, pdf = self.request("GET", "/api/cvs/1/formatted.pdf")
+                original_status, original_pdf = self.request("GET", "/api/cvs/1/original.pdf")
+        self.assertEqual(status, 200)
+        self.assertEqual(pdf, b"%PDF compiled original")
+        self.assertEqual(original_status, 200)
+        self.assertEqual(original_pdf, b"%PDF compiled original")
+        build.assert_has_calls([
+            unittest.mock.call((role_dir / "cv-en.tex").resolve()),
+            unittest.mock.call((role_dir / "cv-en.tex").resolve()),
+        ])
+        generated.assert_not_called()
 
     def test_formatted_cv_pdf_is_generated_from_private_saved_cv(self):
         cv_id = db.save_cv(1, "Forestry CV", "en", {"full_name": "Admin"})

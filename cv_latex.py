@@ -409,6 +409,53 @@ def build_pdf(cv, repo=None, pdflatex=None):
         return pdf
 
 
+def build_original_pdf(source, pdflatex=None):
+    source_path = Path(source).resolve()
+    if source_path.suffix.lower() != ".tex" or not source_path.is_file():
+        raise FileNotFoundError("The original CV source is unavailable.")
+
+    executable = pdflatex or shutil.which("pdflatex")
+    if not executable:
+        raise FileNotFoundError("pdflatex is not installed.")
+
+    with tempfile.TemporaryDirectory(prefix="woodesk-original-cv-") as directory:
+        output_dir = Path(directory)
+        environment = os.environ.copy()
+        environment["HOME"] = str(output_dir)
+        for _ in range(2):
+            try:
+                result = subprocess.run(
+                    [
+                        executable, "-no-shell-escape", "-interaction=nonstopmode",
+                        "-halt-on-error", f"-output-directory={output_dir}", source_path.name,
+                    ],
+                    cwd=source_path.parent,
+                    env=environment,
+                    capture_output=True,
+                    timeout=60,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise PdfBuildError("CV compilation timed out. Try again.") from error
+            except FileNotFoundError as error:
+                raise FileNotFoundError("pdflatex is not installed.") from error
+            except OSError as error:
+                raise PdfBuildError("The LaTeX compiler could not be started.") from error
+            if result.returncode:
+                raise PdfBuildError(
+                    "The original CV could not be compiled. The server may be missing a required LaTeX package."
+                )
+
+        pdf_path = output_dir / source_path.with_suffix(".pdf").name
+        try:
+            pdf = pdf_path.read_bytes()
+        except OSError as error:
+            raise PdfBuildError("LaTeX completed without producing a PDF.") from error
+        if not pdf.startswith(b"%PDF-"):
+            raise PdfBuildError("LaTeX produced an invalid PDF.")
+        return pdf
+
+
 def safe_filename(value):
     name = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-._")
     return (name[:80] or "cv") + ".pdf"
