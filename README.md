@@ -56,8 +56,9 @@ server; they cover authentication, ownership boundaries, forestry filtering and 
   original role CVs. On startup, Woodesk imports the administrator's existing Finnish and English
   role CVs from the configured CV repository once, including forestry, industrial, IT, sales, trainee
   and warehouse versions. These are editable text copies stored only in the administrator's account.
-  The original LaTeX source files remain unchanged in the CV repository. Each PDF is compiled on the
-  server from that member's own saved CV data; it is not uploaded to the shared CV repository.
+  Their download uses the exact original, role-specific PDF compiled from the LaTeX source in the
+  CV repository. New CVs created by members are compiled on the server from their saved data using
+  the shared LaTeX style; those PDFs are not uploaded to the shared CV repository.
 - **Account:** change your password, download your private data and sign out. Administrators can
   create single-use, seven-day invitation codes to onboard classmates.
 

@@ -182,7 +182,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(db.get_cv(created["id"], second_user)["content"]["full_name"], "Second User")
 
-    def test_imported_cv_original_pdf_and_latex_source_stay_owner_private(self):
+    def test_imported_cv_download_uses_original_pdf_and_stays_owner_private(self):
         cv_repo = Path(self.temp_dir.name) / "cv-repo"
         role_dir = cv_repo / "roles" / "forest-role"
         role_dir.mkdir(parents=True)
@@ -204,6 +204,19 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(headers["Content-Type"], "application/pdf")
         self.assertIn("inline;", headers["Content-Disposition"])
 
+        with patch.object(server.cv_latex, "build_pdf") as build:
+            status, formatted_pdf, headers = self.request(
+                "GET", "/api/cvs/1/formatted.pdf", include_headers=True,
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(formatted_pdf, b"%PDF original formatted CV")
+        self.assertEqual(headers["Content-Type"], "application/pdf")
+        self.assertEqual(
+            headers["Content-Disposition"],
+            'attachment; filename="Forest-analyst-English.pdf"',
+        )
+        build.assert_not_called()
+
         status, latex_source, headers = self.request(
             "GET", "/api/cvs/1/source.tex", include_headers=True,
         )
@@ -224,6 +237,31 @@ class JobApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 404)
         self.assertIn("not available", error["error"])
+        status, error = self.request(
+            "GET", "/api/cvs/1/formatted.pdf",
+            headers={"Cookie": f"jobdesk_session={token}"},
+        )
+        self.assertEqual(status, 404)
+        self.assertEqual(error["error"], "CV not found.")
+
+    def test_imported_cv_download_reports_missing_original_pdf(self):
+        cv_repo = Path(self.temp_dir.name) / "cv-repo"
+        role_dir = cv_repo / "roles" / "forest-role"
+        role_dir.mkdir(parents=True)
+        (role_dir / "cv-en.tex").write_text(r"\cvrole{Forest analyst}", encoding="utf-8")
+        db.import_cv_for_admin(
+            "roles/forest-role/cv-en.tex", "Forest analyst (English)", "en",
+            {"full_name": "Admin"},
+        )
+        patcher = patch.object(server.config, "CV_REPO", cv_repo)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        with patch.object(server.cv_latex, "build_pdf") as build:
+            status, error = self.request("GET", "/api/cvs/1/formatted.pdf")
+        self.assertEqual(status, 404)
+        self.assertIn("original formatted PDF is not available", error["error"])
+        build.assert_not_called()
 
     def test_formatted_cv_pdf_is_generated_from_private_saved_cv(self):
         cv_id = db.save_cv(1, "Forestry CV", "en", {"full_name": "Admin"})

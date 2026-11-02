@@ -291,9 +291,25 @@ def api_list_cvs(h, m):
 
 @route("GET", r"/api/cvs/(\d+)/formatted\.pdf")
 def api_build_user_cv(h, m):
-    cv = db.get_cv(int(m.group(1)), h.user["id"])
+    cv_id = int(m.group(1))
+    user_id = h.user["id"]
+    cv = db.get_cv(cv_id, user_id)
     if not cv:
         return h.error(404, "CV not found.")
+    source_path = db.get_cv_import_source(cv_id, user_id)
+    if source_path:
+        original_pdf = _resolve_imported_cv_file(source_path, ".pdf")
+        if not original_pdf:
+            return h.error(404, "The original formatted PDF is not available for this CV.")
+        try:
+            pdf = original_pdf.read_bytes()
+        except OSError:
+            return h.error(404, "The original formatted PDF is not available for this CV.")
+        filename = cv_latex.safe_filename(cv["title"])
+        return (
+            pdf, "application/pdf",
+            {"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     try:
         pdf = cv_latex.build_pdf(cv)
     except FileNotFoundError:
@@ -309,18 +325,24 @@ def api_build_user_cv(h, m):
     )
 
 
+def _resolve_imported_cv_file(source_path, suffix):
+    repo = config.CV_REPO.resolve()
+    source = (repo / source_path).resolve()
+    if not source.is_relative_to(repo) or source.suffix.lower() != ".tex":
+        return None
+    file = source.with_suffix(suffix).resolve()
+    return file if file.is_relative_to(repo) else None
+
+
 @route("GET", r"/api/cvs/(\d+)/(original\.pdf|source\.tex)")
 def api_original_cv_file(h, m):
     source_path = db.get_cv_import_source(int(m.group(1)), h.user["id"])
     if not source_path:
         return h.error(404, "Original CV files are not available for this CV.")
-
-    repo = config.CV_REPO.resolve()
-    source = (repo / source_path).resolve()
-    if not source.is_relative_to(repo) or source.suffix.lower() != ".tex":
-        return h.error(404, "Original CV files are not available for this CV.")
     is_pdf = m.group(2) == "original.pdf"
-    file = source.with_suffix(".pdf") if is_pdf else source
+    file = _resolve_imported_cv_file(source_path, ".pdf" if is_pdf else ".tex")
+    if not file:
+        return h.error(404, "Original CV files are not available for this CV.")
     try:
         content = file.read_bytes()
     except OSError:
