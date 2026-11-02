@@ -1,8 +1,5 @@
 # JobDesk. Written by deploy/install.sh from deploy/Caddyfile in the jobdesk repo; edit that, not this.
 {{DOMAIN}} {
-	basicauth {
-		{{LOGIN}} {{HASH}}
-	}
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Robots-Tag "noindex, nofollow"

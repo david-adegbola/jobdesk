@@ -1,11 +1,11 @@
-"""All JobDesk data access. SQLite file: data/jobdesk.db (git-ignored, never pushed; see config.py).
+"""All Woodesk data access. Shared forestry listings sit beside user-owned application data."""
 
-Every table has a user_id column (default 1) so the app can become multi-user later;
-every function takes user_id and only touches that user's rows.
-"""
-
+import difflib
+import hashlib
+import json
+import re
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from config import DATA_DIR
 
@@ -18,7 +18,13 @@ STAGE = {"Saved": 1, "Applied": 2, "Interview": 3, "Offer": 4}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  email TEXT,
+  password_hash TEXT NOT NULL DEFAULT '',
+  is_admin INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  preferences_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS checks (
   id INTEGER PRIMARY KEY,
@@ -80,6 +86,77 @@ CREATE TABLE IF NOT EXISTS prep_answers (
 );
 CREATE INDEX IF NOT EXISTS jobs_user ON jobs (user_id, deadline, posted);
 CREATE INDEX IF NOT EXISTS applications_user ON applications (user_id, status);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions (expires_at);
+CREATE TABLE IF NOT EXISTS invitations (
+  id INTEGER PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_by INTEGER REFERENCES users(id),
+  used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS cvs (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  language TEXT NOT NULL DEFAULT 'en',
+  content_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cvs_user ON cvs (user_id, updated_at);
+CREATE TABLE IF NOT EXISTS cv_imports (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source_path TEXT NOT NULL,
+  imported_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, source_path)
+);
+CREATE TABLE IF NOT EXISTS news_items (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
+  source_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT DEFAULT '',
+  published_at TEXT DEFAULT '',
+  category TEXT NOT NULL,
+  region TEXT DEFAULT '',
+  relevance INTEGER NOT NULL DEFAULT 0,
+  matched_topics TEXT DEFAULT '',
+  coverage_json TEXT NOT NULL DEFAULT '[]',
+  first_seen TEXT NOT NULL,
+  last_seen TEXT NOT NULL,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  is_saved INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (user_id, source_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS news_items_user ON news_items (user_id, published_at);
+CREATE TABLE IF NOT EXISTS news_source_state (
+  user_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
+  source_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  checked_at TEXT NOT NULL,
+  error TEXT DEFAULT '',
+  found INTEGER NOT NULL DEFAULT 0,
+  new INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, source_id)
+);
+CREATE TABLE IF NOT EXISTS news_user_state (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES news_items(id) ON DELETE CASCADE,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  is_saved INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, item_id)
+);
 """
 
 APP_FIELDS = ["status", "date_applied", "cv_role", "employer_link", "contact", "notes",
@@ -102,7 +179,231 @@ def connect():
 def init():
     with connect() as conn:
         conn.executescript(SCHEMA)
-        conn.execute("INSERT OR IGNORE INTO users (id, name) VALUES (1, 'David Adegbola')")
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+        migrations = {
+            "email": "TEXT",
+            "password_hash": "TEXT NOT NULL DEFAULT ''",
+            "is_admin": "INTEGER NOT NULL DEFAULT 0",
+            "is_active": "INTEGER NOT NULL DEFAULT 1",
+            "preferences_json": "TEXT NOT NULL DEFAULT '{}'",
+            "created_at": "TEXT NOT NULL DEFAULT ''",
+        }
+        for column, definition in migrations.items():
+            if column not in columns:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email COLLATE NOCASE) WHERE email IS NOT NULL")
+        conn.execute("INSERT OR IGNORE INTO users (id, name, is_admin) VALUES (1, 'David Adegbola', 1)")
+        conn.execute("UPDATE users SET is_admin=1 WHERE id=1 AND email IS NULL")
+        conn.execute(
+            """INSERT OR IGNORE INTO news_user_state (user_id, item_id, is_read, is_saved)
+               SELECT user_id, id, is_read, is_saved FROM news_items"""
+        )
+
+
+def _hash_token(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def provision_admin(email, password):
+    email = email.strip().lower()
+    if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise ValueError("Enter a valid administrator email address.")
+    with connect() as conn:
+        existing = conn.execute("SELECT id FROM users WHERE email=? COLLATE NOCASE AND id!=1", (email,)).fetchone()
+        if existing:
+            raise ValueError("That email already belongs to another account.")
+        conn.execute(
+            """UPDATE users SET name=CASE WHEN name='' THEN ? ELSE name END, email=?,
+               password_hash=?, is_admin=1, is_active=1 WHERE id=1""",
+            (email.split("@")[0], email, password),
+        )
+        return dict(conn.execute("SELECT id, name, email, is_admin FROM users WHERE id=1").fetchone())
+
+
+def get_user(user_id):
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT id, name, email, password_hash, is_admin, is_active, preferences_json FROM users WHERE id=?",
+            (user_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_user_by_email(email):
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT id, name, email, password_hash, is_admin, is_active, preferences_json
+               FROM users WHERE email=? COLLATE NOCASE""",
+            (email.strip(),),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def create_user(name, email, password_hash, invite_token):
+    token_hash = _hash_token(invite_token)
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        invite = conn.execute(
+            """SELECT id FROM invitations WHERE token_hash=? AND used_by IS NULL AND expires_at>?""",
+            (token_hash, datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        ).fetchone()
+        if not invite:
+            raise ValueError("That invitation is invalid, expired or already used.")
+        try:
+            user_id = conn.execute(
+                "INSERT INTO users (name, email, password_hash, created_at) VALUES (?,?,?,?)",
+                (name.strip(), email.strip().lower(), password_hash, now()),
+            ).lastrowid
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("An account with that email already exists.") from exc
+        conn.execute(
+            "UPDATE invitations SET used_by=?, used_at=? WHERE id=? AND used_by IS NULL",
+            (user_id, datetime.now(timezone.utc).isoformat(timespec="seconds"), invite["id"]),
+        )
+        return user_id
+
+
+def create_session(user_id, token_hash, expires_at):
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?,?,?,?)",
+            (token_hash, user_id, datetime.now(timezone.utc).isoformat(timespec="seconds"), expires_at),
+        )
+
+
+def get_session_user(token_hash):
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT u.id, u.name, u.email, u.is_admin FROM sessions s
+               JOIN users u ON u.id=s.user_id
+               WHERE s.token_hash=? AND s.expires_at>? AND u.is_active=1""",
+            (token_hash, datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def delete_session(token_hash):
+    with connect() as conn:
+        conn.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+
+
+def create_invitation(created_by, token, expires_at):
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO invitations (token_hash, created_by, created_at, expires_at) VALUES (?,?,?,?)",
+            (_hash_token(token), created_by, datetime.now(timezone.utc).isoformat(timespec="seconds"), expires_at),
+        )
+
+
+def list_invitations(created_by):
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT id, created_at, expires_at, used_at,
+                      (used_by IS NOT NULL) AS used
+               FROM invitations WHERE created_by=? ORDER BY id DESC""",
+            (created_by,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def update_user_password(user_id, password_hash):
+    with connect() as conn:
+        result = conn.execute(
+            "UPDATE users SET password_hash=? WHERE id=? AND is_active=1",
+            (password_hash, user_id),
+        )
+        if not result.rowcount:
+            raise KeyError(user_id)
+        conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+
+
+def update_user_preferences(user_id, preferences):
+    with connect() as conn:
+        result = conn.execute(
+            "UPDATE users SET preferences_json=? WHERE id=? AND is_active=1",
+            (json.dumps(preferences, ensure_ascii=False), user_id),
+        )
+        if not result.rowcount:
+            raise KeyError(user_id)
+
+
+def list_cvs(user_id):
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM cvs WHERE user_id=? ORDER BY updated_at DESC, id DESC",
+            (user_id,),
+        ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["content"] = json.loads(item.pop("content_json"))
+            result.append(item)
+        return result
+
+
+def get_cv(cv_id, user_id):
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM cvs WHERE id=? AND user_id=?", (cv_id, user_id)).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        item["content"] = json.loads(item.pop("content_json"))
+        return item
+
+
+def save_cv(user_id, title, language, content, cv_id=None):
+    timestamp = now()
+    with connect() as conn:
+        if cv_id is None:
+            return conn.execute(
+                """INSERT INTO cvs (user_id, title, language, content_json, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?)""",
+                (user_id, title, language, json.dumps(content, ensure_ascii=False), timestamp, timestamp),
+            ).lastrowid
+        result = conn.execute(
+            """UPDATE cvs SET title=?, language=?, content_json=?, updated_at=?
+               WHERE id=? AND user_id=?""",
+            (title, language, json.dumps(content, ensure_ascii=False), timestamp, cv_id, user_id),
+        )
+        if not result.rowcount:
+            raise KeyError(cv_id)
+        return cv_id
+
+
+def import_cv_for_admin(source_path, title, language, content):
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        admin = conn.execute("SELECT is_admin FROM users WHERE id=1").fetchone()
+        if not admin or not admin["is_admin"]:
+            raise PermissionError("Existing role CVs can only be imported to the administrator account.")
+        exists = conn.execute(
+            "SELECT 1 FROM cv_imports WHERE user_id=1 AND source_path=?",
+            (source_path,),
+        ).fetchone()
+        if exists:
+            return False
+        timestamp = now()
+        conn.execute(
+            """INSERT INTO cvs (user_id, title, language, content_json, created_at, updated_at)
+               VALUES (1, ?, ?, ?, ?, ?)""",
+            (title, language, json.dumps(content, ensure_ascii=False), timestamp, timestamp),
+        )
+        conn.execute(
+            "INSERT INTO cv_imports (user_id, source_path, imported_at) VALUES (1, ?, ?)",
+            (source_path, timestamp),
+        )
+        return True
+
+
+def delete_cv(cv_id, user_id):
+    with connect() as conn:
+        result = conn.execute("DELETE FROM cvs WHERE id=? AND user_id=?", (cv_id, user_id))
+        if not result.rowcount:
+            raise KeyError(cv_id)
+        conn.execute(
+            "UPDATE applications SET cv_role='' WHERE user_id=? AND cv_role=?",
+            (user_id, f"cv-{cv_id}"),
+        )
 
 
 def rename_roles(mapping, user_id=1):
@@ -142,6 +443,7 @@ def latest_check(user_id=1):
 def upsert_scraped(job, check_id, user_id=1):
     """Insert or refresh a scraped job. Returns True if it is new (never seen before)."""
     today = date.today().isoformat()
+    description = (job.get("description") or job.get("ad_text") or "")[:20_000]
     with connect() as conn:
         row = conn.execute("SELECT id FROM jobs WHERE user_id=? AND source=? AND external_id=?",
                            (user_id, job["source"], job["external_id"])).fetchone()
@@ -153,30 +455,33 @@ def upsert_scraped(job, check_id, user_id=1):
                               location=CASE WHEN location='' THEN ? ELSE location END,
                               posted=CASE WHEN posted='' THEN ? ELSE posted END,
                               category=CASE WHEN category='' THEN ? ELSE category END,
-                              url=CASE WHEN url='' THEN ? ELSE url END
+                              url=CASE WHEN url='' THEN ? ELSE url END,
+                              ad_text=CASE WHEN ad_text='' THEN ? ELSE ad_text END
                             WHERE id=?""",
                          (today, job["title"], job["company"], job["location"], job["posted"],
-                          job["category"], job["url"], row["id"]))
+                          job["category"], job["url"], description, row["id"]))
             return False
         conn.execute("""INSERT INTO jobs (user_id, source, external_id, url, title, company, location,
-                          posted, category, first_check_id, first_seen, last_seen)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                          posted, category, ad_text, first_check_id, first_seen, last_seen)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                      (user_id, job["source"], job["external_id"], job["url"], job["title"],
-                      job["company"], job["location"], job["posted"], job["category"],
+                      job["company"], job["location"], job["posted"], job["category"], description,
                       check_id, today, today))
         return True
 
 
 def add_manual(fields, user_id=1):
-    """Add (or update) a job typed in by hand. Returns the job id."""
+    """Publish a community job, deduplicating by source and external id across accounts."""
     today = date.today().isoformat()
     cols = ["url", "title", "company", "location", "posted", "deadline", "category", "ad_text",
             "contact_name", "contact_phone"]
     vals = {c: (fields.get(c) or "").strip() for c in cols}
     with connect() as conn:
-        row = conn.execute("SELECT id FROM jobs WHERE user_id=? AND source=? AND external_id=?",
-                           (user_id, fields["source"], fields["external_id"])).fetchone()
+        row = conn.execute("SELECT id, user_id FROM jobs WHERE source=? AND external_id=? ORDER BY id LIMIT 1",
+                           (fields["source"], fields["external_id"])).fetchone()
         if row:
+            if row["user_id"] != user_id:
+                return row["id"]
             sets = ", ".join(f"{c}=CASE WHEN ?!='' THEN ? ELSE {c} END" for c in cols)
             args = [x for c in cols for x in (vals[c], vals[c])]
             conn.execute(f"UPDATE jobs SET {sets}, manual=1, last_seen=? WHERE id=?",
@@ -191,22 +496,186 @@ def add_manual(fields, user_id=1):
 
 
 def list_jobs(user_id=1):
-    """Jobs with their application (if any) and whether they are NEW in the latest check."""
-    latest = latest_check(user_id)
+    """Shared listings with only the requesting user's application status."""
+    latest = latest_check(1)
     latest_id = latest["id"] if latest else -1
     with connect() as conn:
         rows = conn.execute("""
             SELECT j.*, a.id AS app_id, a.status, a.cv_role AS app_cv_role,
                    (j.first_check_id = ?) AS is_new
-            FROM jobs j LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = j.user_id
-            WHERE j.user_id = ?""", (latest_id, user_id)).fetchall()
+            FROM jobs j LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = ?
+            ORDER BY j.posted DESC, j.id DESC""", (latest_id, user_id)).fetchall()
         return [dict(r) for r in rows]
-
 
 def get_job(job_id, user_id=1):
     with connect() as conn:
-        row = conn.execute("SELECT * FROM jobs WHERE id=? AND user_id=?", (job_id, user_id)).fetchone()
+        row = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         return dict(row) if row else None
+
+
+def update_job_ad_text(job_id, text):
+    with connect() as conn:
+        result = conn.execute("UPDATE jobs SET ad_text=? WHERE id=?", (text, job_id))
+        if not result.rowcount:
+            raise KeyError(job_id)
+
+
+# ---------------------------------------------------------------- forestry news
+
+def upsert_news_item(item, user_id=1):
+    """Insert or refresh a story, attaching corroborating coverage without changing reader state."""
+    today = date.today().isoformat()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM news_items WHERE user_id=? AND source_id=? AND external_id=?",
+            (user_id, item["source_id"], item["external_id"]),
+        ).fetchone()
+        if row:
+            conn.execute(
+                """UPDATE news_items SET last_seen=?, source=?, url=?, title=?, summary=?,
+                   published_at=?, category=?, region=?, relevance=?, matched_topics=?
+                   WHERE id=? AND user_id=?""",
+                (today, item["source"], item["url"], item["title"], item["summary"],
+                 item["published_at"], item["category"], item["region"], item["relevance"],
+                 item["matched_topics"], row["id"], user_id),
+            )
+            return False
+        rows = conn.execute(
+            """SELECT id, source_id, source, external_id, url, title, summary, published_at,
+                      relevance, matched_topics, coverage_json
+               FROM news_items WHERE user_id=?""",
+            (user_id,),
+        ).fetchall()
+        item_date = _news_datetime(item["published_at"])
+        candidate, similarity = None, 0
+        normalized_title = _news_title(item["title"])
+        for existing in rows:
+            if existing["url"] == item["url"]:
+                candidate, similarity = existing, 1
+                break
+            existing_date = _news_datetime(existing["published_at"])
+            if not item_date or not existing_date or abs(item_date - existing_date) > timedelta(days=3):
+                continue
+            score = difflib.SequenceMatcher(
+                None, normalized_title, _news_title(existing["title"]),
+            ).ratio()
+            if score >= 0.85 and score > similarity:
+                candidate, similarity = existing, score
+        if candidate:
+            coverage = json.loads(candidate["coverage_json"] or "[]")
+            coverage_item = {
+                key: item[key] for key in
+                ("source_id", "source", "external_id", "url", "title", "summary", "published_at")
+            }
+            existing_coverage = next(
+                (entry for entry in coverage
+                 if entry["source_id"] == item["source_id"] and entry["external_id"] == item["external_id"]),
+                None,
+            )
+            if existing_coverage:
+                existing_coverage.update(coverage_item)
+            elif candidate["source_id"] != item["source_id"] or candidate["external_id"] != item["external_id"]:
+                coverage.append(coverage_item)
+            topics = list(dict.fromkeys(
+                [topic for topic in candidate["matched_topics"].split(", ") if topic] +
+                [topic for topic in item["matched_topics"].split(", ") if topic]
+            ))
+            conn.execute(
+                """UPDATE news_items SET last_seen=?, coverage_json=?, relevance=?,
+                   matched_topics=? WHERE id=? AND user_id=?""",
+                (today, json.dumps(coverage, ensure_ascii=False),
+                 max(candidate["relevance"], item["relevance"]), ", ".join(topics),
+                 candidate["id"], user_id),
+            )
+            return False
+        conn.execute(
+            """INSERT INTO news_items (user_id, source_id, source, external_id, url, title,
+               summary, published_at, category, region, relevance, matched_topics, first_seen, last_seen)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (user_id, item["source_id"], item["source"], item["external_id"], item["url"],
+             item["title"], item["summary"], item["published_at"], item["category"],
+             item["region"], item["relevance"], item["matched_topics"], today, today),
+        )
+        return True
+
+
+def _news_datetime(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+
+
+def _news_title(value):
+    return " ".join(re.sub(r"[\W_]+", " ", value.casefold()).split())
+
+
+def list_news(user_id=1):
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT n.*, COALESCE(s.is_read, 0) AS reader_is_read,
+                      COALESCE(s.is_saved, 0) AS reader_is_saved
+               FROM news_items n LEFT JOIN news_user_state s ON s.item_id=n.id AND s.user_id=?
+               WHERE n.user_id=1
+               ORDER BY CASE WHEN n.published_at='' THEN n.first_seen ELSE n.published_at END DESC,
+                        n.id DESC""",
+            (user_id,),
+        ).fetchall()
+        items = [dict(row) for row in rows]
+        for item in items:
+            item["is_read"] = item.pop("reader_is_read")
+            item["is_saved"] = item.pop("reader_is_saved")
+            item["coverage"] = json.loads(item.pop("coverage_json") or "[]")
+        return items
+
+
+def update_news_state(item_id, fields, user_id=1):
+    if not isinstance(fields, dict):
+        raise ValueError("News state must be an object.")
+    changes = {key: int(value) for key, value in fields.items()
+               if key in {"is_read", "is_saved"} and isinstance(value, bool)}
+    if not changes or len(changes) != len(fields):
+        raise ValueError("News state must include a boolean read or saved value.")
+    with connect() as conn:
+        if not conn.execute("SELECT 1 FROM news_items WHERE id=? AND user_id=1", (item_id,)).fetchone():
+            raise KeyError(item_id)
+        columns = ["is_read", "is_saved"]
+        row = conn.execute(
+            "SELECT is_read, is_saved FROM news_user_state WHERE item_id=? AND user_id=?",
+            (item_id, user_id),
+        ).fetchone()
+        state = {key: (row[key] if row else 0) for key in columns}
+        state.update({key: int(value) for key, value in fields.items()})
+        conn.execute(
+            """INSERT INTO news_user_state (user_id, item_id, is_read, is_saved) VALUES (?,?,?,?)
+               ON CONFLICT (user_id, item_id) DO UPDATE SET
+               is_read=excluded.is_read, is_saved=excluded.is_saved""",
+            (user_id, item_id, state["is_read"], state["is_saved"]),
+        )
+
+
+def record_news_source_check(source_id, source, found, new, error="", user_id=1):
+    with connect() as conn:
+        conn.execute(
+            """INSERT INTO news_source_state (user_id, source_id, source, checked_at, error, found, new)
+               VALUES (?,?,?,?,?,?,?)
+               ON CONFLICT (user_id, source_id) DO UPDATE SET
+                 source=excluded.source, checked_at=excluded.checked_at, error=excluded.error,
+                 found=excluded.found, new=excluded.new""",
+            (user_id, source_id, source, now(), error, found, new),
+        )
+
+
+def list_news_source_state(user_id=1):
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM news_source_state WHERE user_id=? ORDER BY source",
+            (user_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 # ---------------------------------------------------------------- applications
@@ -237,6 +706,8 @@ def set_status(job_id, status, defaults=None, user_id=1):
 
 
 def update_application(app_id, fields, user_id=1):
+    if not isinstance(fields, dict):
+        raise ValueError("Application updates must be an object.")
     with connect() as conn:
         row = conn.execute("SELECT * FROM applications WHERE id=? AND user_id=?",
                            (app_id, user_id)).fetchone()
@@ -310,8 +781,8 @@ def save_prep_answer(job_type, question_id, a_fi, a_en, user_id=1):
 def list_applications(user_id=1):
     with connect() as conn:
         rows = conn.execute("""
-            SELECT a.*, j.title, j.company, j.location, j.url, j.deadline, j.contact_name,
-                   j.contact_phone
+            SELECT a.*, j.title, j.company, j.location, j.url, j.deadline, j.category, j.ad_text,
+                   j.contact_name, j.contact_phone
             FROM applications a JOIN jobs j ON j.id = a.job_id
             WHERE a.user_id = ? ORDER BY a.updated_at DESC""", (user_id,)).fetchall()
         return [dict(r) for r in rows]

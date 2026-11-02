@@ -1,5 +1,5 @@
 [Unit]
-Description=JobDesk: pull the cv repo every 10 minutes
+Description=Woodesk: pull the CV repository every 10 minutes
 
 [Timer]
 OnBootSec=1min

@@ -1,5 +1,5 @@
 [Unit]
-Description=JobDesk: daily database backup (14 days kept)
+Description=Woodesk: daily database backup (14 days kept)
 
 [Service]
 Type=oneshot

@@ -1,5 +1,5 @@
 [Unit]
-Description=JobDesk: pull the public cv repo (new roles and facts.json)
+Description=Woodesk: pull the public CV repository (new roles and facts.json)
 
 [Service]
 Type=oneshot

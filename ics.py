@@ -37,13 +37,15 @@ def _event(uid, day, summary, description="", url=""):
 def build(applications):
     """Deadlines of open applications and interview dates, from today on."""
     today = date.today().isoformat()
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//JobDesk//David Adegbola//EN",
-             "CALSCALE:GREGORIAN", "X-WR-CALNAME:JobDesk"]
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Woodesk//David Adegbola//EN",
+             "CALSCALE:GREGORIAN", "X-WR-CALNAME:Woodesk"]
     for a in applications:
         if a["status"] in ("Rejected", "Offer"):
             continue
         name = " – ".join(x for x in (a["title"], a["company"]) if x)
-        contact = a["contact"] or " ".join(x for x in (a["contact_name"], a["contact_phone"]) if x)
+        contact = a.get("contact") or " ".join(
+            x for x in (a.get("contact_name", ""), a.get("contact_phone", "")) if x
+        )
         if a["deadline"] and a["deadline"] >= today:
             lines += _event(f"deadline-{a['job_id']}", a["deadline"], f"Deadline: {name}",
                             f"Status: {a['status']}. CV: {a['cv_role'] or '-'}", a["url"])

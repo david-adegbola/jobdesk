@@ -5,7 +5,7 @@ and blockers.yaml), filled in with the job's title and contact. Draft answers th
 facts in CV-RULES.md; answers David edits are saved per job type in the database (db.py) and
 replace the drafts for every job of that type.
 
-The templates are a small YAML subset, read here so JobDesk stays standard-library only:
+The templates are a small YAML subset, read here so Woodesk stays standard-library only:
 top-level "key: value" lines and lists of "- key: value" items, one value per line, optionally quoted.
 """
 

@@ -5,9 +5,10 @@ function card(a, roles, statuses, reload) {
   const input = (name, label, type = "text") =>
     h("label", { class: "field" }, label, f[name] = h("input", { type, value: a[name] || "" }));
   const out = h("div");
+  const cv = roles.find(role => role.slug === a.cv_role);
   const meta = [
     a.company || a.location ? ["Employer", [a.company, a.location].filter(Boolean).join(" · ")] : null,
-    a.cv_role ? ["CV", a.employer_link ? h("a", { href: a.employer_link, target: "_blank", rel: "noopener" }, a.cv_role) : a.cv_role] : null,
+    a.cv_role ? ["CV", cv?.title || a.cv_role] : null,
     a.date_applied ? ["Applied", a.date_applied] : null,
     a.contact ? ["Contact", a.contact] : null,
   ].filter(Boolean);
@@ -20,8 +21,6 @@ function card(a, roles, statuses, reload) {
       h("strong", null, a.overdue ? "Overdue: " : "Next: "), a.next_action || "(no action)",
       a.next_action_date ? ` · ${a.next_action_date}` : "") : "",
     a.follow_up ? h("div", { class: "reminder" }, a.follow_up) : "",
-    a.status === "Applied" || a.status === "Interview"
-      ? h("a", { class: "prep-link", href: `#/prep?job=${a.job_id}` }, "Prep: call script and answers") : "",
     h("label", { class: "move" }, "Move to",
       h("select", { class: "status", "data-status": a.status, "aria-label": `Status for ${a.title}`, onchange: async e => {
           await api(`/api/applications/${a.id}`, { method: "POST", body: { status: e.target.value } }); reload();
@@ -36,7 +35,7 @@ function card(a, roles, statuses, reload) {
         input("date_applied", "Date applied", "date"),
         h("label", { class: "field" }, "CV used",
           f.cv_role = h("select", null, h("option", { value: "" }, "—"),
-            roles.map(r => h("option", { value: r.slug, selected: r.slug === a.cv_role }, r.slug)))),
+            roles.map(r => h("option", { value: r.slug, selected: r.slug === a.cv_role }, r.title)))),
         input("employer_link", "Employer link sent", "url"),
         input("contact", "Contact"),
         h("label", { class: "field" }, "Notes", f.notes = h("textarea", null, a.notes || "")),

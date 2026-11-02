@@ -1,7 +1,7 @@
 """Facts about David, read from facts.json in the cv repo.
 
 facts.json is generated there from CV-RULES.md (the authority) by `python3 site/facts.py`, and the
-cv repo's GitHub Action fails if the two differ. JobDesk only reads the JSON.
+CV repo's GitHub Action fails if the two differ. Woodesk only reads the JSON.
 """
 
 import json

@@ -1,50 +1,73 @@
-# JobDesk
+# Woodesk
 
-David's private job dashboard. It finds jobs on Jobly, tracks applications, matches each job to the
-best CV and writes the prompt for the next tailored CV.
-
-This repo is **private**. The CVs live in the public [cv repo](https://github.com/david-adegbola/cv),
-and JobDesk only reads from it: the `roles/` folders (titles, keywords, languages) and `facts.json`
-(name, contact details, what David does and doesn't hold). It runs none of the cv repo's code and
-never writes to it. A new CV pushed to the cv repo shows up here on the next pull.
+A multi-user forestry careers portal for students, researchers, forest owners and professionals.
+Members share forestry opportunities and news, while CVs, applications and recommendation
+preferences stay private to each account. New accounts are invitation-only.
 
 Python 3 standard library, SQLite and plain HTML/CSS/JS: nothing to install.
 
 ## Tests
 
-Run `python3 -m unittest discover -s tests -v`. Database tests use temporary SQLite files and
-exercise data isolation across 100 users; the HTTP API tests use only a local test server.
+Run `python3 -m unittest discover -s tests -v`. Tests use temporary SQLite files and a local HTTP
+server; they cover authentication, ownership boundaries, forestry filtering and API behavior.
 
 ## Pages
 
-- **Jobs:** "Check for new jobs" reads Jobly's Finland-wide category pages, waiting 10 s between
-  requests as Jobly's robots.txt asks. "Add job manually" is for jobs from anywhere else. Each job
-  shows a 0–100 **Match** with the matched words, red **Blockers** (what the ad asks that David
-  doesn't have yet), the **CV** to send and its **Status**.
-- **Tracker:** Saved / Applied / Interview / Offer / Rejected. Each card holds the date applied, CV,
+- **For you:** a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
+- **Jobs:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry category pages, waiting 10 s between
+  requests as Jobly's robots.txt asks. It also checks the Finnish forestry listings from
+  [Metsälehti](https://www.metsalehti.fi/tyopaikat/),
+  [Metsähallitus](https://metsa.rekrytointi.com/paikat/?o=A_LOJ&list=2),
+  [Metsäkeskus](https://www.metsakeskus.fi/fi/tietoa-meista/toihin-metsakeskukseen/avoimet-tyopaikat),
+  [Maanmittauslaitos](https://www.maanmittauslaitos.fi/tietoa-maanmittauslaitoksesta/organisaatio/uramahdollisuudet/avoimet-tyopaikat),
+  [Metsä Group](https://www.metsagroup.com/fi/ura-metsassa/toissa-metsassa/avoimet-tyopaikat/),
+  [Duunitori's Metsäala search](https://duunitori.fi/tyopaikat?haku=mets%C3%A4ala),
+  [Duunitori's Joensuu search](https://duunitori.fi/tyopaikat/alue/joensuu?haku=mets%C3%A4ala),
+  [University of Eastern Finland](https://www.uef.fi/fi/avoimet-tyopaikat),
+  [Luke](https://www.luke.fi/fi/tietoa-lukesta/ura-lukessa),
+  [UPM](https://upm.wd103.myworkdayjobs.com/fi-FI/Careers) and
+  [Stora Enso](https://www.storaenso.com/fi-fi/careers/open-positions). RSS descriptions are checked
+  as well as titles, and postings are filtered for forestry, forest bioeconomy, natural resources,
+  forest-data and geospatial/GIS-related terms.
+  RSS descriptions are saved for matching. All results and community submissions are filtered for
+  forestry, forest bioeconomy, natural resources, forest data and geospatial/GIS-related terms.
+  Community listings are shared, so only public opportunity details should be entered. Older
+  non-forestry jobs may remain stored from the previous single-user setup, but members only see
+  forestry-related listings. Each job
+  shows a 0–100 **Match** against the member's own CVs, the matched words and that member's private
+  application status. Administrators refresh shared feeds.
+- **News:** a forestry and forest-bioeconomy news desk focused on Finland and Joensuu/North Karelia,
+  with research, industry, policy, climate/nature, markets and forest-tech coverage. Refreshes
+  Finnish-language feeds from [Luke](https://www.luke.fi/fi/feed),
+  [Metsäteollisuus ry](https://metsateollisuus.fi/feed/) and
+  [Tornator](https://www.tornator.fi/feed/), plus Finnish, regional, EU-policy, forest-tech and
+  European Forest Institute RSS searches. Search and filter by topic, read status, saved items and
+  date; reading-list state is private and persists. Similar headlines published within three days
+  are grouped with links to corroborating coverage. Results use source-provided RSS summaries and
+  transparent keyword matching, not generated analysis; open each publisher for the full article.
+  Refresh is manual and respects source-specific 30–60-minute intervals; source-level errors are
+  shown.
+- **Tracker:** Saved / Applied / Interview / Offer / Rejected, private to the signed-in member. Each card holds the date applied, CV,
   link sent, contact, notes and the next action. Overdue actions are red; "Applied" with no change
   for 5 days shows a `Call <contact>` reminder. Deadlines and interviews export as `.ics`.
-- **CVs:** every role with its language (fi-first, en-first or en-only, from its `job.md`), its PDF
-  links (the file to send first), employer link (copy button), last update and how many applications
-  used it. On the Jobs page, "Use CV" marks roles that open in English ("EN first", "EN only").
-- **New CV prompt:** pick a job or paste an ad. It asks what your facts don't answer, then writes the
-  Claude Code prompt for the cv repo. Its Language choice (en-first for ads written in English,
-  otherwise fi-first) sets the role's language, the emails and the commit message.
-- **Prep:** for one job (the "Prep" link on the Jobs page, and on tracker cards at Applied or
-  Interview): a call script in Finnish with the English underneath ("Copy call script"), 8–10 likely
-  questions with draft answers, an honest answer for each of the job's blockers, and questions to ask.
-  No AI: the templates are in `prep/` (one file per job type), with drafts built only from the
-  CV-RULES.md facts. Answers you edit are saved per job type and reused for the next job. "Print"
-  gives a clean sheet.
-- **Insights:** the most common blockers (what to learn next) and the funnel per CV.
+- **My CVs:** create multiple private Finnish or English CVs with profile, education, experience,
+  skills, research/projects, certifications, languages and links. Preview, edit, copy or delete a CV;
+  print it or choose **Save as PDF** in the browser's print dialog. On startup, Woodesk imports the
+  administrator's existing Finnish and English role CVs from the configured CV repository once,
+  including forestry, industrial, IT, sales, trainee and warehouse versions. These are editable text
+  copies stored only in the administrator's account.
+- **Account:** change your password, download your private data and sign out. Administrators can
+  create single-use, seven-day invitation codes to onboard classmates.
 
 ## Where it runs
 
 **Server (the main copy).** An Oracle Cloud Always Free Ubuntu server at
-`https://<server-ip-with-dashes>.sslip.io`, behind a login. Use it from any phone or computer.
+`https://<server-ip-with-dashes>.sslip.io`, behind an application account. Use it from any phone or
+computer.
 
-**Mac (optional).** `python3 server.py` opens http://localhost:8765. It reads `../CV` and keeps its
-own `data/jobdesk.db`, separate from the server's, so treat it as a test copy.
+**Mac (optional).** First run `python3 server.py --provision-admin` to set the local administrator
+account, then `python3 server.py` to open http://localhost:8765. Its `data/jobdesk.db` is separate
+from the server's, so treat it as a test copy.
 
 Paths, host and port come from environment variables; see `config.py`.
 
@@ -64,26 +87,42 @@ Paths, host and port come from environment variables; see `config.py`.
    ```bash
    deploy/deploy.sh ubuntu@<ip> --setup
    ```
-   It installs Python, git, SQLite and Caddy, opens the firewall, clones the cv repo, asks for a
-   login name and a password (16+ characters; use a password manager), and starts everything. It
-   prints the address at the end. The HTTPS certificate is fetched on the first visit.
+   It installs Python, git, SQLite and Caddy, opens the firewall, clones the public CV repository,
+   configures HTTPS and starts the app. It prints the address at the end. The HTTPS certificate is
+   fetched on the first visit.
 5. **Copy your data up**, once:
    ```bash
    deploy/upload-data.sh ubuntu@<ip>
    ```
-   From then on, use the server copy.
+   The upload provisions the existing owner account without dropping existing tracker data. Use the
+   email/password you set to sign in, then create invitation codes from **Account**. From then on,
+   use the server copy.
 
 To use your own domain instead of sslip.io, point its DNS at the server's IP, then run:
 `ssh -t ubuntu@<ip> sudo JOBDESK_DOMAIN=jobs.example.com bash /srv/jobdesk/app/deploy/install.sh`.
 If sslip.io's certificate ever fails (Let's Encrypt limits shared domains), a free DuckDNS name
 works the same way.
 
+### Migrating an existing server
+
+Deploy the new code normally; the installer removes Caddy Basic Auth and enables Woodesk accounts.
+Then set credentials on the existing owner record without replacing the server database:
+
+```bash
+ssh -t ubuntu@<ip> sudo -u jobdesk env JOBDESK_DATA=/srv/jobdesk/data JOBDESK_CV_REPO=/srv/jobdesk/cv \
+  /usr/bin/python3 /srv/jobdesk/app/server.py --provision-admin
+```
+
+This preserves existing user 1 and its tracker data. Use `upload-data.sh` only when intentionally
+copying a database from your Mac; uploading with `--replace` overwrites all server accounts, CVs,
+applications and invitation records with the local database.
+
 ## Day to day
 
 | What | How |
 |---|---|
 | Ship a code change | commit, then `deploy/deploy.sh ubuntu@<ip>` (only committed files are sent) |
-| Change the password | `deploy/deploy.sh ubuntu@<ip> --setup` (asks again; keeps the data) |
+| Change your password | Sign in, then use **Account → Change password** |
 | Download a backup to the Mac | `deploy/backup.sh ubuntu@<ip>` → `data/backups/` |
 | See the logs | `ssh ubuntu@<ip> journalctl -u jobdesk -n 50` |
 
@@ -92,20 +131,17 @@ What runs on the server (`deploy/systemd/`):
 - `jobdesk.service`: the app as the `jobdesk` user, on 127.0.0.1:8765, restarted if it stops.
 - `jobdesk-pull.timer`: `git pull` of the cv repo every 10 minutes.
 - `jobdesk-backup.timer`: a copy of the database every day in `/srv/jobdesk/backups`, 14 kept.
-- Caddy (`deploy/Caddyfile`): HTTPS, the login, `noindex` and other security headers.
-
-"Build PDFs" on the CVs page needs `pdflatex`, which the server doesn't have. The cv repo's GitHub
-Action builds the PDFs anyway.
+- Caddy (`deploy/Caddyfile`): HTTPS, `noindex` and security headers; Woodesk handles accounts.
 
 ## Privacy
 
-Job ads, recruiter names and numbers, and the tracker live in `data/jobdesk.db` (git-ignored here
-too) and on the server in `/srv/jobdesk/data`, readable only by the `jobdesk` user. Nothing is
-published. The whole site is behind the login, sends `noindex`, and refuses changes sent from other
-websites. Oracle hosts the server, so the data is on their hardware.
-
-All data access is in `db.py`. Every table has a `user_id` column (default 1), so a later version
-could support more users.
+Job ads, recruiter names and numbers, the tracker, and News reading-list state live in
+`data/jobdesk.db` (git-ignored here too) and on the server in `/srv/jobdesk/data`, readable only by
+the `jobdesk` user. Passwords are PBKDF2-hashed; sessions use HttpOnly, SameSite cookies and HTTPS
+Secure cookies on the server. CVs, applications, preferences and news read/save state are scoped to
+each user. Forestry listings and news are shared. Invitation codes are one-time, hashed at rest and
+expire after seven days. The site sends `noindex` and refuses cross-site state changes. Oracle hosts
+the server, so the data is on their hardware.
 
 ## Layout
 
@@ -114,7 +150,8 @@ jobdesk/
 ├── server.py        HTTP server and API routes
 ├── config.py        paths, host, port (environment variables)
 ├── db.py            SQLite: users, checks, jobs, applications
-├── scraper.py       Jobly reader
+├── scraper.py       Jobly, forestry-sector and Workday job feeds
+├── news.py          Forestry news RSS feeds and transparent topic matching
 ├── match.py         match score, blockers, employer and PDF links
 ├── prompt.py        new-CV questions and prompt
 ├── prep.py          Prep page: reads prep/*.yaml, fills in the job, applies saved answers

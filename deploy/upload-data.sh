@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copies data/jobdesk.db from this Mac to the server. Use once, after the first deploy.sh --setup.
+# Copies data/jobdesk.db from this Mac and provisions its existing owner account. Use after setup.
 # It refuses to overwrite data already on the server unless you add --replace.
 #
 #   deploy/upload-data.sh ubuntu@<server-ip> [--replace]
@@ -14,10 +14,12 @@ if ssh "$HOST" sudo test -s /srv/jobdesk/data/jobdesk.db && [ "${2:-}" != "--rep
 fi
 sqlite3 "$DB" "PRAGMA wal_checkpoint(TRUNCATE);" >/dev/null
 scp -q "$DB" "$HOST:/tmp/jobdesk-upload.db"
-ssh "$HOST" '
+ssh -t "$HOST" '
   set -e
   sudo systemctl stop jobdesk
   sudo install -o jobdesk -g jobdesk -m 600 /tmp/jobdesk-upload.db /srv/jobdesk/data/jobdesk.db
   sudo rm -f /tmp/jobdesk-upload.db /srv/jobdesk/data/jobdesk.db-wal /srv/jobdesk/data/jobdesk.db-shm
+  sudo -u jobdesk env JOBDESK_DATA=/srv/jobdesk/data JOBDESK_CV_REPO=/srv/jobdesk/cv \
+    /usr/bin/python3 /srv/jobdesk/app/server.py --provision-admin
   sudo systemctl start jobdesk'
-echo "Uploaded. The server copy is now the one to use."
+echo "Data uploaded and the administrator account is ready. Sign in, then create invitations in Account."

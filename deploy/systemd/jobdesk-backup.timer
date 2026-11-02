@@ -1,5 +1,5 @@
 [Unit]
-Description=JobDesk: back up the database every day
+Description=Woodesk: back up the database every day
 
 [Timer]
 OnCalendar=daily

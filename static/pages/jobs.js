@@ -77,14 +77,12 @@ function addForm(state, onAdded) {
     h("label", { class: "field" }, "Type",
       f.category = h("select", { name: "category" }, h("option", { value: "" }, "Work it out from the text"),
         state.job_types.map(t => h("option", { value: t }, t)))),
-    field("contact_name", "Contact name"),
-    field("contact_phone", "Contact phone", { type: "tel" }),
-    h("label", { class: "field", style: "grid-column: 1 / -1" }, "Ad text (paste it, for Match and Blockers)",
+    h("label", { class: "field", style: "grid-column: 1 / -1" }, "Public job description (for CV matching)",
       f.ad_text = h("textarea", { name: "ad_text" })),
     h("div", { class: "row" }, h("button", { type: "submit" }, "Add job")));
   return h("details", { class: "card" },
     h("summary", null, "Add job manually"),
-    h("p", { class: "muted small" }, "For jobs from Duunitori, Työmarkkinatori, Indeed, LinkedIn or email alerts."),
+    h("p", { class: "muted small" }, "Community listings are visible to everyone. Share only public forestry or forest-bioeconomy opportunities; don't paste private contact details."),
     form, out);
 }
 
@@ -93,10 +91,11 @@ register({
   async render(main) {
     const state = await getState();
     const status = h("span", { class: "muted", role: "status" });
-    const checkBtn = h("button", { onclick: startCheck }, "Check for new jobs");
+    const checkBtn = state.user.is_admin ? h("button", { onclick: startCheck }, "Check for new forestry jobs") : null;
     const listArea = h("div");
     main.append(h("h1", null, "Jobs"),
-      h("div", { class: "row" }, checkBtn, status),
+      h("p", { class: "muted" }, "Shared Finland-wide forestry, forest-bioeconomy and forest-data opportunities. Applications and CV matches are private to your account."),
+      h("div", { class: "row" }, checkBtn || "", status),
       addForm(state, load), listArea);
 
     async function startCheck() {
@@ -107,13 +106,13 @@ register({
       const s = await api("/api/scrape");
       checkBtn.disabled = s.running;
       status.textContent = s.running
-        ? `${s.message} (${s.done}/${s.total} categories; Jobly asks for 10 s between pages)`
+        ? `${s.message} (${s.done}/${s.total} sources; Jobly asks for 10 s between pages)`
         : (s.result ? `Finished: ${s.result.found} jobs, ${s.result.new} new.` : "");
       if (s.running) setTimeout(poll, 3000);
       else if (s.result) load();
     }
 
-    const filters = { status: store("jobs.status") || "", blocked: store("jobs.blocked") === "1" };
+    const filters = { status: store("jobs.status") || "" };
     let view = loadView();          // sort + column filters, saved as one preference
     let typeOrder = loadTypeOrder(state.job_types);
     let typeOrderOpen = false;
@@ -125,7 +124,7 @@ register({
       jobs = data.jobs;
       const c = data.latest_check;
       const newCount = jobs.filter(j => j.is_new).length;
-      if (!checkBtn.disabled) status.textContent = c
+      if (!checkBtn?.disabled) status.textContent = c
         ? `Last checked: ${c.finished_at.replace("T", " ")}, ${newCount} new` + (c.error ? ` (error: ${c.error})` : "")
         : "Not checked yet.";
       draw();
@@ -135,7 +134,6 @@ register({
     function passes(j, skip) {
       const d = j.days_left;
       return (!filters.status || (filters.status === "none" ? !j.status : j.status === filters.status)) &&
-        (!filters.blocked || !j.blockers.length) &&
         (!view.posted || (j.posted && j.posted >= daysAgo(+view.posted))) &&
         (view.deadline !== "none" || !j.deadline) &&
         (!(+view.deadline) || (d != null && d >= 0 && d <= +view.deadline)) &&
@@ -190,11 +188,9 @@ register({
           oninput: e => { view.minMatch = +e.target.value; matchOut.textContent = view.minMatch; saveView(); update(); } }), matchOut),
         h("label", { class: "check" }, "Status ", sel(filters.status, v => { filters.status = v; store("jobs.status", v); },
           [["", "All"], ["none", "Not saved"], ...state.statuses.map(s => [s, s])])),
-        h("label", { class: "check" }, h("input", { type: "checkbox", checked: filters.blocked,
-          onchange: e => { filters.blocked = e.target.checked; store("jobs.blocked", e.target.checked ? "1" : "0"); update(); } }), "Hide blocked"),
         h("button", { class: "secondary", onclick: () => {
-          view = defaultView(); filters.status = ""; filters.blocked = false;
-          saveView(); store("jobs.status", ""); store("jobs.blocked", "0"); draw();
+          view = defaultView(); filters.status = "";
+          saveView(); store("jobs.status", ""); draw();
         } }, "Reset")));
       update();
     }
@@ -262,16 +258,10 @@ register({
             try { await api(`/api/jobs/${j.id}/fetch`, { method: "POST" }); load(); }
             catch (err) { e.target.textContent = err.message; }
           } }, "read full ad")) : ""),
-        h("td", null, j.blockers.map(b => h("span", { class: "tag bad" }, b))),
         h("td", null, !j.use_cv ? "" : !j.cv_ready
-            ? h("span", { class: "tag warn", title: `roles/${j.use_cv} doesn't exist in the cv repo yet` }, "CV not ready")
-            : [h("a", { href: j.use_cv_link, target: "_blank", rel: "noopener" }, j.use_cv),
-               j.use_cv_language && j.use_cv_language !== "fi-first"
-                 ? h("div", { class: "muted small", title: `The employer page and the PDF to send open in English (${j.use_cv_language})` },
-                     j.use_cv_language === "en-only" ? "EN only" : "EN first") : ""],
-          h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}` }, "CV prompt")),
-          h("div", null, h("a", { class: "small", href: `#/prompt?job=${j.id}&kind=email` }, "Email prompt")),
-          h("div", null, h("a", { class: "small", href: `#/prep?job=${j.id}` }, "Prep"))),
+            ? ""
+            : h("span", null, j.use_cv, h("div", { class: "muted small" }, j.use_cv_language.toUpperCase())),
+          h("div", null, h("a", { class: "small", href: "#/cvs" }, "Create or edit your CV"))),
         h("td", null, h("select", { class: "status", "data-status": j.status || "", "aria-label": `Status for ${j.title}`, onchange: async e => {
             await api(`/api/jobs/${j.id}/status`, { method: "POST", body: { status: e.target.value } });
             load();
@@ -279,18 +269,17 @@ register({
 
       tableArea.replaceChildren(
         h("p", { class: "muted small" }, `${shown.length} of ${jobs.length} jobs. ` +
-          "Match and Blockers read the title, company and place, plus the ad text when there is one. " +
-          "For Jobly jobs, “read full ad” fetches the ad page for a better check."),
+          "Match compares the listing with skills and experience in your own CVs. For Jobly jobs, “read full ad” fetches the description to improve matching."),
         h("div", { class: "scroll" }, h("table", null,
-          h("thead", null, h("tr", null, ["Job", "Company", "Posted", "Deadline", "Type", "Match", "Blockers", "Use CV", "Status"].map(header))),
-          h("tbody", null, rows.length ? rows : h("tr", null, h("td", { colspan: 9, class: "empty" },
-            jobs.length ? "No jobs match these filters." : "No jobs yet. Press “Check for new jobs” or add one by hand."))))));
+          h("thead", null, h("tr", null, ["Job", "Company", "Posted", "Deadline", "Type", "Match", "Use CV", "Status"].map(header))),
+          h("tbody", null, rows.length ? rows : h("tr", null, h("td", { colspan: 8, class: "empty" },
+            jobs.length ? "No jobs match these filters." : "No forestry jobs loaded yet. Refresh the listings or share a public opportunity."))))));
 
       const again = focusKey && [...listArea.querySelectorAll("[data-focus]")].find(el => el.dataset.focus === focusKey);
       if (again) again.focus();
     }
 
     await load();
-    poll();
+    if (state.user.is_admin) poll();
   },
 });

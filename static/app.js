@@ -1,10 +1,10 @@
-// JobDesk entry point: load the pages (each registers itself, in nav order), then start.
+// Woodesk entry point: load the pages (each registers itself, in nav order), then start.
 import { start } from "./core.js";
+import "./pages/home.js";
 import "./pages/jobs.js";
+import "./pages/news.js";
 import "./pages/tracker.js";
 import "./pages/cvs.js";
-import "./pages/prompt.js";
-import "./pages/prep.js";
-import "./pages/insights.js";
+import "./pages/account.js";
 
 start();

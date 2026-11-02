@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copies the last commit of this repo to the server and restarts JobDesk. Run from your Mac:
+# Copies the last commit of this repo to the server and restarts Woodesk. Run from your Mac:
 #
 #   deploy/deploy.sh ubuntu@<server-ip> --setup   first time (packages, login, services)
 #   deploy/deploy.sh ubuntu@<server-ip>           after you commit a change

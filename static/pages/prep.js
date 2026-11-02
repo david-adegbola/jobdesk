@@ -106,7 +106,7 @@ register({
 
         h("h2", null, "Questions to ask them"),
         h("ol", { class: "script card" }, p.ask.map(a => h("li", null, h("p", { class: "fi" }, a.fi), h("p", { class: "en" }, a.en))))].flat());
-      document.title = `Prep: ${j.title} · JobDesk`;
+      document.title = `Prep: ${j.title} · Woodesk`;
     }
     await load();
   },
