@@ -63,7 +63,7 @@ LOGIN_WINDOW = 15 * 60
 LOGIN_LIMIT = 10
 CV_CONTENT_FIELDS = {
     "target_role", "full_name", "email", "phone", "location", "summary", "education",
-    "experience", "skills", "projects", "certifications", "languages", "links",
+    "experience", "skills", "projects", "hobbies", "certifications", "languages", "links",
 }
 
 
@@ -120,7 +120,7 @@ def cv_roles(user_id):
         source = " ".join(
             [cv["title"], content.get("target_role", ""), content.get("summary", ""),
              content.get("skills", ""), content.get("education", ""), content.get("experience", ""),
-             content.get("projects", ""), content.get("certifications", "")]
+             content.get("projects", ""), content.get("hobbies", ""), content.get("certifications", "")]
         )
         words = {
             word: word for word in match.tokens(source)
@@ -289,6 +289,28 @@ def api_list_cvs(h, m):
     return {"cvs": db.list_cvs(h.user["id"])}
 
 
+@route("GET", "/api/cvs/example")
+def api_cv_example(h, m):
+    return {"cv": cv_latex.example_cv()}
+
+
+@route("GET", "/api/cvs/example.pdf")
+def api_cv_example_pdf(h, m):
+    try:
+        pdf = cv_latex.build_pdf(cv_latex.example_cv())
+    except FileNotFoundError:
+        return h.error(
+            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+        )
+    except cv_latex.PdfBuildError as error:
+        return h.error(422, str(error))
+    return (
+        pdf,
+        "application/pdf",
+        {"Content-Disposition": 'inline; filename="Woodesk-CV-example.pdf"'},
+    )
+
+
 @route("GET", r"/api/cvs/(\d+)/formatted\.pdf")
 def api_build_user_cv(h, m):
     cv_id = int(m.group(1))
@@ -308,7 +330,7 @@ def api_build_user_cv(h, m):
         filename = cv_latex.safe_filename(cv["title"])
         return (
             pdf, "application/pdf",
-            {"Content-Disposition": f'attachment; filename="{filename}"'},
+            {"Content-Disposition": f'inline; filename="{filename}"'},
         )
     try:
         pdf = cv_latex.build_pdf(cv)
@@ -321,7 +343,7 @@ def api_build_user_cv(h, m):
     filename = cv_latex.safe_filename(cv["title"])
     return (
         pdf, "application/pdf",
-        {"Content-Disposition": f'attachment; filename="{filename}"'},
+        {"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 

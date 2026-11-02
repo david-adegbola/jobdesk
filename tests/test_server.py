@@ -164,6 +164,7 @@ class JobApiTests(unittest.TestCase):
 
         cv = {"title": "Forestry CV", "language": "en", "content": {
             "full_name": "Second User", "skills": "Forest research",
+            "hobbies": "Hiking",
         }}
         status, created = self.request("POST", "/api/cvs", cv, headers=headers)
         self.assertEqual(status, 200)
@@ -174,6 +175,7 @@ class JobApiTests(unittest.TestCase):
         status, own_cvs = self.request("GET", "/api/cvs", headers=headers)
         self.assertEqual(len(own_cvs["cvs"]), 1)
         self.assertEqual(own_cvs["cvs"][0]["id"], created["id"])
+        self.assertEqual(own_cvs["cvs"][0]["content"]["hobbies"], "Hiking")
         status, other_cvs = self.request("GET", "/api/cvs", headers={"Cookie": self.cookie})
         self.assertEqual(other_cvs["cvs"], [])
 
@@ -182,7 +184,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(db.get_cv(created["id"], second_user)["content"]["full_name"], "Second User")
 
-    def test_imported_cv_download_uses_original_pdf_and_stays_owner_private(self):
+    def test_imported_cv_view_uses_original_pdf_and_stays_owner_private(self):
         cv_repo = Path(self.temp_dir.name) / "cv-repo"
         role_dir = cv_repo / "roles" / "forest-role"
         role_dir.mkdir(parents=True)
@@ -213,7 +215,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(headers["Content-Type"], "application/pdf")
         self.assertEqual(
             headers["Content-Disposition"],
-            'attachment; filename="Forest-analyst-English.pdf"',
+            'inline; filename="Forest-analyst-English.pdf"',
         )
         build.assert_not_called()
 
@@ -244,7 +246,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(error["error"], "CV not found.")
 
-    def test_imported_cv_download_reports_missing_original_pdf(self):
+    def test_imported_cv_view_reports_missing_original_pdf(self):
         cv_repo = Path(self.temp_dir.name) / "cv-repo"
         role_dir = cv_repo / "roles" / "forest-role"
         role_dir.mkdir(parents=True)
@@ -272,7 +274,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(pdf, b"%PDF-built CV")
         self.assertEqual(headers["Content-Type"], "application/pdf")
-        self.assertEqual(headers["Content-Disposition"], 'attachment; filename="Forestry-CV.pdf"')
+        self.assertEqual(headers["Content-Disposition"], 'inline; filename="Forestry-CV.pdf"')
         build.assert_called_once()
 
         invite = "formatted-cv-private-invitation"
@@ -288,6 +290,31 @@ class JobApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 404)
         self.assertEqual(error["error"], "CV not found.")
+
+    def test_example_cv_can_be_viewed_and_copied_without_saving_it(self):
+        status, response = self.request("GET", "/api/cvs/example")
+        self.assertEqual(status, 200)
+        example = response["cv"]
+        self.assertEqual(example["content"]["full_name"], "Alex Example")
+        self.assertEqual(db.list_cvs(1), [])
+
+        with patch.object(server.cv_latex, "build_pdf", return_value=b"%PDF-example") as build:
+            status, pdf, headers = self.request(
+                "GET", "/api/cvs/example.pdf", include_headers=True,
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(pdf, b"%PDF-example")
+        self.assertEqual(headers["Content-Type"], "application/pdf")
+        self.assertEqual(
+            headers["Content-Disposition"],
+            'inline; filename="Woodesk-CV-example.pdf"',
+        )
+        build.assert_called_once_with(example)
+        self.assertEqual(db.list_cvs(1), [])
+
+        status, error = self.request("GET", "/api/cvs/example.pdf", headers={"Cookie": ""})
+        self.assertEqual(status, 401)
+        self.assertIn("Sign in", error["error"])
 
     def test_formatted_cv_route_reports_missing_latex_runtime(self):
         cv_id = db.save_cv(1, "Forestry CV", "en", {"full_name": "Admin"})

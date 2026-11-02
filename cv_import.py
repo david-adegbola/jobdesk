@@ -9,7 +9,7 @@ import db
 
 CONTENT_FIELDS = (
     "target_role", "full_name", "email", "phone", "location", "summary", "education",
-    "experience", "skills", "projects", "certifications", "languages", "links",
+    "experience", "skills", "projects", "hobbies", "certifications", "languages", "links",
 )
 
 
@@ -88,7 +88,12 @@ def _plain_text(text):
         + (f" ({_plain_text(args[0]).strip()})" if args[0].startswith(("http:", "https:")) else ""),
     )
     text = _replace_macro(text, "job", 2, lambda args: f"{_plain_text(args[0])} — {_plain_text(args[1])}")
-    text = _replace_macro(text, "sotagrow", 1, lambda _: "")
+    text = _replace_macro(text, "sotagrow", 1, lambda args: f"\nTags: {args[0]}\n")
+    text = re.sub(
+        r"\\begin\{tabular\}\s*\{(?:[^{}]|\{[^{}]*\})*\}",
+        "\n",
+        text,
+    )
     for command in ("textbf", "textit", "textsc", "emph", "cvt"):
         text = _replace_macro(text, command, 1, lambda args: _plain_text(args[0]))
     text = re.sub(r"\\(?:begin|end)\{[^}]+\}", "\n", text)
@@ -151,14 +156,12 @@ def parse_cv(source, path):
         "projects": "projects", "research": "projects", "projects and research": "projects",
         "certifications": "certifications", "certificates": "certifications", "sertifikaatit": "certifications",
         "languages": "languages", "language skills": "languages", "kielitaito": "languages",
-        "links": "links", "hobbies": "projects", "interests": "projects",
+        "links": "links", "hobbies": "hobbies", "interests": "hobbies",
     }
     for heading, body in sections:
         field = section_fields.get(heading)
         if field:
             value = _plain_text(body)
-            if heading in {"hobbies", "interests"} and value:
-                value = f"{heading.capitalize()}: {value}"
             if value:
                 content[field] = "\n".join(filter(None, (content[field], value)))
 

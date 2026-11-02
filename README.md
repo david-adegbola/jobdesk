@@ -50,15 +50,20 @@ server; they cover authentication, ownership boundaries, forestry filtering and 
 - **Tracker:** Saved / Applied / Interview / Offer / Rejected, private to the signed-in member. Each card holds the date applied, CV,
   link sent, contact, notes and the next action. Overdue actions are red; "Applied" with no change
   for 5 days shows a `Call <contact>` reminder. Deadlines and interviews export as `.ics`.
-- **My CVs:** create multiple private Finnish or English CVs with profile, education, experience,
-  skills, research/projects, certifications, languages and links. Edit, copy or delete a CV, then
-  download its single formatted PDF using the same LaTeX document layout and shared style as the
+- **My CVs:** preview a fictional two-page CV, then create an editable draft from its structure;
+  the sample is not saved to the account. Create multiple private Finnish or English CVs with
+  profile, education, experience, skills, research/projects, certifications, languages and links.
+  Edit, copy or delete a CV, then
+  view its formatted PDF using the same LaTeX document layout and shared style as the
   original role CVs. On startup, Woodesk imports the administrator's existing Finnish and English
   role CVs from the configured CV repository once, including forestry, industrial, IT, sales, trainee
   and warehouse versions. These are editable text copies stored only in the administrator's account.
   Their download uses the exact original, role-specific PDF compiled from the LaTeX source in the
-  CV repository. New CVs created by members are compiled on the server from their saved data using
-  the shared LaTeX style; those PDFs are not uploaded to the shared CV repository.
+  CV repository. New CVs created by members use that same LaTeX style and document structure:
+  centered name and role, contact header, paragraph summary, labeled education and skills rows,
+  dated experience entries with indented details, optional Hobbies, and the standard References
+  section. Member CV PDFs are compiled on the server from saved data and are not uploaded to the
+  shared repository.
 - **Account:** change your password, download your private data and sign out. Administrators can
   create single-use, seven-day invitation codes to onboard classmates.
 

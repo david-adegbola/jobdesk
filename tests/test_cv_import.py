@@ -39,7 +39,10 @@ class CvImportTests(unittest.TestCase):
         \section{Work Experience}
         \begin{cventry}{2025}{\job{Forest assistant}{Example Oy}}
         Collected field data.
+        \sotagrow{forest-data,field-work}
         \end{cventry}
+        \section{\cvt{hobbies}}
+        Photography and hiking.
         \end{document}
         """
 
@@ -51,9 +54,12 @@ class CvImportTests(unittest.TestCase):
         self.assertEqual(cv["content"]["email"], "alex@example.test")
         self.assertIn("Availability: Weekends", cv["content"]["summary"])
         self.assertIn("Forest data specialist.", cv["content"]["summary"])
+        self.assertNotIn("p0.9", cv["content"]["summary"])
         self.assertIn("MSc, Forestry", cv["content"]["education"])
         self.assertIn("Forest assistant — Example Oy", cv["content"]["experience"])
         self.assertIn("Collected field data.", cv["content"]["experience"])
+        self.assertIn("Tags: forest-data,field-work", cv["content"]["experience"])
+        self.assertEqual(cv["content"]["hobbies"], "Photography and hiking.")
 
     def test_repository_import_is_idempotent_and_admin_only(self):
         repo = Path(self.temp_dir.name) / "cv-repo"

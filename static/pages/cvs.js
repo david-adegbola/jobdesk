@@ -11,23 +11,31 @@ const fields = [
   ["experience", "Experience", "Työkokemus", "textarea"],
   ["skills", "Skills", "Osaaminen", "textarea"],
   ["projects", "Projects and research", "Projektit ja tutkimus", "textarea"],
+  ["hobbies", "Hobbies", "Harrastukset", "textarea"],
   ["certifications", "Certifications", "Sertifikaatit", "textarea"],
   ["languages", "Languages", "Kielitaito", "textarea"],
   ["links", "Links", "Linkit", "textarea"],
 ];
 
-const blankCv = () => ({
-  title: "Forestry CV",
-  language: "en",
-  content: Object.fromEntries(fields.map(([key]) => [key, ""])),
-});
+const fieldGuidance = {
+  summary: "Write in paragraphs and leave a blank line between paragraphs.",
+  education: "One row per qualification: dates: qualification, institution.",
+  experience: "Start each entry with dates, e.g. Aug 2025--Oct 2025: Job title — Employer. Add one detail per line; leave a blank line between entries. Optional final row: Tags: tag-one, tag-two.",
+  skills: "One row per group: label: skills or knowledge.",
+  projects: "Use the same dated entry format as Work Experience.",
+  hobbies: "Optional section, shown after Projects and before References.",
+  certifications: "These appear as a Cards row under Skills.",
+  languages: "These appear as a Languages row under Skills.",
+  links: "One link per row: label: https://example.com",
+};
 
 register({
   id: "cvs", title: "My CVs",
   async render(main) {
     main.append(h("h1", null, "My CVs"),
-      h("p", { class: "muted" }, "Private to your account. Create Finnish or English CVs and download them as PDFs using the original Woodesk LaTeX template."));
+      h("p", { class: "muted" }, "Private to your account. Create Finnish or English CVs and view their formatted PDFs. Use your browser's PDF viewer to download a copy."));
     let cvs = [];
+    let example = null;
     let editor = null;
     const area = h("div");
     const status = h("div", { role: "status" });
@@ -35,7 +43,12 @@ register({
 
     async function refresh() {
       try {
-        cvs = (await api("/api/cvs")).cvs;
+        const [cvList, exampleResult] = await Promise.all([
+          api("/api/cvs"),
+          api("/api/cvs/example"),
+        ]);
+        cvs = cvList.cvs;
+        example = exampleResult.cv;
         editor = null;
         draw();
       } catch (err) {
@@ -49,27 +62,49 @@ register({
         renderEditor();
         return;
       }
-      area.append(h("div", { class: "row cv-actions" },
-        h("button", { onclick: () => { editor = blankCv(); draw(); } }, "Create a CV")));
+      area.append(h("article", { class: "card cv-example" },
+        h("h2", null, "Start with a two-page example"),
+        h("p", null, "Preview a sample CV in the original LaTeX style. Its details are fictional; Create yours opens an editable draft with the same structure. Nothing is saved until you save it."),
+        h("div", { class: "row cv-actions" },
+          h("a", {
+            class: "btn secondary",
+            href: "/api/cvs/example.pdf",
+            target: "_blank",
+            rel: "noopener",
+          }, "View 2-page example"),
+          h("button", { onclick: () => {
+            editor = createEditorState(example, "create");
+            editor.fromExample = true;
+            draw();
+          } }, "Create yours"))));
       if (!cvs.length) {
-        area.append(h("p", { class: "empty" }, "You haven't created a CV yet."));
+        area.append(h("p", { class: "empty" }, "Your saved CVs will appear here."));
         return;
       }
-      area.append(h("div", { class: "grid cv-list" }, ...cvs.map(cv =>
+      area.append(h("h2", null, "Your CVs"),
+        h("div", { class: "grid cv-list" }, ...cvs.map(cv =>
         h("article", { class: "card cv-card" },
           h("h2", null, cv.title),
           h("p", { class: "muted small" }, `${cv.language.toUpperCase()} · Updated ${cv.updated_at || "recently"}`),
           h("p", { class: "row" },
             h("a", {
               href: `/api/cvs/${cv.id}/formatted.pdf`,
-              download: "",
-            }, "Download formatted CV PDF")),
+              target: "_blank",
+              rel: "noopener",
+            }, "View CV")),
+          h("p", { class: "muted small" }, "Edit changes this CV. Make a copy creates a separate CV with the same details."),
           h("div", { class: "row" },
-            h("button", { onclick: () => { editor = { ...cv, content: { ...cv.content } }; draw(); } }, "Edit"),
-            h("button", { class: "secondary", onclick: () => {
-              editor = { ...cv, id: undefined, title: `${cv.title} (copy)`, content: { ...cv.content } };
+            h("button", { onclick: () => {
+              editor = createEditorState(cv, "edit");
               draw();
-            } }, "Copy"),
+            } }, "Edit"),
+            h("button", { class: "secondary", onclick: () => {
+              editor = createEditorState(
+                { ...cv, id: undefined, title: `${cv.title} (copy)` },
+                "copy",
+              );
+              draw();
+            } }, "Make a copy"),
             h("button", { class: "danger secondary", onclick: async () => {
               if (!window.confirm(`Delete "${cv.title}"? This cannot be undone.`)) return;
               try {
@@ -83,6 +118,15 @@ register({
       const current = editor;
       const values = current.content || (current.content = {});
       const controls = {};
+      const returnToList = () => {
+        const changed = controls.title.value.trim() !== current.original.title
+          || controls.language.value !== current.original.language
+          || fields.some(([key]) =>
+            controls[key].value.trim() !== (current.original.content[key] || ""));
+        if (changed && !window.confirm("Discard your unsaved changes and return to My CVs?")) return;
+        editor = null;
+        draw();
+      };
       const form = h("form", { class: "cv-editor", onsubmit: async event => {
         event.preventDefault();
         current.title = controls.title.value.trim();
@@ -90,7 +134,7 @@ register({
         current.content = Object.fromEntries(fields.map(([key]) => [key, controls[key].value.trim()]));
         let saved;
         try {
-          saved = await api(current.id ? `/api/cvs/${current.id}` : "/api/cvs", {
+          saved = await api(current.mode === "edit" ? `/api/cvs/${current.id}` : "/api/cvs", {
             method: "POST",
             body: { title: current.title, language: current.language, content: current.content },
           });
@@ -99,6 +143,12 @@ register({
           return;
         }
         current.id = saved.id;
+        current.mode = "edit";
+        current.original = {
+          title: current.title,
+          language: current.language,
+          content: { ...current.content },
+        };
         status.replaceChildren(message("CV saved."));
         try {
           cvs = (await api("/api/cvs")).cvs;
@@ -108,6 +158,19 @@ register({
           status.replaceChildren(message(`CV saved, but the list could not be refreshed: ${err.message}`, true));
         }
       } },
+      h("div", { class: "row cv-actions" },
+        h("button", { type: "button", class: "secondary", onclick: returnToList }, "Back to My CVs")),
+      h("h2", null, current.mode === "edit"
+        ? `Editing ${current.title}`
+        : current.mode === "copy"
+          ? `Create a copy of ${current.title.replace(/ \(copy\)$/, "")}`
+          : "Create a CV"),
+      current.mode === "copy"
+        ? h("p", { class: "muted" }, "This will be saved as a separate CV; the original will not change.")
+        : "",
+      current.fromExample
+        ? h("p", { class: "muted" }, "This draft starts with fictional sample details. Replace them with your own before saving.")
+        : "",
       h("label", { class: "field" }, "CV title",
         controls.title = h("input", { value: current.title || "", required: true, maxlength: 120 })),
       h("label", { class: "field" }, "Language",
@@ -117,12 +180,29 @@ register({
       ...fields.map(([key, label, , type]) =>
         h("label", { class: "field" }, label,
           controls[key] = type === "textarea"
-            ? h("textarea", { name: key, rows: key === "summary" ? 4 : 6, maxlength: 12000, placeholder: "One item or paragraph per line", value: values[key] || "" })
-            : h("input", { name: key, type, maxlength: 500, value: values[key] || "" }))),
+            ? h("textarea", {
+              name: key,
+              rows: key === "summary" ? 4 : 6,
+              maxlength: 12000,
+              value: values[key] || "",
+            })
+            : h("input", { name: key, type, maxlength: 500, value: values[key] || "" }),
+          fieldGuidance[key] ? h("span", { class: "muted small" }, fieldGuidance[key]) : "")),
       h("div", { class: "row cv-actions" },
-        h("button", { type: "submit" }, "Save CV"),
-        h("button", { type: "button", class: "secondary", onclick: () => { editor = null; draw(); } }, "Cancel")));
+        h("button", { type: "submit" }, current.mode === "edit" ? "Save changes" : "Create CV"),
+        h("button", { type: "button", class: "secondary", onclick: returnToList }, "Back to My CVs")));
       area.append(form);
+    }
+
+    function createEditorState(cv, mode) {
+      const content = Object.fromEntries(fields.map(([key]) => [key, cv.content?.[key] || ""]));
+      const editorState = { ...cv, content, mode };
+      editorState.original = {
+        title: cv.title || "",
+        language: cv.language || "en",
+        content: { ...content },
+      };
+      return editorState;
     }
 
     await refresh();
