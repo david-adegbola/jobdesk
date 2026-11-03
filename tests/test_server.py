@@ -78,13 +78,47 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(listing["jobs"][0]["title"], "Forest data analyst")
         self.assertNotIn("contact_phone", listing["jobs"][0])
 
-    def test_non_forestry_manual_jobs_are_rejected(self):
+    def member_cookie(self):
+        invite = "member-invitation-code"
+        db.create_invitation(1, invite, (datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
+        status, _, headers = self.request("POST", "/api/auth/register", {
+            "name": "Forest Student", "email": "member@example.test",
+            "password": "a-very-long-password", "invite": invite,
+        }, headers={"Cookie": ""}, include_headers=True)
+        self.assertEqual(status, 200)
+        return {"Cookie": headers["Set-Cookie"].split(";", 1)[0]}
+
+    def test_members_cannot_add_non_forestry_jobs(self):
         status, error = self.request("POST", "/api/jobs", {
             "title": "Warehouse worker", "company": "Example employer",
-        })
+        }, headers=self.member_cookie())
         self.assertEqual(status, 400)
         self.assertIn("Only forestry", error["error"])
         self.assertEqual(db.list_jobs(), [])
+
+    def test_admin_personal_jobs_are_hidden_from_members(self):
+        status, created = self.request("POST", "/api/jobs", {
+            "title": "Varastotyöntekijä", "company": "Example employer",
+        })
+        self.assertEqual(status, 200)
+        db.upsert_scraped({"source": "Jobly", "external_id": "1", "url": "", "title": "Asentaja",
+                           "company": "", "location": "", "posted": "", "category": "Industrial"}, None)
+        db.upsert_scraped({"source": "Jobly", "external_id": "2", "url": "", "title": "Metsuri",
+                           "company": "", "location": "", "posted": "", "category": "Forestry"}, None)
+
+        status, admin_view = self.request("GET", "/api/jobs")
+        self.assertEqual(status, 200)
+        personal = {job["title"]: job["category"] for job in admin_view["jobs"] if job["personal"]}
+        self.assertEqual(personal, {"Varastotyöntekijä": "Warehouse", "Asentaja": "Industrial"})
+
+        member = self.member_cookie()
+        status, member_view = self.request("GET", "/api/jobs", headers=member)
+        self.assertEqual([job["title"] for job in member_view["jobs"]], ["Metsuri"])
+        status, state = self.request("GET", "/api/state", headers=member)
+        self.assertEqual(state["job_types"], ["Forestry"])
+        status, _ = self.request("POST", f"/api/jobs/{created['id']}/status", {"status": "Saved"},
+                                 headers=member)
+        self.assertEqual(status, 404)
 
     def test_protected_api_requires_an_account_session(self):
         status, error = self.request("GET", "/api/jobs", headers={"Cookie": ""})

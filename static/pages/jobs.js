@@ -82,7 +82,9 @@ function addForm(state, onAdded) {
     h("div", { class: "row" }, h("button", { type: "submit" }, "Add job")));
   return h("details", { class: "card" },
     h("summary", null, "Add job manually"),
-    h("p", { class: "muted small" }, "Community listings are visible to everyone. Share only public forestry or forest-bioeconomy opportunities; don't paste private contact details."),
+    h("p", { class: "muted small" }, state.user.is_admin
+      ? "Forestry jobs you add are visible to everyone; don't paste private contact details. Jobs outside forestry (industrial, construction, warehouse, IT) stay in your account only."
+      : "Community listings are visible to everyone. Share only public forestry or forest-bioeconomy opportunities; don't paste private contact details."),
     form, out);
 }
 
@@ -91,10 +93,11 @@ register({
   async render(main) {
     const state = await getState();
     const status = h("span", { class: "muted", role: "status" });
-    const checkBtn = state.user.is_admin ? h("button", { onclick: startCheck }, "Check for new forestry jobs") : null;
+    const checkBtn = state.user.is_admin ? h("button", { onclick: startCheck }, "Check for new jobs") : null;
     const listArea = h("div");
     main.append(h("h1", null, "Jobs"),
       h("p", { class: "muted" }, "Shared Finland-wide forestry, forest-bioeconomy and forest-data opportunities. Applications and CV matches are private to your account."),
+      state.user.is_admin ? h("p", { class: "muted small" }, "Administrator view: jobs tagged “Only you” (industrial, construction, warehouse and IT) come from your own searches and are never shown to members.") : "",
       h("div", { class: "row" }, checkBtn || "", status),
       addForm(state, load), listArea);
 
@@ -248,7 +251,9 @@ register({
       const rows = shown.map(j => h("tr", null,
         h("td", null, j.is_new ? h("div", null, h("span", { class: "tag new" }, "NEW")) : "",
           j.url ? h("a", { href: j.url, target: "_blank", rel: "noopener" }, j.title) : j.title,
-          j.source !== "Jobly" || j.manual ? h("div", { class: "muted small" }, j.manual ? "added by hand" : j.source) : ""),
+          j.personal ? h("div", null, h("span", { class: "tag" }, "Only you")) : "",
+          j.source !== "Jobly" || j.manual ? h("div", { class: "muted small" },
+            j.source === "Community" ? "shared by a member" : j.manual ? "added by hand" : j.source) : ""),
         h("td", null, j.company, j.location ? h("div", { class: "muted small" }, places(j.location)) : ""),
         h("td", { class: "nowrap" }, j.posted),
         h("td", { class: "nowrap" + (j.days_left != null && j.days_left <= 3 && j.days_left >= 0 ? " overdue" : "") },

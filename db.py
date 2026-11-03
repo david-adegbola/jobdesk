@@ -549,6 +549,36 @@ def update_job_ad_text(job_id, text):
             raise KeyError(job_id)
 
 
+def jobs_with_applications():
+    """Every stored job, with how many tracker entries point at it and their statuses."""
+    with connect() as conn:
+        return [dict(r) for r in conn.execute(
+            """SELECT jobs.*, COUNT(applications.id) AS applications,
+                      COALESCE(GROUP_CONCAT(applications.status, ', '), '') AS statuses
+               FROM jobs LEFT JOIN applications ON applications.job_id = jobs.id
+               GROUP BY jobs.id ORDER BY jobs.id""")]
+
+
+def backup(label):
+    """Copy the whole database to DATA_DIR/backups/ (SQLite online backup) and return the path."""
+    folder = DATA_DIR / "backups"
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"jobdesk-{label}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+    with connect() as conn, sqlite3.connect(target) as copy:
+        conn.backup(copy)
+    return target
+
+
+def delete_jobs(job_ids):
+    """Delete jobs by id. Their tracker entries go with them (ON DELETE CASCADE)."""
+    job_ids = list(job_ids)
+    with connect() as conn:
+        for start in range(0, len(job_ids), 500):
+            chunk = job_ids[start:start + 500]
+            conn.execute(f"DELETE FROM jobs WHERE id IN ({','.join('?' * len(chunk))})", chunk)
+    return len(job_ids)
+
+
 # ---------------------------------------------------------------- forestry news
 
 def upsert_news_item(item, user_id=1):
@@ -811,7 +841,7 @@ def list_applications(user_id=1):
     with connect() as conn:
         rows = conn.execute("""
             SELECT a.*, j.title, j.company, j.location, j.url, j.deadline, j.category, j.ad_text,
-                   j.contact_name, j.contact_phone
+                   j.contact_name, j.contact_phone, j.source, j.user_id AS job_owner
             FROM applications a JOIN jobs j ON j.id = a.job_id
             WHERE a.user_id = ? ORDER BY a.updated_at DESC""", (user_id,)).fetchall()
         return [dict(r) for r in rows]

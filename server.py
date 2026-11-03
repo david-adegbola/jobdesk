@@ -156,14 +156,21 @@ def enrich(job, roles, f=None):
             "days_left": days_left, "has_ad_text": bool(job.get("ad_text"))}
 
 
-def forestry_applications(user_id):
-    return [application for application in db.list_applications(user_id)
-            if scraper.is_forestry_related(application)]
+def can_see(job, user, owner_key="user_id"):
+    """Members see forestry jobs only. The administrator also sees their own non-forestry jobs
+    (the PERSONAL_CATEGORIES scraped for them and jobs they added by hand)."""
+    return scraper.is_forestry_related(job) or (
+        bool(user["is_admin"]) and job.get(owner_key) == user["id"])
+
+
+def forestry_applications(user):
+    return [application for application in db.list_applications(user["id"])
+            if can_see(application, user, "job_owner")]
 
 
 def safe_application(application):
     return {key: value for key, value in application.items()
-            if key not in {"contact_name", "contact_phone", "category", "ad_text"}}
+            if key not in {"contact_name", "contact_phone", "category", "ad_text", "job_owner"}}
 
 
 # ---------------------------------------------------------------- state and jobs
@@ -256,7 +263,7 @@ def api_account_export(h, m):
         "account": {"name": user["name"], "email": user["email"]},
         "preferences": json.loads(user["preferences_json"] or "{}"),
         "cvs": db.list_cvs(h.user["id"]),
-        "applications": [safe_application(item) for item in forestry_applications(h.user["id"])],
+        "applications": [safe_application(item) for item in forestry_applications(h.user)],
         "news_reading_list": [
             {"id": item["id"], "title": item["title"], "url": item["url"],
              "is_read": bool(item["is_read"]), "is_saved": bool(item["is_saved"])}
@@ -464,7 +471,8 @@ def api_state(h, m):
     return {
         "facts": {}, "facts_warning": None,
         "roles": [{"slug": role["slug"], "title": role["title"]} for role in roles],
-        "statuses": db.STATUSES, "job_types": ["Forestry"],
+        "statuses": db.STATUSES,
+        "job_types": ["Forestry"] + (scraper.PERSONAL_CATEGORIES if user["is_admin"] else []),
         "latest_check": db.latest_check(SHARED_DATA_OWNER), "scrape": SCRAPE.copy(),
         "user": {"id": user["id"], "name": user["name"], "email": user["email"],
                  "is_admin": bool(user["is_admin"])},
@@ -475,11 +483,12 @@ def api_state(h, m):
 @route("GET", "/api/jobs")
 def api_jobs(h, m):
     roles = cv_roles(h.user["id"])
-    jobs = [job for job in db.list_jobs(h.user["id"]) if scraper.is_forestry_related(job)]
+    jobs = [job for job in db.list_jobs(h.user["id"]) if can_see(job, h.user)]
     safe_jobs = []
     for job in jobs:
         safe = {key: value for key, value in job.items()
                 if key not in {"user_id", "external_id", "contact_name", "contact_phone"}}
+        safe["personal"] = not scraper.is_forestry_related(job)     # only ever true for the admin
         safe_jobs.append(enrich(safe, roles))
     return {"jobs": safe_jobs, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
 
@@ -505,7 +514,8 @@ def api_add_job(h, m):
             return h.error(400, "Use a public job link beginning with http:// or https://.")
     if len(body.get("ad_text", "")) > 20_000:
         return h.error(400, "The public job description must be 20,000 characters or fewer.")
-    if not scraper.is_forestry_related(body):
+    personal = not scraper.is_forestry_related(body)
+    if personal and not h.user["is_admin"]:
         return h.error(400, "Only forestry and forest-bioeconomy opportunities can be shared here.")
     jid = scraper.jobly_id(url)
     if jid:
@@ -516,8 +526,15 @@ def api_add_job(h, m):
         source, external = "Manual", f"manual-{uuid.uuid4().hex[:12]}"
     fields = {key: body.get(key, "").strip() for key in text_fields}
     fields.update(url=url, title=title, source=source, external_id=external)
-    fields["category"] = "Forestry"
-    fields["source"] = "Community"
+    if personal:      # the administrator's own job: stays in their account, never shared
+        category = body.get("category", "")
+        fields["category"] = (category if category in scraper.PERSONAL_CATEGORIES
+                              else scraper.guess_category(f"{title} {fields['ad_text']}"))
+        fields["source"] = "Personal"
+        fields["external_id"] = f"personal-{h.user['id']}-{external}"
+    else:
+        fields["category"] = "Forestry"
+        fields["source"] = "Community"
     fields["contact_name"] = ""
     fields["contact_phone"] = ""
     return {"id": db.add_manual(fields, h.user["id"])}
@@ -528,7 +545,7 @@ def api_fetch_ad(h, m):
     job = db.get_job(int(m.group(1)), h.user["id"])
     if not job or not job["url"]:
         return h.error(404, "This job has no link to read.")
-    if not scraper.is_forestry_related(job):
+    if not can_see(job, h.user):
         return h.error(404, "This is not a forestry opportunity.")
     if not scraper.is_public_http_url(job["url"]):
         return h.error(400, "Reading an ad requires a public HTTP or HTTPS address.")
@@ -547,7 +564,7 @@ def api_job_status(h, m):
         return h.error(400, "Choose an application status.")
     status = (body.get("status") or "").strip()
     job = db.get_job(job_id, h.user["id"])
-    if not job or not scraper.is_forestry_related(job):
+    if not job or not can_see(job, h.user):
         return h.error(404, "No such job.")
     roles = cv_roles(h.user["id"])
     e = enrich(job, roles)
@@ -622,7 +639,7 @@ def tracker_view(a):
 
 @route("GET", "/api/applications")
 def api_applications(h, m):
-    safe = [safe_application(application) for application in forestry_applications(h.user["id"])]
+    safe = [safe_application(application) for application in forestry_applications(h.user)]
     return {"applications": [tracker_view(a) for a in safe],
             "statuses": db.STATUSES}
 
@@ -630,7 +647,7 @@ def api_applications(h, m):
 @route("POST", r"/api/applications/(\d+)")
 def api_update_application(h, m):
     application_id = int(m.group(1))
-    application = next((item for item in forestry_applications(h.user["id"])
+    application = next((item for item in forestry_applications(h.user)
                         if item["id"] == application_id), None)
     if not application:
         return h.error(404, "No such forestry application.")
@@ -646,7 +663,7 @@ def api_update_application(h, m):
 
 @route("GET", "/api/calendar.ics")
 def api_calendar(h, m):
-    applications = [safe_application(item) for item in forestry_applications(h.user["id"])]
+    applications = [safe_application(item) for item in forestry_applications(h.user)]
     return (ics.build(applications), "text/calendar; charset=utf-8",
             {"Content-Disposition": 'attachment; filename="jobdesk.ics"'})
 
@@ -811,7 +828,7 @@ def api_insights(h, m):
     if not h.user["is_admin"]:
         return h.error(404, "Not found.")
     f, _, roles = context()
-    jobs = [enrich(j, roles) for j in db.list_jobs(h.user["id"]) if scraper.is_forestry_related(j)]
+    jobs = [enrich(j, roles) for j in db.list_jobs(h.user["id"]) if can_see(j, h.user)]
     counts = {}
     for j in jobs:
         for b in j["blockers"]:
@@ -867,7 +884,7 @@ def _scrape_thread():
     def progress(msg, done, total):
         SCRAPE.update(message=msg, done=done, total=total)
     try:
-        SCRAPE["result"] = scraper.run(progress, user_id=SHARED_DATA_OWNER)
+        SCRAPE["result"] = scraper.run(progress, user_id=SHARED_DATA_OWNER, personal=True)
     finally:
         SCRAPE["running"] = False
 
@@ -982,6 +999,35 @@ def merged_roles():
     return {k: v for k, v in data.items() if not k.startswith("_") and isinstance(v, str)}
 
 
+def unrelated_jobs():
+    """Stored jobs that nobody can see: not forestry, and not one of the administrator's own
+    PERSONAL_CATEGORIES jobs (those stay, visible only to the administrator)."""
+    return [job for job in db.jobs_with_applications()
+            if not scraper.is_forestry_related(job)
+            and not (job["user_id"] == SHARED_DATA_OWNER and job["category"] in scraper.PERSONAL_CATEGORIES)]
+
+
+def prune_unrelated_jobs(apply=False):
+    """List non-forestry jobs; with apply=True back up the database and delete them."""
+    jobs = unrelated_jobs()
+    by_hand = [job for job in jobs if job["manual"]]
+    tracked = [job for job in jobs if job["applications"]]
+    print(f"{len(jobs)} unrelated jobs: {len(by_hand)} added by hand, "
+          f"{len(tracked)} with tracker entries (deleted with them).")
+    for job in jobs:
+        if job["manual"] or job["applications"]:
+            notes = ", ".join(filter(None, ["added by hand" if job["manual"] else "",
+                                            job["statuses"] and f"tracker: {job['statuses']}"]))
+            print(f"  #{job['id']} {job['title']} | {job['company'] or job['source']} ({notes})")
+    if not jobs:
+        return
+    if not apply:
+        print("Dry run: nothing deleted. Run again with --apply to delete these jobs.")
+        return
+    print(f"Backup saved to {db.backup('before-prune')}")
+    print(f"Deleted {db.delete_jobs(job['id'] for job in jobs)} jobs.")
+
+
 def main():
     db.init()
     if "--provision-admin" in sys.argv:
@@ -1004,6 +1050,9 @@ def main():
             print(error, file=sys.stderr)
             raise SystemExit(1)
         print(f"Administrator account ready for {user['email']}.")
+        return
+    if "--prune-unrelated-jobs" in sys.argv:
+        prune_unrelated_jobs(apply="--apply" in sys.argv)
         return
     imported_cvs = cv_import.import_admin_cv_repo()
     if imported_cvs:

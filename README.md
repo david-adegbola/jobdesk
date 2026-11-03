@@ -24,19 +24,28 @@ evaluated or certified against WCAG 2.1 Level AA.
 ## Pages
 
 - **For you:** a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
-- **Jobs:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry category pages, waiting 10 s between
-  requests as Jobly's robots.txt asks. It also checks the Finnish forestry listings from
-  [Metsälehti](https://www.metsalehti.fi/tyopaikat/),
+- **Jobs:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry, internship
+  (`harjoittelija`) and summer-job (`kesatyo`) category pages, waiting 10 s between
+  requests as Jobly's robots.txt asks. The source list follows the 2025 forestry internship
+  overview. It also checks
+  [Metsälehti](https://www.metsalehti.fi/tyopaikat/) (its jobs page when the RSS feed is empty),
   [Metsähallitus](https://metsa.rekrytointi.com/paikat/?o=A_LOJ&list=2),
+  [Valtiolle](https://valtiolle.fi/fi/tyopaikat/) (all state agencies, including Luke, MMM, SYKE,
+  ELY centres and Maanmittauslaitos),
+  [Kuntarekry](https://kuntarekry.fi/fi/tyopaikat/) (municipalities, by keyword search),
   [Metsäkeskus](https://www.metsakeskus.fi/fi/tietoa-meista/toihin-metsakeskukseen/avoimet-tyopaikat),
-  [Maanmittauslaitos](https://www.maanmittauslaitos.fi/tietoa-maanmittauslaitoksesta/organisaatio/uramahdollisuudet/avoimet-tyopaikat),
-  [Metsä Group](https://www.metsagroup.com/fi/ura-metsassa/toissa-metsassa/avoimet-tyopaikat/),
   [Duunitori's Metsäala search](https://duunitori.fi/tyopaikat?haku=mets%C3%A4ala),
   [Duunitori's Joensuu search](https://duunitori.fi/tyopaikat/alue/joensuu?haku=mets%C3%A4ala),
   [University of Eastern Finland](https://www.uef.fi/fi/avoimet-tyopaikat),
-  [Luke](https://www.luke.fi/fi/tietoa-lukesta/ura-lukessa),
+  [Metsä Group](https://metsagroup.wd103.myworkdayjobs.com/fi-FI/MetsaGroup_Careers),
   [UPM](https://upm.wd103.myworkdayjobs.com/fi-FI/Careers) and
-  [Stora Enso](https://www.storaenso.com/fi-fi/careers/open-positions). RSS descriptions are checked
+  [Stora Enso](https://storaenso.wd502.myworkdayjobs.com/fi-FI/Stora_Enso_site_opportunities).
+  Sources are read in **both Finnish and English** (for example `valtiolle.fi/fi/tyopaikat/` and
+  `/en/jobs/`, UEF's Finnish and English pages), because English-only postings can be missing from
+  the Finnish listing. Duplicates are merged by posting number. Search keywords and filter words
+  come in Finnish/English pairs (metsä/forest, puukauppa/timber trade). When you add a source,
+  check its fi and en slugs, category tags and robots.txt; the notes are at the top of `scraper.py`.
+  RSS descriptions are checked
   as well as titles, and postings are filtered for forestry, forest bioeconomy, natural resources,
   forest-data and geospatial/GIS-related terms.
   RSS descriptions are saved for matching. All results and community submissions are filtered for
@@ -46,6 +55,11 @@ evaluated or certified against WCAG 2.1 Level AA.
   forestry-related listings. Each job
   shows a 0–100 **Match** against the member's own CVs, the matched words and that member's private
   application status. Administrators refresh shared feeds.
+  **Administrator view:** the check also reads the administrator's earlier Jobly searches
+  (Industrial, Construction, Warehouse, IT-Data centre). Those jobs, and any non-forestry job the
+  administrator adds by hand, are stored in the administrator's account. They are tagged "Only you"
+  and never shown to members. `python3 server.py --prune-unrelated-jobs` (add `--apply` to delete,
+  after an automatic backup) removes stored jobs that nobody can see.
 - **News:** a forestry and forest-bioeconomy news desk focused on Finland and Joensuu/North Karelia,
   with research, industry, policy, climate/nature, markets and forest-tech coverage. Refreshes
   Finnish-language feeds from [Luke](https://www.luke.fi/fi/feed),

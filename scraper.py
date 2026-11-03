@@ -1,6 +1,21 @@
-"""Jobly scraper (from the old job_check.py). Reads Jobly's public, Finland-wide category pages,
-waits 10 s between requests as Jobly's robots.txt asks, and stores jobs in SQLite via db.py.
-A job is NEW when the latest check is the first one that saw it.
+"""Forestry job scraper. Reads Jobly's public, Finland-wide category pages (10 s apart, as Jobly's
+robots.txt asks), the state and municipal job portals, forestry-sector boards and employer career
+sites, and stores jobs in SQLite via db.py. A job is NEW when the latest check is the first one
+that saw it.
+
+Sources follow the 2025 forestry internship overview (Metsälehti, Valtiolle, Kuntarekry, Duunitori,
+TE/Työmarkkinatori, Luke, Metsähallitus, Metsäkeskus, MHYs, Metsä Group, UPM, Stora Enso ...).
+
+LANGUAGE CHECK - every source has Finnish and English variants, and they are not always the same:
+  * URL slugs differ (valtiolle.fi/fi/tyopaikat/ vs /en/jobs/, uef.varbi.com/fi/ vs /en/,
+    Workday fi-FI vs en-US). English-only postings (e.g. research assistant and summer-trainee ads)
+    can be missing from the Finnish listing, so read both and deduplicate by the posting's number.
+  * Search keywords and category/tag slugs must be given in both languages (metsä + forest,
+    harjoittelija + intern/trainee, kesätyö + summer job). Swedish (skog) catches bilingual ads.
+  * Jobly has no English category slugs: unknown slugs such as /en/jobs/forestry silently fall back
+    to the generic all-jobs list, so check that a new slug returns its own jobs before adding it.
+  * When adding a source, check robots.txt. Duunitori disallows generic crawlers and Työmarkkinatori
+    disallows /api/, so neither is expanded here.
 """
 
 import html
@@ -18,7 +33,7 @@ import urllib.request
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 from xml.etree import ElementTree
 
 import db
@@ -28,9 +43,14 @@ JOB_TYPES = {
     "Industrial": ["asentaja", "kokoonpanija", "tuotantotyontekija"],
     "Construction": ["rakennustyontekija", "rakennusmies"],
     "Warehouse": ["varastotyontekija", "logistiikkatyontekija"],
-    "Forestry": ["metsuri", "metsatyontekija", "paikkatietoasiantuntija"],
+    # Finnish slugs only: Jobly has no English category slugs (see the module docstring).
+    # harjoittelija and kesatyo are filtered by FORESTRY_WORDS in the title, like the others.
+    "Forestry": ["metsuri", "metsatyontekija", "paikkatietoasiantuntija", "harjoittelija", "kesatyo"],
     "IT-Data centre": ["it"],
 }
+# The administrator's own job search from before Woodesk became a forestry portal. These categories
+# are scraped only for the administrator, stored under their account and never shown to members.
+PERSONAL_CATEGORIES = [t for t in JOB_TYPES if t != "Forestry"]
 # Default CV for each job type (the Match column may suggest a better one)
 CV_FOR_TYPE = {
     "Industrial": "industrial-master",
@@ -49,6 +69,9 @@ FORESTRY_WORDS = [
     "bioenergia", "forest", "forestry", "timber", "wood sourcing", "forest management",
     "forest inventory", "remote sensing", "geospatial", "geoinformatics", "bioeconomy",
     "biodiversity", "natural resources", "ecolog", "sustainable forestry",
+    "puukaup", "timber trade", "wood procurement", "puutavara", "korjuusuunnit", "sawmill",
+    "sahateollisuu", "luontoselvit", "luontokartoit", "nature survey", "luonnonsuojelu",
+    "nature conservation", "peatland", "turvemaa", "suometsä",
 ]
 FORESTRY_RELEVANCE_WORDS = [
     "metsuri", "metsäasiantunt", "metsäalan", "metsäinsin", "metsäkone", "metsätalou",
@@ -61,20 +84,47 @@ FORESTRY_RELEVANCE_WORDS = [
     "geoinformatics", "bioeconomy", "biodiversity", "natural resources", "ecolog", "skog",
     "sustainab", "vastuullisuus", "kestävyys", "ilmasto", "climate", "renewable material",
     "renewable fibre", "biomaterial",
+    # Finnish / English pairs taken from the 2025 forestry internship job titles
+    "metsänhoit", "metsien", "metsävastaav", "metsäneuvo", "metsätyönjoht", "metsäharjoitt",
+    "metsäpalvel", "forest service", "metsänomist", "metsälannoit", "metsäsuunnit",
+    "metsänjalost", "tree breeding", "taimitarh", "taimituotan", "seedling",
+    "puukaup", "timber trade", "wood procurement", "puutavara", "puunkuljet", "timber transport",
+    "korjuusuunnit", "timber harvesting", "sawmill", "sahateollisuu",
+    "luontoselvit", "luontokartoit", "nature survey", "luonnonsuojelu", "nature conservation",
+    "habitat", "peatland", "turvemaa", "suometsä", "hiilivarast", "carbon stock",
 ]
+# Valtiolle and Kuntarekry feeds carry the whole ad, where words such as "ilmasto", "kestävyys",
+# "monimuotoisuus" or "paikkatieto" appear in police, school and water-engineering ads alike. For
+# these sources the title may match any word above, but the ad text must match one of these.
+BROAD_AD_SOURCES = {"Valtiolle", "Kuntarekry"}
+FORESTRY_CORE_WORDS = [
+    "metsuri", "metsäasiantunt", "metsäalan", "metsäinsin", "metsäkone", "metsätalou",
+    "metsänhoid", "metsänhoit", "metsänkasvat", "metsävarat", "metsätieto", "metsäekolog",
+    "metsätiete", "metsäteollisuus", "metsätuott", "metsien", "metsäpalvel", "metsänomist",
+    "metsäsuunnit", "metsänjalost", "puunhankin", "puunkorju", "puukaup", "puutavara", "taimikon",
+    "luonnonhoid", "luonnonsuojelu", "ennallist", "luontoselvit", "luontokartoit", "suometsä",
+    "biotalous", "forest", "timber", "wood procurement", "nature survey", "peatland", "bioeconomy",
+]
+# Organisation names that contain a forestry word but say nothing about the job itself
+ORGANISATION_NAMES = re.compile(r"maa- ja metsätalousministeri\w*|ministry of agriculture and forestry")
+# Boards that only list forestry-sector jobs: everything they publish is kept, even titles such as
+# "Operaatioasiantuntija, tuotanto" that name no forestry word.
+FORESTRY_ONLY_SOURCES = {"Metsälehti"}
 TITLE_MUST_MATCH = {
     "it": ["tuki", "support", "asentaja", "kenttä", "field", "lähituki", "helpdesk", "service desk",
            "teknikko", "technician", "datakeskus", "data center", "data centre", "laite"],
     **{slug: FORESTRY_WORDS for slug in JOB_TYPES["Forestry"]},
 }
 # Words matched as whole words only ("gis" is inside "logistiikka")
-WHOLE_WORDS = {"gis"}
+WHOLE_WORDS = {"gis", "skog"}      # "skog" also ends place names such as Västerskog
 DATA_CENTRE_WORDS = ["datakeskus", "data center", "data centre"]
 
 MAX_PAGES = 3          # about 20 jobs per page
 DELAY_SECONDS = 10     # Jobly robots.txt asks for 10 s between requests
 BASE = "https://www.jobly.fi"
 METSALEHTI_FEED = "https://www.metsalehti.fi/tyopaikat/feed/"
+METSALEHTI_JOBS = "https://www.metsalehti.fi/tyopaikat/"      # read when the feed is empty
+METSALEHTI_JOB_LINK = r"metsalehti\.fi/tyopaikat/(?!feed/?$|page/)[a-z0-9-]+/?$"
 METSAHALLITUS_FEED = "https://metsa.rekrytointi.com/paikat/?o=A_RSS&jgid=2"
 METSAKESKUS_JOBS = (
     "https://www.metsakeskus.fi/fi/tietoa-meista/toihin-metsakeskukseen/avoimet-tyopaikat"
@@ -83,15 +133,24 @@ DUUNITORI_JOBS = "https://duunitori.fi/tyopaikat?haku=mets%C3%A4ala"
 DUUNITORI_JOENSUU_JOBS = (
     "https://duunitori.fi/tyopaikat/alue/joensuu?haku=mets%C3%A4ala"
 )
-MML_JOBS = (
-    "https://www.maanmittauslaitos.fi/tietoa-maanmittauslaitoksesta/"
-    "organisaatio/uramahdollisuudet/avoimet-tyopaikat"
-)
 UEF_JOBS = "https://www.uef.fi/fi/avoimet-tyopaikat"
-LUKE_FEED = (
-    "https://valtiolle.fi/fi/tyopaikat/?organisation=28&lang=fi_FI"
-    "&sort=-changetime&limit=500&format=rss"
-)
+UEF_JOBS_EN = "https://www.uef.fi/en/open-positions"
+VARBI_JOB_LINK = r"uef\.varbi\.com/(?:fi|en)/what:job/jobID:(\d+)"
+# Valtiolle.fi: every state agency (Luke, Metsähallitus, MMM, SYKE, ELY, Maanmittauslaitos ...).
+# The whole feed is only a few hundred items, so read all of it in both languages: the English
+# feed carries English-only postings that the Finnish one leaves out. (The old Luke-only feed,
+# organisation=28, returns no items any more.)
+VALTIOLLE_FEEDS = [
+    "https://valtiolle.fi/fi/tyopaikat/?sort=-changetime&limit=1000&format=rss",
+    "https://valtiolle.fi/en/jobs/?sort=-changetime&limit=1000&format=rss",
+]
+# Kuntarekry.fi: municipalities, joint authorities and their companies. The full feed stops at the
+# newest 500 of several thousand jobs, so use its free-text search (desc=) with Finnish, English
+# and Swedish keywords; results are filtered with is_forestry_related like every other source.
+KUNTAREKRY_KEYWORDS = ["metsä", "forest", "skogs", "luonto", "luonnonvara", "paikkatieto"]
+KUNTAREKRY_FEED = "https://kuntarekry.fi/fi/tyopaikat/?desc={}&sort=-changetime&limit=500&format=rss"
+# Valtiolle and Kuntarekry run on the same platform; a posting keeps its number across languages
+PORTAL_POSTING_ID = r"-(\d+)/?$"
 WORKDAY_SOURCES = [
     ("Metsä Group", "https://metsagroup.wd103.myworkdayjobs.com/wday/cxs/metsagroup/MetsaGroup_Careers/jobs",
      "https://metsagroup.wd103.myworkdayjobs.com/fi-FI/MetsaGroup_Careers"),
@@ -314,6 +373,12 @@ def parse_job_links(body, base_url, href_pattern):
     return parser.jobs
 
 
+def posting_id(url, pattern, fallback):
+    """The posting's own number from its URL, so the Finnish and English pages of one ad match."""
+    m = re.search(pattern, url or "")
+    return m.group(1) if m else fallback
+
+
 def parse_workday_jobs(payload, job_base):
     """Normalize a page of postings returned by Workday's public CXS endpoint."""
     jobs = []
@@ -366,7 +431,8 @@ def fetch_workday_jobs(endpoint, job_base):
         postings = payload.get("jobPostings")
         if not isinstance(postings, list):
             raise ValueError(f"Unexpected Workday response from {endpoint}")
-        total = int(payload.get("total", len(postings)))
+        if total is None:     # Workday reports the total on the first page only; later pages say 0
+            total = int(payload.get("total") or len(postings))
         jobs.extend(parse_workday_jobs(payload, job_base))
         if not postings:
             break
@@ -375,6 +441,13 @@ def fetch_workday_jobs(endpoint, job_base):
 
 
 def is_forestry_related(job):
+    if job.get("source") in FORESTRY_ONLY_SOURCES:
+        return True
+    if job.get("source") in BROAD_AD_SOURCES:
+        ad = " ".join((job.get(field) or "") for field in ("description", "ad_text"))
+        ad = ORGANISATION_NAMES.sub(" ", ad.lower())
+        return (any(title_has(job.get("title") or "", word) for word in FORESTRY_RELEVANCE_WORDS)
+                or any(title_has(ad, word) for word in FORESTRY_CORE_WORDS))
     text = " ".join((job.get(field) or "") for field in ("title", "description", "ad_text", "location"))
     return any(title_has(text, word) for word in FORESTRY_RELEVANCE_WORDS)
 
@@ -444,27 +517,78 @@ class PublicRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, response, code, message, headers, new_url)
 
 
-def run(progress=None, user_id=1):
-    """One full check. progress(message, done, total) is called as pages are read."""
-    pages = [("Forestry", slug) for slug in JOB_TYPES["Forestry"]]
-    html_sources = [
-        ("Metsäkeskus", METSAKESKUS_JOBS, "https://www.metsakeskus.fi/",
-         r"ats\.talentadore\.com/apply/"),
-        ("Maanmittauslaitos", MML_JOBS, "https://www.maanmittauslaitos.fi/",
-         r"valtiolle\.fi/fi/tyopaikat/"),
-        ("Duunitori", DUUNITORI_JOBS, "https://duunitori.fi/",
-         r"duunitori\.fi/tyopaikat/tyo/"),
-        ("Duunitori", DUUNITORI_JOENSUU_JOBS, "https://duunitori.fi/",
-         r"duunitori\.fi/tyopaikat/tyo/"),
-        ("UEF", UEF_JOBS, "https://www.uef.fi/",
-         r"uef\.varbi\.com/fi/what:job/jobID:"),
-    ]
-    feed_sources = [
-        ("Metsälehti", METSALEHTI_FEED, "https://www.metsalehti.fi/"),
-        ("Metsähallitus", METSAHALLITUS_FEED, "https://metsa.rekrytointi.com/"),
-        ("Luke", LUKE_FEED, "https://valtiolle.fi/fi/tyopaikat/"),
-    ]
-    total = len(pages) + len(html_sources) + len(feed_sources) + len(WORKDAY_SOURCES)
+def read_metsalehti():
+    """Metsälehti's jobs feed, or the links on its jobs page when the feed comes back empty."""
+    body = fetch(METSALEHTI_FEED)
+    jobs = parse_metsalehti_feed(body) if body else []
+    if not jobs:
+        time.sleep(DELAY_SECONDS)       # Metsälehti's robots.txt asks for 10 s between requests
+        body = fetch(METSALEHTI_JOBS)
+        jobs = parse_job_links(body, METSALEHTI_JOBS, METSALEHTI_JOB_LINK) if body else []
+    return jobs
+
+
+def read_portal_feeds(urls):
+    """Valtiolle/Kuntarekry RSS feeds, one job per posting number across languages and searches."""
+    jobs = {}
+    for url in urls:
+        body = fetch(url)
+        if not body:
+            continue
+        for job in parse_rss_jobs(body, url):
+            job["id"] = posting_id(job["url"], PORTAL_POSTING_ID, job["id"])
+            jobs.setdefault(job["id"], job)
+    return list(jobs.values())
+
+
+def read_links(pages, base_url, href_pattern, id_pattern=None):
+    """Job links from listing pages (e.g. a site's Finnish and English pages), deduplicated."""
+    jobs = {}
+    for url in pages:
+        body = fetch(url)
+        if not body:
+            continue
+        for job in parse_job_links(body, base_url, href_pattern):
+            if id_pattern:
+                job["id"] = posting_id(job["url"], id_pattern, job["id"])
+            jobs.setdefault(job["id"], job)
+    return list(jobs.values())
+
+
+def guess_category(text):
+    """Job type for an administrator's own non-forestry job added by hand."""
+    t = (text or "").lower()
+    if any(w in t for w in DATA_CENTRE_WORDS) or any(title_has(t, w) for w in TITLE_MUST_MATCH["it"]):
+        return "IT-Data centre"
+    if any(w in t for w in ("varasto", "logisti", "warehouse", "keräily", "trukki")):
+        return "Warehouse"
+    if any(w in t for w in ("rakennus", "rakentaj", "kirvesmies", "construction", "raudoittaj")):
+        return "Construction"
+    return "Industrial"
+
+
+def run(progress=None, user_id=1, personal=False):
+    """One full check. progress(message, done, total) is called as pages are read.
+    personal=True also reads the administrator's own PERSONAL_CATEGORIES from Jobly."""
+    pages = [(category, slug) for category in ["Forestry"] + (PERSONAL_CATEGORIES if personal else [])
+             for slug in JOB_TYPES[category]]
+    # (source name, reader). Each reader returns job dicts; is_forestry_related filters them.
+    sources = [
+        ("Metsälehti", read_metsalehti),
+        ("Metsähallitus", lambda: parse_rss_jobs(fetch(METSAHALLITUS_FEED) or "<rss/>",
+                                                  "https://metsa.rekrytointi.com/")),
+        ("Valtiolle", lambda: read_portal_feeds(VALTIOLLE_FEEDS)),
+        ("Kuntarekry", lambda: read_portal_feeds(
+            [KUNTAREKRY_FEED.format(quote(word)) for word in KUNTAREKRY_KEYWORDS])),
+        ("Metsäkeskus", lambda: read_links([METSAKESKUS_JOBS], "https://www.metsakeskus.fi/",
+                                           r"ats\.talentadore\.com/apply/")),
+        ("Duunitori", lambda: read_links([DUUNITORI_JOBS, DUUNITORI_JOENSUU_JOBS],
+                                         "https://duunitori.fi/", r"duunitori\.fi/tyopaikat/tyo/")),
+        ("UEF", lambda: read_links([UEF_JOBS, UEF_JOBS_EN], "https://www.uef.fi/",
+                                   VARBI_JOB_LINK, VARBI_JOB_LINK)),
+    ] + [(name, lambda endpoint=endpoint, job_base=job_base: fetch_workday_jobs(endpoint, job_base))
+         for name, endpoint, job_base in WORKDAY_SOURCES]
+    total = len(pages) + len(sources)
     check_id = db.start_check(user_id)
     found = new = 0
     seen_now = set()
@@ -501,17 +625,11 @@ def run(progress=None, user_id=1):
                     found += 1
                     new += is_new
 
-        source_index = len(pages)
-        for source, url, base_url in feed_sources:
+        for source_index, (source, read) in enumerate(sources, start=len(pages)):
             if progress:
-                progress(f"Reading {source} jobs feed", source_index, total)
-            source_index += 1
-            body = fetch(url)
-            if not body:
-                continue
-            jobs = parse_metsalehti_feed(body) if source == "Metsälehti" else parse_rss_jobs(body, base_url)
-            for job in jobs:
-                if not is_forestry_related(job):
+                progress(f"Reading {source} jobs", source_index, total)
+            for job in read():
+                if not is_forestry_related({**job, "source": source}):
                     continue
                 key = (source, job["id"])
                 if key in seen_now:
@@ -522,47 +640,6 @@ def run(progress=None, user_id=1):
                      "title": job["title"], "company": job["company"], "location": job["location"],
                      "posted": job["posted"], "category": "Forestry",
                      "description": job.get("description", "")},
-                    check_id, user_id=user_id)
-                found += 1
-                new += is_new
-
-        for source, url, base_url, href_pattern in html_sources:
-            if progress:
-                progress(f"Reading {source} jobs", source_index, total)
-            source_index += 1
-            body = fetch(url)
-            if not body:
-                continue
-            for job in parse_job_links(body, base_url, href_pattern):
-                if not is_forestry_related(job):
-                    continue
-                key = (source, job["id"])
-                if key in seen_now:
-                    continue
-                seen_now.add(key)
-                is_new = db.upsert_scraped(
-                    {"source": source, "external_id": job["id"], "url": job["url"],
-                     "title": job["title"], "company": job["company"], "location": job["location"],
-                     "posted": job["posted"], "category": "Forestry"},
-                    check_id, user_id=user_id)
-                found += 1
-                new += is_new
-
-        for source, endpoint, job_base in WORKDAY_SOURCES:
-            if progress:
-                progress(f"Reading {source} jobs", source_index, total)
-            source_index += 1
-            for job in fetch_workday_jobs(endpoint, job_base):
-                if not is_forestry_related(job):
-                    continue
-                key = (source, job["id"])
-                if key in seen_now:
-                    continue
-                seen_now.add(key)
-                is_new = db.upsert_scraped(
-                    {"source": source, "external_id": job["id"], "url": job["url"],
-                     "title": job["title"], "company": job["company"], "location": job["location"],
-                     "posted": job["posted"], "category": "Forestry"},
                     check_id, user_id=user_id)
                 found += 1
                 new += is_new
