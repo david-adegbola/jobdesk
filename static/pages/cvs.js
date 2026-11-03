@@ -17,6 +17,17 @@ const fields = [
   ["links", "Links", "Linkit", "textarea"],
 ];
 
+// Set by the What to study page: an unsaved draft for one type of role
+const DRAFT_KEY = "jobdesk:cv-draft";
+
+function takeDraft() {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    sessionStorage.removeItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) { return null; }
+}
+
 const fieldGuidance = {
   summary: "Write in paragraphs and leave a blank line between paragraphs.",
   education: "One row per qualification: dates: qualification, institution.",
@@ -51,6 +62,11 @@ register({
         cvs = cvList.cvs;
         example = exampleResult.cv;
         editor = null;
+        const draft = takeDraft();
+        if (draft) {
+          editor = createEditorState(draft, "create");
+          editor.fromPlan = draft.based_on || true;
+        }
         draw();
       } catch (err) {
         status.replaceChildren(message(err.message, true));
@@ -186,6 +202,12 @@ register({
         : "",
       current.fromExample
         ? h("p", { class: "muted" }, "This draft starts with fictional sample details. Replace them with your own before saving.")
+        : "",
+      current.fromPlan
+        ? h("p", { class: "muted" }, (typeof current.fromPlan === "string"
+          ? `This draft is a copy of “${current.fromPlan}” aimed at the role from What to study. `
+          : "This draft was started from What to study. ") +
+          "The skills to study are on the “Want to learn” row under Skills; move each one to a skills row only once you have it. Rewrite the profile for this role before saving.")
         : "",
       h("label", { class: "field" }, "CV title",
         controls.title = h("input", { value: current.title || "", required: true, maxlength: 120 })),

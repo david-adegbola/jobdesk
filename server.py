@@ -38,6 +38,7 @@ import prompt   # noqa: E402
 import match    # noqa: E402
 import scraper  # noqa: E402
 import news     # noqa: E402
+import skills   # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -838,6 +839,32 @@ def api_insights(h, m):
                    for b, n in counts.items()), key=lambda x: -x["jobs"])
     with_text = sum(1 for j in jobs if j["has_ad_text"])
     return {"total_jobs": total, "jobs_with_ad_text": with_text, "skills_gap": gaps, "funnel": db.funnel(h.user["id"])}
+
+
+# ---------------------------------------------------------------- what to study
+
+def _skills_analysis(user):
+    jobs = [{**job, "personal": not scraper.is_forestry_related(job)}
+            for job in db.list_jobs(user["id"]) if can_see(job, user)]
+    cvs = db.list_cvs(user["id"])
+    return skills.analyse(jobs, cvs), cvs
+
+
+@route("GET", "/api/skills")
+def api_skills(h, m):
+    """Skills the visible job ads ask for, compared with this member's own CVs."""
+    analysis, _ = _skills_analysis(h.user)
+    return analysis
+
+
+@route("GET", r"/api/skills/draft/([\w-]+)")
+def api_skills_draft(h, m):
+    """An unsaved CV draft for one role type; the CV page opens it in the editor."""
+    analysis, cvs = _skills_analysis(h.user)
+    role = next((r for r in analysis["role_types"] if r["id"] == m.group(1)), None)
+    if not role:
+        return h.error(404, "No jobs of this type are listed now.")
+    return {"cv": skills.draft_cv(role, cvs, role["study"])}
 
 
 # ---------------------------------------------------------------- forestry news

@@ -4,6 +4,7 @@ import "./pages/home.js";
 import "./pages/jobs.js";
 import "./pages/news.js";
 import "./pages/tracker.js";
+import "./pages/study.js";
 import "./pages/cvs.js";
 import "./pages/account.js";
 

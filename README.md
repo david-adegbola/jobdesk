@@ -71,6 +71,13 @@ evaluated or certified against WCAG 2.1 Level AA.
   transparent keyword matching, not generated analysis; open each publisher for the full article.
   Refresh is manual and respects source-specific 30–60-minute intervals; source-level errors are
   shown.
+- **What to study:** groups the jobs you can see into role types (forest specialist, wood
+  procurement, research, GIS and forest data, nature, field work and so on) and lists the skills
+  their ads ask for, in Finnish and English, compared with your own CVs. "Study next" shows skills
+  that two or more ads mention but none of your CVs shows; each skill shows how many ads ask for it.
+  "Start a CV for this role" opens an unsaved draft based on your closest CV, with the role as target
+  and the skills still to learn on a "Want to learn" row (never as skills already held). It uses
+  keyword matching, not AI; jobs with the full ad saved give better counts than title-only listings.
 - **Tracker:** Saved / Applied / Interview / Offer / Rejected, private to the signed-in member. Each card holds the date applied, CV,
   link sent, contact, notes and the next action. Overdue actions are red; "Applied" with no change
   for 5 days shows a `Call <contact>` reminder. Deadlines and interviews export as `.ics`.
@@ -184,6 +191,7 @@ jobdesk/
 ├── config.py        paths, host, port (environment variables)
 ├── db.py            SQLite: users, checks, jobs, applications
 ├── scraper.py       Jobly, forestry-sector and Workday job feeds
+├── skills.py        What to study: skills asked for by role type vs. the member's CVs
 ├── news.py          Forestry news RSS feeds and transparent topic matching
 ├── match.py         match score, blockers, employer and PDF links
 ├── prompt.py        new-CV questions and prompt

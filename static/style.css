@@ -459,3 +459,9 @@ label.field.inline > select { min-height: 40px; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* What to study */
+.skill-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.study-role { margin: 16px 0; }
+.study-role h2 .tag { margin-left: 8px; vertical-align: middle; }
+.study-role h3 { margin: 8px 0; }

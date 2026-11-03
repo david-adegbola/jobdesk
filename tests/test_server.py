@@ -120,6 +120,25 @@ class JobApiTests(unittest.TestCase):
                                  headers=member)
         self.assertEqual(status, 404)
 
+    def test_skills_page_uses_only_jobs_the_member_can_see(self):
+        db.upsert_scraped({"source": "Jobly", "external_id": "1", "url": "", "title": "Asentaja",
+                           "company": "", "location": "", "posted": "", "category": "Industrial",
+                           "description": "Hitsaus"}, None)
+        db.upsert_scraped({"source": "Jobly", "external_id": "2", "url": "", "title": "Metsäasiantuntija",
+                           "company": "", "location": "", "posted": "", "category": "Forestry",
+                           "description": "Puukauppa metsänomistajien kanssa"}, None)
+        status, admin = self.request("GET", "/api/skills")
+        self.assertEqual([r["id"] for r in admin["role_types"]], ["forest_specialist", "personal-industrial"])
+
+        member = self.member_cookie()
+        status, view = self.request("GET", "/api/skills", headers=member)
+        self.assertEqual([r["id"] for r in view["role_types"]], ["forest_specialist"])
+        status, _ = self.request("GET", "/api/skills/draft/personal-industrial", headers=member)
+        self.assertEqual(status, 404)
+        status, draft = self.request("GET", "/api/skills/draft/forest_specialist", headers=member)
+        self.assertEqual(status, 200)
+        self.assertEqual(draft["cv"]["content"]["target_role"], "Forest specialist")
+
     def test_protected_api_requires_an_account_session(self):
         status, error = self.request("GET", "/api/jobs", headers={"Cookie": ""})
         self.assertEqual(status, 401)
