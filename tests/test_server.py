@@ -139,6 +139,31 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(draft["cv"]["content"]["target_role"], "Forest specialist")
 
+    def test_imported_cv_pairs_link_languages_and_drafts_use_the_chosen_one(self):
+        en = db.import_cv_for_admin("roles/forestry-master/cv-en.tex", "Forestry Trainee", "en",
+                                    {"target_role": "Forestry Trainee", "skills": "GIS: QGIS"})
+        fi = db.import_cv_for_admin("roles/forestry-master/cv-fi.tex", "Metsäalan harjoittelija", "fi",
+                                    {"target_role": "Metsäalan harjoittelija", "skills": "Paikkatieto: QGIS"})
+        other = db.import_cv_for_admin("roles/warehouse-master/cv-en.tex", "Warehouse Worker", "en",
+                                       {"target_role": "Warehouse Worker"})
+        cvs = {cv["title"]: cv for cv in db.list_cvs(1)}
+        en_id, fi_id = cvs["Forestry Trainee"]["id"], cvs["Metsäalan harjoittelija"]["id"]
+        self.assertEqual(cvs["Forestry Trainee"]["versions"], {"en": en_id, "fi": fi_id})
+        self.assertEqual(cvs["Warehouse Worker"]["versions"], {"en": cvs["Warehouse Worker"]["id"]})
+        self.assertTrue(en and fi and other)
+
+        db.upsert_scraped({"source": "Jobly", "external_id": "1", "url": "", "title": "Paikkatietoasiantuntija",
+                           "company": "", "location": "", "posted": "", "category": "Forestry",
+                           "description": "QGIS ja kaukokartoitus. Remote sensing."}, None)
+        status, english = self.request("GET", "/api/skills/draft/gis_data/en")
+        status, finnish = self.request("GET", "/api/skills/draft/gis_data/fi")
+        self.assertEqual(english["cv"]["based_on"], "Forestry Trainee")
+        self.assertTrue(english["cv"]["content"]["skills"].startswith("GIS: QGIS"))
+        self.assertTrue(finnish["cv"]["content"]["skills"].startswith("Paikkatieto: QGIS"))
+        self.assertEqual(finnish["cv"]["based_on"], "Metsäalan harjoittelija")
+        self.assertEqual(finnish["cv"]["language"], "fi")
+        self.assertEqual(finnish["cv"]["role_id"], "gis_data")
+
     def test_protected_api_requires_an_account_session(self):
         status, error = self.request("GET", "/api/jobs", headers={"Cookie": ""})
         self.assertEqual(status, 401)

@@ -1,4 +1,5 @@
 import { api, h, register, store, message } from "../core.js";
+import { sourceAttrs, translateSwitch } from "../translate.js";
 
 const VIEW_KEY = "news.view";
 const DEFAULT_VIEW = { query: "", category: "", region: "", state: "", days: "30", sort: "recent" };
@@ -41,6 +42,7 @@ register({
     const view = loadView();
     const feedback = h("div");
     const itemList = h("div", { class: "news-list", "aria-live": "polite" });
+    const translation = translateSwitch(() => itemList);
     const count = h("p", { class: "muted small", role: "status" });
     const refreshButton = h("button", { onclick: refresh }, "Refresh news");
 
@@ -102,6 +104,7 @@ register({
         "Topic tags and the interest score are keyword-based (with a Joensuu/North Karelia feed-scope boost), not AI ratings or probabilities. Refresh is manual and respects each feed's 30–60-minute interval; RSS excerpts can be incomplete."),
       h("div", { class: "row news-refresh" }, refreshButton, h("span", { class: "muted", role: "status", "aria-live": "polite" }, refreshStatus())),
       feedback,
+      translation.element,
       h("div", { class: "news-filters" },
         h("label", { class: "field news-search" }, "Search", query),
         h("label", { class: "field" }, "Topic", category),
@@ -196,11 +199,12 @@ register({
             h("span", { class: "muted small" }, `Feed scope: ${item.region}`),
             h("span", { class: "tag" }, `Interest ${item.relevance}/100`),
             item.is_read ? h("span", { class: "tag" }, "Read") : h("span", { class: "tag new" }, "Unread")),
-          h("h2", null, h("a", { href: item.url, target: "_blank", rel: "noopener noreferrer" }, item.title)),
+          h("h2", null, h("a", { href: item.url, target: "_blank", rel: "noopener noreferrer", ...sourceAttrs(item) }, item.title)),
           h("p", { class: "news-byline muted small" },
             `${item.source} · ${formatDate(item.published_at)}` +
             (item.coverage.length ? ` · ${item.coverage.length + 1} reports` : "")),
-          h("p", { class: "news-summary" }, item.summary || "This feed did not include an excerpt. Open the source for the full story."),
+          item.summary ? h("p", { class: "news-summary", ...sourceAttrs(item) }, item.summary)
+            : h("p", { class: "news-summary" }, "This feed did not include an excerpt. Open the source for the full story."),
           h("p", { class: "news-context" },
             h("strong", null, "Why it may matter: "), item.why_it_matters),
           h("p", { class: "news-career-angle" },
@@ -232,6 +236,7 @@ register({
         const button = [...itemList.querySelectorAll("[data-focus]")].find(el => el.dataset.focus === focused);
         button?.focus();
       }
+      translation.apply();
     }
 
     async function changeState(item, field, value) {

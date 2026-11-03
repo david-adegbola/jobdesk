@@ -465,3 +465,15 @@ label.field.inline > select { min-height: 40px; }
 .study-role { margin: 16px 0; }
 .study-role h2 .tag { margin-left: 8px; vertical-align: middle; }
 .study-role h3 { margin: 8px 0; }
+
+/* All / English / Finnish switch: radio buttons drawn as one segmented control */
+.segmented { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0; margin: 0; padding: 0; border: 0; }
+.segmented legend { float: left; margin-right: 8px; padding: 0; color: var(--text-secondary); }
+.segmented label { position: relative; }
+.segmented input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.segmented span { display: inline-block; padding: 6px 12px; min-height: 32px; border: 1px solid var(--border-strong, currentColor);
+  margin-left: -1px; background: var(--layer-01); cursor: pointer; }
+.segmented label:first-of-type span { margin-left: 0; }
+.segmented input:checked + span { background: var(--text-primary, #161616); color: var(--background, #fff); font-weight: 600; }
+.segmented input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; position: relative; z-index: 1; }
+@media (forced-colors: active) { .segmented input:checked + span { forced-color-adjust: none; background: Highlight; color: HighlightText; } }

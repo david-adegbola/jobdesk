@@ -341,10 +341,15 @@ def list_cvs(user_id):
             (user_id,),
         ).fetchall()
         result = []
+        folders = {}
         for row in rows:
             item = dict(row)
-            item["has_original"] = bool(item.pop("original_source"))
+            source = item.pop("original_source")
+            item["has_original"] = bool(source)
             item["content"] = json.loads(item.pop("content_json"))
+            # Imported role CVs come in language pairs from one folder (roles/<slug>/cv-fi.tex, cv-en.tex)
+            item["versions"] = folders.setdefault(source.rsplit("/", 1)[0], {}) if source else {}
+            item["versions"][item["language"]] = item["id"]
             result.append(item)
         return result
 

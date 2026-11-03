@@ -39,6 +39,7 @@ import match    # noqa: E402
 import scraper  # noqa: E402
 import news     # noqa: E402
 import skills   # noqa: E402
+import language  # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -490,6 +491,7 @@ def api_jobs(h, m):
         safe = {key: value for key, value in job.items()
                 if key not in {"user_id", "external_id", "contact_name", "contact_phone"}}
         safe["personal"] = not scraper.is_forestry_related(job)     # only ever true for the admin
+        safe["languages"] = language.detect(job.get("title"), job.get("ad_text"))
         safe_jobs.append(enrich(safe, roles))
     return {"jobs": safe_jobs, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
 
@@ -857,14 +859,16 @@ def api_skills(h, m):
     return analysis
 
 
-@route("GET", r"/api/skills/draft/([\w-]+)")
+@route("GET", r"/api/skills/draft/([\w-]+)(?:/(fi|en))?")
 def api_skills_draft(h, m):
-    """An unsaved CV draft for one role type; the CV page opens it in the editor."""
+    """An unsaved CV draft for one role type, optionally in a chosen language (fi/en); the CV page
+    opens it in the editor."""
     analysis, cvs = _skills_analysis(h.user)
     role = next((r for r in analysis["role_types"] if r["id"] == m.group(1)), None)
     if not role:
         return h.error(404, "No jobs of this type are listed now.")
-    return {"cv": skills.draft_cv(role, cvs, role["study"])}
+    draft = skills.draft_cv(role, cvs, role["study"], m.group(2))
+    return {"cv": {**draft, "role_id": role["id"]}}
 
 
 # ---------------------------------------------------------------- forestry news
@@ -874,6 +878,7 @@ def api_news(h, m):
     states = {state["source_id"]: state for state in db.list_news_source_state(SHARED_DATA_OWNER)}
     sources = [{**source, "state": states.get(source["id"])} for source in news.SOURCES]
     stories = [{**item,
+                "languages": language.detect(item.get("title"), item.get("summary")),
                 "why_it_matters": news.story_context(item["category"]),
                 "career_angle": news.career_context(item["category"])}
                for item in db.list_news(h.user["id"])]

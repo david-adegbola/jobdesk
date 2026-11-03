@@ -1,4 +1,5 @@
 import { api, h, register, message } from "../core.js";
+import { sourceAttrs, translateWithin } from "../translate.js";
 const AUDIENCES = [
   ["student", "Bachelor's / master's student"],
   ["researcher", "PhD student / researcher"],
@@ -139,10 +140,11 @@ function recommendationCard(item, kind, score, action) {
     : [item.source, item.published_at?.slice(0, 10)].filter(Boolean).join(" · ");
   return h("article", { class: "home-item" },
     h("div", { class: "home-item-main" },
-      h("h3", null, href ? h("a", { href, target: "_blank", rel: "noopener" }, item.title) : item.title),
+      h("h3", null, href ? h("a", { href, target: "_blank", rel: "noopener", ...sourceAttrs(item) }, item.title)
+        : h("span", sourceAttrs(item), item.title)),
       subtitle ? h("p", { class: "muted small" }, subtitle) : "",
       item.deadline ? h("p", { class: "home-deadline" }, "Deadline: ", dateLabel(item.deadline)) : "",
-      item.summary ? h("p", { class: "home-summary" }, item.summary) : "",
+      item.summary ? h("p", { class: "home-summary", ...sourceAttrs(item) }, item.summary) : "",
       topicLabels.length ? h("p", { class: "home-topics" }, topicLabels.join(" · ")) : ""),
     h("div", { class: "home-item-actions" }, action));
 }
@@ -338,7 +340,7 @@ register({
                 planForm(application, load, "saved"))),
               ...savedNews.slice(0, 6).map(item => h("article", { class: "home-saved-item" },
                 h("span", { class: "tag" }, "News"),
-                h("h3", null, h("a", { href: item.url, target: "_blank", rel: "noopener" }, item.title)),
+                h("h3", null, h("a", { href: item.url, target: "_blank", rel: "noopener", ...sourceAttrs(item) }, item.title)),
                 h("p", { class: "muted small" }, [item.source, item.published_at?.slice(0, 10)].filter(Boolean).join(" · ")),
                 h("a", { href: "#/news" }, "Open in News"))))
             : h("p", { class: "empty" }, "Save jobs to your Tracker or stories from News and they will be collected here.")),
@@ -354,6 +356,8 @@ register({
           || targets.find(el => el.dataset.focus === focusKey);
         target?.focus();
       }
+      // Follows the Original / English switch on Jobs and News; only an installed language pack is used here
+      translateWithin(root).catch(() => {});
     }
 
     await load();

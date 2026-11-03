@@ -215,6 +215,9 @@ def draft_cv(role, cvs, study, language=None):
     still to learn on a "Want to learn" row. study is the role type's study list from analyse()."""
     base = role.get("closest_cv") and next((cv for cv in cvs if cv["id"] == role["closest_cv"]["id"]), None)
     language = language or (base["language"] if base else "en")
+    if base and base["language"] != language:     # use the same CV's version in that language, if any
+        other = (base.get("versions") or {}).get(language)
+        base = next((cv for cv in cvs if cv["id"] == other), base)
     content = dict(base["content"]) if base else {}
     label = role["label_fi"] if language == "fi" else role["label"]
     content["target_role"] = label

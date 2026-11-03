@@ -1,4 +1,5 @@
 import { api, h, register, store, message, getState } from "../core.js";
+import { sourceAttrs, translateSwitch } from "../translate.js";
 
 function places(text) {
   const p = (text || "").split(", ").filter(Boolean);
@@ -175,6 +176,7 @@ register({
 
     // The filter controls are built once (and on Reset) so a dragged slider keeps focus;
     // update() redraws the sort chips, Type chips and table around them.
+    const translation = translateSwitch(() => tableArea);
     const controls = h("div"), typeChips = h("div", { class: "row" }), sortChips = h("div", { class: "row" }), tableArea = h("div");
     listArea.replaceChildren(controls, typeChips, sortChips, tableArea);
 
@@ -183,7 +185,8 @@ register({
         options.map(([v, t]) => h("option", { value: v, selected: value === v }, t)));
       const setView = key => v => { view[key] = v; saveView(); };
       const matchOut = h("output", null, view.minMatch);
-      controls.replaceChildren(h("div", { class: "row" },
+      controls.replaceChildren(translation.element,
+        h("div", { class: "row" },
         h("label", { class: "check" }, "Posted ", sel(view.posted, setView("posted"),
           [["", "Any time"], ["3", "Last 3 days"], ["7", "Last 7 days"], ["14", "Last 14 days"], ["30", "Last 30 days"]])),
         h("label", { class: "check" }, "Deadline ", sel(view.deadline, setView("deadline"),
@@ -250,7 +253,8 @@ register({
 
       const rows = shown.map(j => h("tr", null,
         h("td", null, j.is_new ? h("div", null, h("span", { class: "tag new" }, "NEW")) : "",
-          j.url ? h("a", { href: j.url, target: "_blank", rel: "noopener" }, j.title) : j.title,
+          j.url ? h("a", { href: j.url, target: "_blank", rel: "noopener", ...sourceAttrs(j) }, j.title)
+            : h("span", sourceAttrs(j), j.title),
           j.personal ? h("div", null, h("span", { class: "tag" }, "Only you")) : "",
           j.source !== "Jobly" || j.manual ? h("div", { class: "muted small" },
             j.source === "Community" ? "shared by a member" : j.manual ? "added by hand" : j.source) : ""),
@@ -293,6 +297,7 @@ register({
         ? focusTargets.find(el => el.dataset.focus === `status:${focusKey.slice("fetch:".length)}`)
         : null;
       (again || fetchFallback)?.focus();
+      translation.apply();      // swaps in English titles when the switch is on English
     }
 
     await load();

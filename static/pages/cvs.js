@@ -149,15 +149,56 @@ register({
       const current = editor;
       const values = current.content || (current.content = {});
       const controls = {};
+      const textChanged = () => controls.title.value.trim() !== current.original.title
+        || fields.some(([key]) => controls[key].value.trim() !== (current.original.content[key] || ""));
       const returnToList = () => {
-        const changed = controls.title.value.trim() !== current.original.title
-          || controls.language.value !== current.original.language
-          || fields.some(([key]) =>
-            controls[key].value.trim() !== (current.original.content[key] || ""));
+        const changed = textChanged() || controls.language.value !== current.original.language;
         if (changed && !window.confirm("Discard your unsaved changes and return to My CVs?")) return;
         editor = null;
         draw();
       };
+      const languageName = { en: "English", fi: "Finnish" };
+      const languageNote = h("p", { class: "muted small", role: "status" }, current.languageNote || "");
+      // Choosing a language opens this CV's version in that language when there is one
+      // (imported role CVs come in Finnish/English pairs); otherwise the text stays as written.
+      async function switchLanguage(lang) {
+        const other = (current.versions || {})[lang];
+        const target = other && other !== current.id ? cvs.find(cv => cv.id === other) : null;
+        const replaces = current.role_id || target;
+        if (replaces && textChanged() && !window.confirm(
+          `Open the ${languageName[lang]} version? Your unsaved changes here will be lost.`)) {
+          controls.language.value = current.language;
+          return;
+        }
+        if (current.role_id) {
+          try {
+            const { cv } = await api(`/api/skills/draft/${encodeURIComponent(current.role_id)}/${lang}`);
+            editor = createEditorState(cv, "create");
+            editor.fromPlan = cv.based_on || true;
+            editor.languageNote = cv.based_on
+              ? `Showing the ${languageName[lang]} draft, based on “${cv.based_on}”.`
+              : `Showing the ${languageName[lang]} draft.`;
+          } catch (err) {
+            controls.language.value = current.language;
+            status.replaceChildren(message(err.message, true));
+            return;
+          }
+        } else if (target && current.mode === "edit") {
+          editor = createEditorState(target, "edit");
+          editor.languageNote = `Now editing the ${languageName[lang]} version, “${target.title}”.`;
+        } else if (target) {
+          editor = createEditorState({ ...target, id: undefined, title: `${target.title} (copy)` }, "copy");
+          editor.languageNote = `Now copying the ${languageName[lang]} version, “${target.title}”.`;
+        } else {
+          current.language = lang;
+          languageNote.textContent = `There is no ${languageName[lang]} version of this CV, so the text stays as written; ` +
+            `only the PDF headings change to ${languageName[lang]}. Translate the text before saving` +
+            (current.mode === "edit" ? ", or use Make a copy first to keep both versions." : ".");
+          return;
+        }
+        draw();
+        area.querySelector("select")?.focus();     // the Language select of the new editor
+      }
       const form = h("form", { class: "cv-editor", onsubmit: async event => {
         event.preventDefault();
         current.title = controls.title.value.trim();
@@ -212,9 +253,10 @@ register({
       h("label", { class: "field" }, "CV title",
         controls.title = h("input", { value: current.title || "", required: true, maxlength: 120 })),
       h("label", { class: "field" }, "Language",
-        controls.language = h("select", null,
+        controls.language = h("select", { onchange: () => switchLanguage(controls.language.value) },
           h("option", { value: "en", selected: current.language === "en" }, "English"),
-          h("option", { value: "fi", selected: current.language === "fi" }, "Suomi"))),
+          h("option", { value: "fi", selected: current.language === "fi" }, "Suomi")),
+        languageNote),
       ...fields.map(([key, label, , type]) =>
         h("label", { class: "field" }, label,
           controls[key] = type === "textarea"

@@ -71,6 +71,14 @@ evaluated or certified against WCAG 2.1 Level AA.
   transparent keyword matching, not generated analysis; open each publisher for the full article.
   Refresh is manual and respects source-specific 30–60-minute intervals; source-level errors are
   shown.
+- **Show text in English:** Jobs and News have an Original / English switch, remembered in the
+  browser (Home follows it). English machine-translates Finnish and Swedish titles and news
+  summaries on the device with the browser's built-in Translator API: nothing is sent to a server
+  and there is no cost. It needs desktop Chrome 138+ or Edge 148+; the first use downloads a
+  language pack. Other browsers and phones show the original text with a note (their own
+  "Translate page" option still works, helped by `lang` attributes). Each item's language is
+  worked out on the server by counting common Finnish, English and Swedish words (`language.py`);
+  items that already have English text are left alone.
 - **What to study:** groups the jobs you can see into role types (forest specialist, wood
   procurement, research, GIS and forest data, nature, field work and so on) and lists the skills
   their ads ask for, in Finnish and English, compared with your own CVs. "Study next" shows skills
@@ -96,6 +104,10 @@ evaluated or certified against WCAG 2.1 Level AA.
   dated experience entries with indented details, optional Hobbies, and the standard References
   section. Member CV PDFs are compiled on the server from saved data and are not uploaded to the
   shared repository.
+  Choosing the other language in the CV editor opens that CV's version in the other language when
+  one exists (imported role CVs come in Finnish/English pairs; drafts from What to study are
+  rebuilt in that language). Without one, the text stays as written and only the PDF headings
+  change, so translate it before saving.
 - **Account:** change your password, download your private data and sign out. Administrators can
   create single-use, seven-day invitation codes to onboard classmates.
 
@@ -191,6 +203,7 @@ jobdesk/
 ├── config.py        paths, host, port (environment variables)
 ├── db.py            SQLite: users, checks, jobs, applications
 ├── scraper.py       Jobly, forestry-sector and Workday job feeds
+├── language.py      Finnish / English / Swedish detection, used by the English switch
 ├── skills.py        What to study: skills asked for by role type vs. the member's CVs
 ├── news.py          Forestry news RSS feeds and transparent topic matching
 ├── match.py         match score, blockers, employer and PDF links
