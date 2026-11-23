@@ -42,7 +42,7 @@ import news     # noqa: E402
 import skills   # noqa: E402
 import language  # noqa: E402
 from core import fields as core_fields  # noqa: E402
-from core import finnish, llm  # noqa: E402
+from core import draft, finnish, llm  # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -530,6 +530,7 @@ def api_state(h, m):
         "fields": [core_fields.summary(p) for p in scraper.PROFILES.values()],
         "user_fields": fields,
         "finnish_level": preferences.get("finnish_level") or "none",
+        "llm_opt_in": preferences.get("llm_opt_in") is True,
         "llm": {"mode": settings.mode, "model": settings.model if settings.live else ""},
         "latest_check": db.latest_check(SHARED_DATA_OWNER), "scrape": SCRAPE.copy(),
         "classify": CLASSIFY.copy() if user["is_admin"] else None,
@@ -706,6 +707,60 @@ def api_update_account_fields(h, m):
                    "finnish_level": level}
     db.update_user_preferences(h.user["id"], preferences)
     return {"fields": preferences["fields"], "finnish_level": level}
+
+
+@route("POST", "/api/account/ai")
+def api_update_account_ai(h, m):
+    """The member's explicit opt-in to sending their CV facts to the AI service for drafting.
+    Off by default; turning it off takes effect for the next request."""
+    body = h.json()
+    if not isinstance(body, dict) or not isinstance(body.get("llm_opt_in"), bool):
+        return h.error(400, "Choose on or off.")
+    preferences = {**user_preferences(h.user), "llm_opt_in": body["llm_opt_in"]}
+    db.update_user_preferences(h.user["id"], preferences)
+    return {"llm_opt_in": preferences["llm_opt_in"]}
+
+
+# ---------------------------------------------------------------- grounded application answers
+
+@route("POST", "/api/draft")
+def api_draft(h, m):
+    """Draft the answer to one application question from one of the member's own CVs.
+
+    In live mode the CV facts (never name, email, phone, location or links), the question and the
+    ad text go to the AI service, and only when the member has opted in. Mock mode needs no opt-in:
+    nothing leaves the server. The draft is returned for editing; nothing is sent anywhere else."""
+    body = h.json()
+    if not isinstance(body, dict):
+        return h.error(400, BODY_ERROR)
+    cv_id, job_id = body.get("cv_id"), body.get("job_id")
+    question, ad_text = body.get("question"), body.get("ad_text", "")
+    word_limit, language = body.get("word_limit", 150), body.get("language", "en")
+    def whole(value):      # bool is a subclass of int in Python: {"cv_id": true} must not mean CV 1
+        return isinstance(value, int) and not isinstance(value, bool)
+    if not whole(cv_id) or (job_id is not None and not whole(job_id)):
+        return h.error(400, "Choose one of your CVs (and optionally a job).")
+    if not isinstance(question, str) or not isinstance(ad_text, str) or not whole(word_limit):
+        return h.error(400, "The question and ad must be text and the word limit a whole number.")
+    cv = db.get_cv(cv_id, h.user["id"])
+    if not cv:
+        return h.error(404, "CV not found.")
+    if job_id is not None:
+        job = db.get_job(job_id, h.user["id"])
+        if not job or not can_see(job, h.user):
+            return h.error(404, "No such job.")
+        ad_text = finnish_text(job)
+    settings = llm_settings()
+    if settings.live and user_preferences(h.user).get("llm_opt_in") is not True:
+        return h.error(403, "AI drafting sends facts from your CV to an AI service, so it is off until you turn it "
+                            "on under Account → AI drafting.")
+    try:
+        result = draft.draft_answer(ad_text, question, cv["content"], word_limit, language, settings)
+    except ValueError as error:
+        return h.error(400, str(error))
+    except llm.LLMError as error:
+        return h.error(502, f"The AI service couldn't draft an answer: {error}")
+    return result
 
 
 # ---------------------------------------------------------------- tracker

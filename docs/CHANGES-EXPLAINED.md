@@ -422,3 +422,103 @@ sent: never a CV, never personal jobs, never title-only listings.
 - *What's still weak?* The keyword lists for the new fields were written by hand and have only been
   checked against the test titles. Run a scrape for one field and read what comes back before
   trusting it.
+
+---
+
+## Phase 4: Application answers grounded in the CV
+
+### The idea in one paragraph
+
+Students are asked free-text questions such as "Tell us about your previous work experience". An
+LLM can write a fluent answer, but fluent text can include things that aren't true: a longer job,
+a card the student doesn't have, a skill they are only learning. So the model must **cite a CV fact
+for every sentence**, and code then **checks each sentence against the facts it cites**. Sentences
+that fail are kept and marked UNSUPPORTED, never silently removed or kept, and the student edits
+the draft before using it anywhere.
+
+### Step by step (`core/draft.py`)
+
+1. **CV → facts** (`core/cv_facts.py`). The CV's sections become numbered facts:
+   `sum-1` (summary paragraphs), `edu-1`, `exp-1` (one per job: heading + details, "Tags:" lines
+   removed), `proj-1`, `skill-1`, `cert-1`, `lang-1`, `hob-1`. "Want to learn: …" rows are **not**
+   facts; they go in a separate `learning` list. **Name, email, phone, location, links and target
+   role are never included**, because the model doesn't need them to answer the question
+   (data minimisation).
+2. **What the ad asks for but the CV doesn't show** (`core/blockers.py`): the same licence / card /
+   qualification / fluent-Finnish patterns as before, now without anyone's personal facts. A
+   requirement counts as missing when no CV fact matches its pattern.
+3. **Live mode**: the system prompt (`core/prompts/grounded_answer.md`) gives the rules. The user
+   message carries the ad, question, facts, `<not_held>` and `<ad_asks_for_but_cv_lacks>` in tags,
+   marked as data, not instructions. The answer comes back in a fixed JSON shape
+   `{"sentences": [{"text", "fact_ids"}]}` (structured output).
+   **Mock mode**: the three facts sharing most words with the question are copied as sentences,
+   each starting `[MOCK OUTPUT – not a model result]`.
+4. **Verification** (`core/verify.py`): every sentence is checked (below).
+5. **Word count** against the limit; `over_limit` is reported, not enforced by cutting text.
+
+### The five checks (`core/verify.py`)
+
+| Check | Catches | Example flagged |
+|---|---|---|
+| cites at least one fact, and every cited id exists | sentences with no CV basis | "I am a hard-working team player." (no id) |
+| shares at least one key word with the cited facts | made-up content | "I managed a sawmill budget." citing a field-assistant job |
+| every number is in the cited facts | inflated figures and dates | "I measured **120** plots" when the CV says 40 |
+| no claim of a missing requirement, unless it says "not yet" / "want to learn" | claimed cards and licences | "I hold a B driving licence." |
+| no want-to-learn item presented as held | skills turned from wish into fact | "I have production experience with Kubernetes." |
+
+"Key words" leaves out stop words, words under 4 letters and generic application words
+("experience", "motivated", "kokemusta"…), so a sentence can't pass by sharing only "experience".
+Finnish case endings still match ("taimikonhoitoa" ↔ "taimikonhoito"), using the same
+`word_matches` as the rest of JobDesk.
+
+### Privacy: the opt-in
+
+- New Account setting **"AI drafting"**, **off by default**. The page says exactly what is sent
+  (the chosen CV's facts, the question and the ad; never name, email, phone, location or links) and
+  to whom (Anthropic's Claude API).
+- `POST /api/draft` refuses live drafting with **403** unless that member has opted in. Mock drafting
+  works without opt-in, because nothing leaves the server.
+- A member can only draft from **their own** CV (another member's CV id gives 404). Job ads come from
+  jobs they can see, or pasted text.
+- The draft is only returned to the member; nothing is sent to an employer.
+- Boolean ids are refused: in Python `True` counts as the integer 1, so `{"cv_id": true}` would
+  otherwise mean "CV number 1".
+
+### Evaluation
+
+`data/eval/drafts.jsonl` has three invented cases (forestry, IT support, health care with a Finnish
+answer). Each has **planted sentences** whose truth is known. `python3 scripts/eval_drafts.py` runs
+the verifier on them, and drafts an answer per case (mock or live).
+
+**Current verifier result on the planted sentences** (pinned by a test):
+
+| | count | verifier |
+|---|---|---|
+| Unsupported sentences | 9 | **8 caught**, 1 missed |
+| Supported sentences | 7 | **2 false alarms** |
+
+The misses and false alarms are there on purpose, so the numbers show the real limits:
+- **Missed:** "I led the field team at Example Forest Research." The employer and the job are real,
+  so the words match, but the CV says *assistant*, not *lead*. Word checks can't see a real fact used
+  misleadingly. **The student must still read every sentence.**
+- **False alarm 1:** "I am learning to use drones." It's honest, but the want-to-learn row has no fact
+  id, so the cited fact shares no words with it.
+- **False alarm 2:** a true sentence written in Finnish about an English CV. No words match across
+  languages. Drafting in the CV's own language avoids this; a future fix could check against both
+  language versions of a CV.
+
+For **real drafts**, a person must say which sentences are true. The report lists every drafted
+sentence with a ready-made line for `data/eval/draft_labels.jsonl`
+(`{"case", "text", "supported": true|false}`). With labels, it reports how many unsupported
+sentences the model produced, how many the verifier caught, how many it missed, and false alarms.
+
+**Interview questions.**
+- *Why not ask the model to check itself?* The same model that invented a fact may defend it.
+  Plain code is predictable, explainable and free, and the evaluation shows exactly what it misses.
+- *What's the trade-off in the checks?* Stricter checks (e.g. "most key words must match") would
+  catch more invented detail but flag more honest paraphrases. The planted set measures that
+  trade-off, so a change can be judged by its numbers.
+- *Why keep failing sentences instead of deleting them?* Deleting would hide the problem and could
+  leave an answer that reads oddly. Marking them lets the student fix or remove them knowingly.
+- *Why send facts and not the whole CV?* Less personal data leaves the server, and the facts have ids
+  the model must cite.

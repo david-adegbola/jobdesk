@@ -616,6 +616,72 @@ class JobApiTests(unittest.TestCase):
         levels = {job["title"]: job["finnish"]["level"] for job in view["jobs"]}
         self.assertEqual(levels, {"Metsäharjoittelija": "not_needed", "Metsuri": "unclear"})
 
+    # ------------------------------------------------------------ Phase 4: grounded drafting and opt-in
+
+    def member_cv(self, headers):
+        status, created = self.request("POST", "/api/cvs", {"title": "My CV", "language": "en", "content": {
+            "full_name": "Forest Student", "email": "student@example.test",
+            "experience": "May 2025--Aug 2025 — Field Assistant — Example Forest Research\nMeasured 40 sample plots.",
+            "skills": "GIS: QGIS"}}, headers=headers)
+        self.assertEqual(status, 200)
+        return created["id"]
+
+    def test_ai_opt_in_is_off_by_default_and_validated(self):
+        member = self.member_cookie()
+        status, state = self.request("GET", "/api/state", headers=member)
+        self.assertFalse(state["llm_opt_in"])
+        status, _ = self.request("POST", "/api/account/ai", {"llm_opt_in": "yes"}, headers=member)
+        self.assertEqual(status, 400)
+        status, saved = self.request("POST", "/api/account/ai", {"llm_opt_in": True}, headers=member)
+        self.assertEqual(saved, {"llm_opt_in": True})
+        status, state = self.request("GET", "/api/state", headers=member)
+        self.assertTrue(state["llm_opt_in"])
+
+    def test_mock_drafting_works_without_opt_in(self):
+        member = self.member_cookie()
+        cv_id = self.member_cv(member)
+        status, result = self.request("POST", "/api/draft", {
+            "cv_id": cv_id, "question": "Tell us about field work.", "ad_text": "Field trainee.",
+            "word_limit": 80}, headers=member)
+        self.assertEqual(status, 200)
+        self.assertEqual(result["method"], "mock")
+        self.assertTrue(result["sentences"])
+
+    def test_live_drafting_needs_the_members_opt_in_and_sends_no_identity(self):
+        member = self.member_cookie()
+        cv_id = self.member_cv(member)
+        sent = []
+
+        def fake_call(system, user, schema, settings, max_tokens):
+            sent.append(user)
+            return {"data": {"sentences": [{"text": "I measured 40 sample plots.", "fact_ids": ["exp-1"]}]},
+                    "model": "claude-opus-5-5", "usage": {}}
+        live = server.llm.Settings(mode="live", api_key="test-key")
+        body = {"cv_id": cv_id, "question": "Experience?", "ad_text": "Field trainee.", "word_limit": 80}
+        with patch.object(server, "llm_settings", return_value=live), \
+                patch.object(server.draft.llm, "call_json", side_effect=fake_call):
+            status, error = self.request("POST", "/api/draft", body, headers=member)
+            self.assertEqual(status, 403)
+            self.assertIn("Account", error["error"])
+            self.assertEqual(sent, [])
+            self.request("POST", "/api/account/ai", {"llm_opt_in": True}, headers=member)
+            status, result = self.request("POST", "/api/draft", body, headers=member)
+        self.assertEqual(status, 200)
+        self.assertEqual((result["method"], result["unsupported"]), ("llm", 0))
+        self.assertEqual(len(sent), 1)
+        self.assertNotIn("Forest Student", sent[0])
+        self.assertNotIn("student@example.test", sent[0])
+
+    def test_drafting_only_uses_the_members_own_cv_and_valid_input(self):
+        member = self.member_cookie()
+        cv_id = self.member_cv(member)
+        status, _ = self.request("POST", "/api/draft", {"cv_id": cv_id, "question": "Q?", "word_limit": 80})
+        self.assertEqual(status, 404)          # the administrator can't draft from a member's CV
+        for body in ({"cv_id": True, "question": "Q?"}, {"cv_id": cv_id, "question": 5},
+                     {"cv_id": cv_id, "question": "Q?", "word_limit": 3}, {"cv_id": cv_id, "question": "Q?", "job_id": "1"}):
+            status, _ = self.request("POST", "/api/draft", body, headers=member)
+            self.assertEqual(status, 400, body)
+
     def test_facts_load_raises_a_catchable_error(self):
         with patch.object(facts, "FACTS_FILE", Path(self.temp_dir.name) / "facts.json"), \
                 patch("builtins.print"):

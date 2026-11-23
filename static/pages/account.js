@@ -43,6 +43,28 @@ register({
       h("button", { type: "submit" }, "Save fields"), fieldsFeedback);
     main.append(h("section", { class: "card account-section" }, h("h2", null, "Fields and Finnish"), fieldsForm));
 
+    const aiFeedback = h("div", { "aria-live": "polite" });
+    const aiToggle = h("input", { type: "checkbox", checked: state.llm_opt_in, onchange: async () => {
+      try {
+        const saved = await api("/api/account/ai", { method: "POST", body: { llm_opt_in: aiToggle.checked } });
+        aiToggle.checked = saved.llm_opt_in;
+        await getState(true);
+        aiFeedback.replaceChildren(message(saved.llm_opt_in ? "AI drafting is on." : "AI drafting is off."));
+      } catch (error) {
+        aiToggle.checked = !aiToggle.checked;
+        aiFeedback.replaceChildren(message(error.message, true));
+      }
+    } });
+    main.append(h("section", { class: "card account-section" }, h("h2", null, "AI drafting"),
+      h("p", null, "When this is on, drafting an application answer sends the question, the job ad and the facts from " +
+        "the CV you choose (your education, experience, projects, skills, certificates, languages and hobbies; never your " +
+        "name, email, phone, location or links) to an AI service (Anthropic's Claude API) to write a first draft. " +
+        "Every sentence is then checked against your CV here, and nothing is sent to an employer."),
+      h("p", { class: "muted small" }, state.llm.mode === "live"
+        ? "This server has AI drafting available."
+        : "This server runs in mock mode: drafts are made locally from your CV and nothing is sent to an AI service, whatever you choose here."),
+      h("label", { class: "check" }, aiToggle, " Allow AI drafting with my CV facts (off by default)"), aiFeedback));
+
     const passwordFeedback = h("div", { "aria-live": "polite" });
     const passwordForm = h("form", { class: "account-form", onsubmit: async event => {
       event.preventDefault();
