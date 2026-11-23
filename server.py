@@ -41,6 +41,8 @@ import scraper  # noqa: E402
 import news     # noqa: E402
 import skills   # noqa: E402
 import language  # noqa: E402
+from core import fields as core_fields  # noqa: E402
+from core import finnish, llm  # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -163,16 +165,58 @@ def enrich(job, roles, f=None):
             "days_left": days_left, "has_ad_text": bool(job.get("ad_text"))}
 
 
-def can_see(job, user, owner_key="user_id"):
-    """Members see forestry jobs only. The administrator also sees their own non-forestry jobs
-    (the PERSONAL_CATEGORIES scraped for them and jobs they added by hand)."""
-    return scraper.is_forestry_related(job) or (
-        bool(user["is_admin"]) and job.get(owner_key) == user["id"])
+FINNISH_LEVELS = ("none", "basic", "intermediate", "fluent")
+
+
+def user_preferences(user):
+    return json.loads(db.get_user(user["id"])["preferences_json"] or "{}")
+
+
+def user_fields(user, preferences=None):
+    """The member's chosen field ids, in profile order (default: config.DEFAULT_FIELDS)."""
+    chosen = (preferences if preferences is not None else user_preferences(user)).get("fields")
+    chosen = chosen if isinstance(chosen, list) and chosen else config.DEFAULT_FIELDS
+    return [i for i in scraper.PROFILES if i in chosen] or list(config.DEFAULT_FIELDS)
+
+
+def is_personal(job):
+    """The administrator's own non-field jobs: their private Jobly categories and jobs they added
+    by hand outside every field. Visible to that administrator only."""
+    return job.get("source") == "Personal" or job.get("category") in scraper.PERSONAL_CATEGORIES
+
+
+def can_see(job, user, owner_key="user_id", fields=None):
+    """Personal jobs: only their administrator. Shared jobs: members whose fields they belong to."""
+    if is_personal(job):
+        return bool(user["is_admin"]) and job.get(owner_key) == user["id"]
+    return bool(scraper.relevant_fields(job, fields if fields is not None else user_fields(user)))
 
 
 def forestry_applications(user):
+    """The member's applications for jobs they can still see (name kept from the forestry-only days)."""
+    fields = user_fields(user)
     return [application for application in db.list_applications(user["id"])
-            if can_see(application, user, "job_owner")]
+            if can_see(application, user, "job_owner", fields)]
+
+
+def _text_hash(text):
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def finnish_text(job):
+    """What the Finnish classifier reads: the title and the saved ad (public job text only)."""
+    return f"{job.get('title') or ''}\n{job.get('ad_text') or ''}".strip()
+
+
+def finnish_for(job, stored):
+    """The stored LLM classification when it was made from the current ad text, else the
+    keyword baseline (core.finnish.fallback)."""
+    text = finnish_text(job)
+    saved = stored.get(job["id"])
+    if saved and saved["text_hash"] == _text_hash(text):
+        return {k: v for k, v in saved.items() if k not in ("text_hash", "created_at")}
+    return finnish.fallback(text)
 
 
 def safe_application(application):
@@ -474,13 +518,21 @@ def api_delete_cv(h, m):
 def api_state(h, m):
     user = h.user
     roles = cv_roles(user["id"])
-    preferences = json.loads(db.get_user(user["id"])["preferences_json"] or "{}")
+    preferences = user_preferences(user)
+    fields = user_fields(user, preferences)
+    settings = llm_settings()
     return {
         "facts": {}, "facts_warning": None,
         "roles": [{"slug": role["slug"], "title": role["title"]} for role in roles],
         "statuses": db.STATUSES,
-        "job_types": ["Forestry"] + (scraper.PERSONAL_CATEGORIES if user["is_admin"] else []),
+        "job_types": [scraper.PROFILES[i]["category"] for i in fields]
+                     + (scraper.PERSONAL_CATEGORIES if user["is_admin"] else []),
+        "fields": [core_fields.summary(p) for p in scraper.PROFILES.values()],
+        "user_fields": fields,
+        "finnish_level": preferences.get("finnish_level") or "none",
+        "llm": {"mode": settings.mode, "model": settings.model if settings.live else ""},
         "latest_check": db.latest_check(SHARED_DATA_OWNER), "scrape": SCRAPE.copy(),
+        "classify": CLASSIFY.copy() if user["is_admin"] else None,
         "user": {"id": user["id"], "name": user["name"], "email": user["email"],
                  "is_admin": bool(user["is_admin"])},
         "preferences": preferences,
@@ -490,13 +542,20 @@ def api_state(h, m):
 @route("GET", "/api/jobs")
 def api_jobs(h, m):
     roles = cv_roles(h.user["id"])
-    jobs = [job for job in db.list_jobs(h.user["id"]) if can_see(job, h.user)]
+    fields = user_fields(h.user)
+    jobs = [job for job in db.list_jobs(h.user["id"]) if can_see(job, h.user, fields=fields)]
+    stored = db.finnish_levels(finnish.PROMPT_VERSION)
     safe_jobs = []
     for job in jobs:
         safe = {key: value for key, value in job.items()
                 if key not in {"user_id", "external_id", "contact_name", "contact_phone"}}
-        safe["personal"] = not scraper.is_forestry_related(job)     # only ever true for the admin
+        safe["personal"] = is_personal(job)     # only ever true for the admin
+        matched = [] if safe["personal"] else scraper.relevant_fields(job, fields)
+        safe["fields"] = matched
+        if matched:     # show the job under the member's own field, e.g. a Valtiolle job as "IT"
+            safe["category"] = scraper.PROFILES[matched[0]]["category"]
         safe["languages"] = language.detect(job.get("title"), job.get("ad_text"))
+        safe["finnish"] = finnish_for(job, stored)
         safe_jobs.append(enrich(safe, roles))
     return {"jobs": safe_jobs, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
 
@@ -522,9 +581,13 @@ def api_add_job(h, m):
             return h.error(400, "Use a public job link beginning with http:// or https://.")
     if len(body.get("ad_text", "")) > 20_000:
         return h.error(400, "The public job description must be 20,000 characters or fewer.")
-    personal = not scraper.is_forestry_related(body)
+    member_fields = user_fields(h.user)
+    matched = scraper.relevant_fields({**body, "source": "Community"}, member_fields)
+    personal = not matched
     if personal and not h.user["is_admin"]:
-        return h.error(400, "Only forestry and forest-bioeconomy opportunities can be shared here.")
+        labels = " or ".join(scraper.PROFILES[i]["label_en"].lower() for i in member_fields)
+        return h.error(400, f"Only {labels} opportunities can be shared here. "
+                            "You can choose more fields on the Account page.")
     jid = scraper.jobly_id(url)
     if jid:
         source, external = "Jobly", jid
@@ -541,7 +604,7 @@ def api_add_job(h, m):
         fields["source"] = "Personal"
         fields["external_id"] = f"personal-{h.user['id']}-{external}"
     else:
-        fields["category"] = "Forestry"
+        fields["category"] = scraper.PROFILES[matched[0]]["category"]
         fields["source"] = "Community"
     fields["contact_name"] = ""
     fields["contact_phone"] = ""
@@ -554,7 +617,7 @@ def api_fetch_ad(h, m):
     if not job or not job["url"]:
         return h.error(404, "This job has no link to read.")
     if not can_see(job, h.user):
-        return h.error(404, "This is not a forestry opportunity.")
+        return h.error(404, "This job is not in your fields.")
     if not scraper.is_public_http_url(job["url"]):
         return h.error(400, "Reading an ad requires a public HTTP or HTTPS address.")
     text = scraper.fetch_ad_text(job["url"])
@@ -617,12 +680,32 @@ def api_update_account_profile(h, m):
             not isinstance(region, str) or region not in {"anywhere", "finland", "north-karelia"}):
         return h.error(400, "Choose valid audiences, topics and a location.")
     preferences = {
+        **user_preferences(h.user),      # keep fields, Finnish level and anything else already saved
         "audiences": list(dict.fromkeys(audiences)),
         "topics": list(dict.fromkeys(topics)),
         "region": region,
     }
     db.update_user_preferences(h.user["id"], preferences)
     return {"preferences": preferences}
+
+
+@route("POST", "/api/account/fields")
+def api_update_account_fields(h, m):
+    """The member's fields (forestry, IT, ...) and their own Finnish level, used for jobs, Match,
+    What to study and the shortlist order."""
+    body = h.json()
+    if not isinstance(body, dict):
+        return h.error(400, "Choose at least one field and your Finnish level.")
+    fields, level = body.get("fields"), body.get("finnish_level")
+    if (not isinstance(fields, list) or not fields
+            or not all(isinstance(i, str) and i in scraper.PROFILES for i in fields)):
+        return h.error(400, "Choose at least one field.")
+    if level not in FINNISH_LEVELS:
+        return h.error(400, "Choose your Finnish level.")
+    preferences = {**user_preferences(h.user), "fields": [i for i in scraper.PROFILES if i in fields],
+                   "finnish_level": level}
+    db.update_user_preferences(h.user["id"], preferences)
+    return {"fields": preferences["fields"], "finnish_level": level}
 
 
 # ---------------------------------------------------------------- tracker
@@ -876,10 +959,11 @@ def api_insights(h, m):
 # ---------------------------------------------------------------- what to study
 
 def _skills_analysis(user):
-    jobs = [{**job, "personal": not scraper.is_forestry_related(job)}
-            for job in db.list_jobs(user["id"]) if can_see(job, user)]
+    fields = user_fields(user)
+    jobs = [{**job, "personal": is_personal(job)}
+            for job in db.list_jobs(user["id"]) if can_see(job, user, fields=fields)]
     cvs = db.list_cvs(user["id"])
-    return skills.analyse(jobs, cvs), cvs
+    return skills.analyse(jobs, cvs, [scraper.PROFILES[i] for i in fields]), cvs
 
 
 @route("GET", "/api/skills")
@@ -965,6 +1049,83 @@ def api_scrape_start(h, m):
 @route("GET", "/api/scrape")
 def api_scrape_status(h, m):
     return SCRAPE.copy()
+
+
+# ---------------------------------------------------------------- Finnish level (LLM, runs in the background)
+
+CLASSIFY = {"running": False, "message": "", "done": 0, "total": 0, "result": None}
+CLASSIFY_LOCK = threading.Lock()
+CLASSIFY_BATCH = 25     # ads per run: each is one paid API call
+
+
+def llm_settings():
+    """LLM settings from the environment; a mistyped setting falls back to mock mode."""
+    try:
+        return llm.settings_from_env()
+    except llm.LLMUnavailable as error:
+        print("Warning:", error)
+        return llm.Settings()
+
+
+def classification_queue():
+    """Shared jobs with a saved ad whose current text hasn't been classified with this prompt version.
+    Personal (administrator-only) jobs and title-only listings are left out."""
+    stored = db.finnish_levels(finnish.PROMPT_VERSION)
+    queue = []
+    for job in db.list_jobs(SHARED_DATA_OWNER):
+        if is_personal(job) or not (job.get("ad_text") or "").strip() or not scraper.relevant_fields(job):
+            continue
+        saved = stored.get(job["id"])
+        if saved and saved["text_hash"] == _text_hash(finnish_text(job)):
+            continue
+        queue.append(job)
+    return queue
+
+
+def _classify_thread(jobs, settings):
+    classified = failed = 0
+    try:
+        for n, job in enumerate(jobs):
+            CLASSIFY.update(message=f"Reading “{(job.get('title') or '')[:60]}”", done=n, total=len(jobs))
+            text = finnish_text(job)
+            try:
+                result = finnish.classify(text, settings)
+            except (llm.LLMError, ValueError) as error:
+                print(f"  ! Finnish level for job {job['id']}: {error}")
+                failed += 1
+                continue
+            db.save_finnish_level(job["id"], _text_hash(text), result)
+            classified += 1
+    finally:
+        CLASSIFY.update(running=False, done=len(jobs), message="",
+                        result={"classified": classified, "failed": failed})
+
+
+@route("POST", "/api/jobs/classify")
+def api_classify_start(h, m):
+    """Administrator: classify the next batch of shared job ads with the LLM. Only public ad text is
+    sent (title + saved ad), never anyone's CV. Refused in mock mode."""
+    if not h.user["is_admin"]:
+        return h.error(403, "Administrator access is required.")
+    settings = llm_settings()
+    if not settings.live or not settings.api_key:
+        return h.error(400, "The LLM is off (JOBDESK_LLM_MODE is not live, or ANTHROPIC_API_KEY is missing). "
+                            "The Jobs page shows the keyword rule meanwhile.")
+    with CLASSIFY_LOCK:
+        if not CLASSIFY["running"]:
+            batch = classification_queue()[:CLASSIFY_BATCH]
+            CLASSIFY.update(running=bool(batch), message="Starting…", done=0, total=len(batch),
+                            result=None if batch else {"classified": 0, "failed": 0})
+            if batch:
+                threading.Thread(target=_classify_thread, args=(batch, settings), daemon=True).start()
+    return CLASSIFY.copy()
+
+
+@route("GET", "/api/jobs/classify")
+def api_classify_status(h, m):
+    if not h.user["is_admin"]:
+        return h.error(403, "Administrator access is required.")
+    return {**CLASSIFY.copy(), "waiting": len(classification_queue())}
 
 
 # ---------------------------------------------------------------- HTTP plumbing
@@ -1065,11 +1226,11 @@ def merged_roles():
 
 
 def unrelated_jobs():
-    """Stored jobs that nobody can see: not forestry, and not one of the administrator's own
-    PERSONAL_CATEGORIES jobs (those stay, visible only to the administrator)."""
+    """Stored jobs that nobody can see: in no field, and not one of the administrator's own
+    personal jobs (those stay, visible only to the administrator)."""
     return [job for job in db.jobs_with_applications()
-            if not scraper.is_forestry_related(job)
-            and not (job["user_id"] == SHARED_DATA_OWNER and job["category"] in scraper.PERSONAL_CATEGORIES)]
+            if not scraper.relevant_fields(job)
+            and not (job["user_id"] == SHARED_DATA_OWNER and is_personal(job))]
 
 
 def prune_unrelated_jobs(apply=False):

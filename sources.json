@@ -1,0 +1,85 @@
+{
+  "_comment": "Job sources. 'fields' is a list of field ids, or \"all\". 'kind' decides how ads are filtered: field_board = everything it lists belongs to its fields; broad_portal = whole public-sector portals, so the ad text must contain a field's core words (or the title a field word); employer/general = title, description or location must contain a field word. Before adding a source: check robots.txt and the site's terms, and record them here. Robots.txt is also checked automatically before every request (core/robots.py).",
+  "checked": "2026-11-24",
+  "sources": [
+    {
+      "id": "jobly", "name": "Jobly", "reader": "jobly", "kind": "general", "fields": "per-profile",
+      "enabled": true, "base_url": "https://www.jobly.fi",
+      "robots": "User-agent * allows /tyopaikat/; Crawl-delay: 10 (honoured).",
+      "terms": "Not read: www.jobly.fi/kayttoehdot shows a sign-in page; general terms at almamedia.fi/markkinapaikkaehdot/#jobly should be read before deploying."
+    },
+    {
+      "id": "metsalehti", "name": "Metsälehti", "reader": "metsalehti", "kind": "field_board", "fields": ["forestry"],
+      "enabled": true,
+      "urls": {"feed": "https://www.metsalehti.fi/tyopaikat/feed/", "jobs": "https://www.metsalehti.fi/tyopaikat/"},
+      "link_pattern": "metsalehti\\.fi/tyopaikat/(?!feed/?$|page/)[a-z0-9-]+/?$",
+      "robots": "Asks for 10 s between requests."
+    },
+    {
+      "id": "metsahallitus", "name": "Metsähallitus", "reader": "rss", "kind": "employer", "fields": ["forestry"],
+      "enabled": true,
+      "urls": {"feed": "https://metsa.rekrytointi.com/paikat/?o=A_RSS&jgid=2"},
+      "base_url": "https://metsa.rekrytointi.com/"
+    },
+    {
+      "id": "valtiolle", "name": "Valtiolle", "reader": "portal_feeds", "kind": "broad_portal", "fields": "all",
+      "enabled": true,
+      "urls": {"fi": "https://valtiolle.fi/fi/tyopaikat/?sort=-changetime&limit=1000&format=rss",
+               "en": "https://valtiolle.fi/en/jobs/?sort=-changetime&limit=1000&format=rss"},
+      "robots": "User-agent * Allow: / (checked 2026-11-24); the site offers RSS."
+    },
+    {
+      "id": "kuntarekry", "name": "Kuntarekry", "reader": "keyword_feeds", "kind": "broad_portal", "fields": "all",
+      "enabled": true,
+      "url_template": "https://kuntarekry.fi/fi/tyopaikat/?desc={}&sort=-changetime&limit=500&format=rss",
+      "robots": "User-agent * Allow: / (checked 2026-11-24); the site says RSS feeds can be ordered.",
+      "terms": "No terms of use found on the site."
+    },
+    {
+      "id": "metsakeskus", "name": "Metsäkeskus", "reader": "links", "kind": "employer", "fields": ["forestry"],
+      "enabled": true,
+      "urls": {"jobs": "https://www.metsakeskus.fi/fi/tietoa-meista/toihin-metsakeskukseen/avoimet-tyopaikat"},
+      "base_url": "https://www.metsakeskus.fi/", "link_pattern": "ats\\.talentadore\\.com/apply/"
+    },
+    {
+      "id": "uef", "name": "UEF", "reader": "links", "kind": "employer", "fields": "all",
+      "enabled": true,
+      "urls": {"fi": "https://www.uef.fi/fi/avoimet-tyopaikat", "en": "https://www.uef.fi/en/open-positions"},
+      "base_url": "https://www.uef.fi/", "link_pattern": "uef\\.varbi\\.com/(?:fi|en)/what:job/jobID:(\\d+)",
+      "id_pattern": "uef\\.varbi\\.com/(?:fi|en)/what:job/jobID:(\\d+)"
+    },
+    {
+      "id": "metsa-group", "name": "Metsä Group", "reader": "workday", "kind": "employer", "fields": "all",
+      "enabled": true,
+      "urls": {"api": "https://metsagroup.wd103.myworkdayjobs.com/wday/cxs/metsagroup/MetsaGroup_Careers/jobs",
+               "jobs": "https://metsagroup.wd103.myworkdayjobs.com/fi-FI/MetsaGroup_Careers"}
+    },
+    {
+      "id": "upm", "name": "UPM", "reader": "workday", "kind": "employer", "fields": "all",
+      "enabled": true,
+      "urls": {"api": "https://upm.wd103.myworkdayjobs.com/wday/cxs/upm/Careers/jobs",
+               "jobs": "https://upm.wd103.myworkdayjobs.com/fi-FI/Careers"}
+    },
+    {
+      "id": "stora-enso", "name": "Stora Enso", "reader": "workday", "kind": "employer", "fields": "all",
+      "enabled": true,
+      "urls": {"api": "https://storaenso.wd502.myworkdayjobs.com/wday/cxs/storaenso/Stora_Enso_site_opportunities/jobs",
+               "jobs": "https://storaenso.wd502.myworkdayjobs.com/fi-FI/Stora_Enso_site_opportunities"}
+    },
+    {
+      "id": "duunitori", "name": "Duunitori", "reader": "links", "kind": "general", "fields": ["forestry"],
+      "enabled": false, "enable_env": "JOBDESK_ENABLE_DUUNITORI",
+      "urls": {"search": "https://duunitori.fi/tyopaikat?haku=mets%C3%A4ala",
+               "joensuu": "https://duunitori.fi/tyopaikat/alue/joensuu?haku=mets%C3%A4ala"},
+      "base_url": "https://duunitori.fi/", "link_pattern": "duunitori\\.fi/tyopaikat/tyo/",
+      "robots": "User-agent * Disallow: / (checked 2026-11-24). Off; the robots.txt check would skip it anyway."
+    }
+  ],
+  "not_added": [
+    {"name": "Työmarkkinatori (public job search pages)", "why": "robots.txt allows the public pages, but the official route is the Työpaikkailmoitusten Hakurajapinta, which needs registration with KEHA-keskus (tmt-rajapinnat@keha-keskus.fi), forbids passing ads on to third parties without separate permission, and requires the credit 'Lähde: Työmarkkinatorin asiakastietojärjestelmä'. Apply for access rather than scraping the pages."},
+    {"name": "Duunitori", "why": "robots.txt: User-agent * Disallow: /."},
+    {"name": "avoindata.fi job datasets", "why": "The search page answered 403 to the checker; no job-ad dataset was verified."},
+    {"name": "Jobly category 'it'", "why": "Already read for the administrator's private IT category; reading it for the IT field too would mix the two. The verified 'ohjelmistokehittaja' category is used instead."},
+    {"name": "University and employer career sites for the new fields (e.g. other Workday sites)", "why": "Not checked yet. Each needs its own robots.txt and terms check before it is added."}
+  ]
+}

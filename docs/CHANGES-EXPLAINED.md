@@ -317,3 +317,108 @@ jobs they can't get.
 - *Three examples isn't an evaluation.* Correct: they show the format and the known failure. The
   numbers become meaningful once you've labelled real ads, ideally 100 or more with a mix of
   levels and languages.
+
+---
+
+## Phase 3: More fields than forestry
+
+### Field profiles (`fields/*.json`, read by `core/fields.py`)
+
+**What changed.** What "a forestry job" means used to be several Python lists in `scraper.py` and
+`skills.py`. It is now one JSON file per field: `forestry`, `it`, `engineering`, `health`,
+`business`. Each profile has:
+
+| Key | Used for |
+|---|---|
+| `label_en`, `label_fi`, `category` | names; `category` is the "Type" shown on the Jobs page |
+| `search_terms` | keyword searches on portals that search by word (Kuntarekry) |
+| `jobly.slugs`, `jobly.title_words` | Jobly category pages to read, and words a title must contain |
+| `relevance.words` / `core_words` / `whole_words` / `ignore_patterns` | deciding whether a job belongs to the field |
+| `skills` | "What to study": skills with a Finnish + English regex and a study hint |
+| `role_types` | "What to study": groups of jobs by title |
+
+**How forestry kept today's behaviour.** `fields/forestry.json` wasn't typed by hand. A short script
+imported the old Python constants and wrote them out as JSON, so the lists are exact copies. All
+127 earlier tests then ran against the JSON-driven code unchanged and passed. That is the evidence
+that nothing about forestry changed.
+
+**How a job is matched to a field** (`core.fields.is_relevant`), depending on its source's *kind*:
+1. `field_board` (Metsälehti): everything it lists belongs to its fields.
+2. `broad_portal` (Valtiolle, Kuntarekry): every public-sector job in Finland. Words like
+   "tietojärjestelmä" appear in police ads too, so the **title** must contain a field word, or the
+   **ad text** one of the stricter `core_words`.
+3. everything else: the title, description, ad or location must contain a field word.
+
+Words are lower-case substrings ("metsänhoit" matches "metsänhoitaja"); `whole_words` must stand
+alone ("gis" must not match "logistiikka").
+
+**Word collisions found while writing the new profiles** (each now has a test):
+- health never uses bare "hoitaja", which is inside "metsän**hoitaja**" (forester);
+- business never uses bare "talous" or "hankinta", which are inside "metsä**talous**", "bio**talous**"
+  and "puun**hankinta**";
+- IT never uses bare "it", which is an English word ("let it be"); it uses "it-tuki", "it support" etc.
+
+### Job sources as configuration (`sources.json`)
+
+Every source now has: `fields` (a list, or `"all"`), `kind`, `reader` (which parser to use), its
+URLs, and notes on what its robots.txt and terms say. `scraper.sources(field_ids)` builds the list
+of readers for the fields being scraped.
+
+**Which fields are scraped.** Only the fields at least one member has chosen
+(`db.active_field_ids`). With nobody choosing IT, nothing is fetched for IT, so no requests or time
+are spent on fields nobody uses.
+
+**What was checked before adding sources** (on 2026-11-24, recorded in `sources.json`):
+
+| Site | robots.txt | Decision |
+|---|---|---|
+| Jobly | allows `/tyopaikat/`, `Crawl-delay: 10` | Added the verified category pages `sairaanhoitaja`, `lahihoitaja` (health), `ohjelmistokehittaja` (IT), `insinoori` (engineering), `kirjanpitaja` (business). **Jobly's terms couldn't be read** (the terms page needs sign-in); read Alma Media's general terms before deploying. |
+| Valtiolle, Kuntarekry | `Allow: /`, both offer RSS | Now used for every field; Kuntarekry searches each field's `search_terms`. |
+| UEF, Metsä Group, UPM, Stora Enso | (checked automatically at fetch time) | Now `fields: "all"`: they hire IT, engineering and business people too. |
+| Duunitori | `Disallow: /` for generic bots | Stays off. |
+| Työmarkkinatori | public pages allowed, `/api/` disallowed | **Not added.** The official route is KEHA's job-ad API, which needs registration and forbids passing ads on without permission. Apply for access (tmt-rajapinnat@keha-keskus.fi) rather than scraping. |
+
+### Members choose fields
+
+- New Account section "Fields and Finnish": checkboxes for fields and a Finnish level
+  (none / basic / intermediate / fluent), saved by `POST /api/account/fields` into the member's
+  private preferences. Members who haven't chosen get `forestry`, so nothing changes for existing members.
+- **Visibility rule** (`server.can_see`):
+  - *personal* jobs (the administrator's own Jobly categories and jobs they added outside every
+    field) are visible only to that administrator, even if they happen to match a member's field;
+  - every other job is visible to members whose fields it belongs to.
+- A Valtiolle job that is both forestry and IT shows as "IT" to an IT member: the Type comes from the
+  first of *their* fields it matches.
+- "What to study" uses the member's fields' skills and role types.
+- **A bug fixed on the way:** the "For you" page saved preferences by replacing the whole object, so
+  it would have wiped the chosen fields. It now merges.
+
+### Finnish level on the Jobs page
+
+**What the member sees.** A "Finnish" column with *Finnish required / an advantage / not needed /
+unclear*, the sentence it is based on, and how it was decided: "AI; the quote was checked against
+the ad" or "keyword rule". The words carry the meaning; colour only repeats it, for accessibility.
+A filter can hide "Finnish required", or show only "not needed / an advantage".
+
+**Where the level comes from** (`server.finnish_for`):
+1. If an LLM result is stored for this job **and** was made from the same text (a SHA-256 hash of
+   title + ad text matches), show it.
+2. Otherwise show `core.finnish.fallback`, the old keyword rule. It can only say "required" or
+   "unclear", never "not needed", because it can't tell the difference.
+
+**How LLM results get stored.** An administrator clicks "Check Finnish requirements (AI)". The
+button only appears in live mode, and the route refuses in mock mode. A background thread then
+classifies up to 25 shared jobs that have saved ad text and no current result, and stores each in
+the new `finnish_levels` table (keyed by job and prompt version). Only the **ad's own text** is
+sent: never a CV, never personal jobs, never title-only listings.
+
+**Interview questions.**
+- *Why store a hash of the text?* If an ad is re-fetched with different text, the old answer may
+  be wrong. Comparing hashes notices that without storing the text twice.
+- *Why is classification an admin action and not automatic?* Each ad is a paid API call. Batches of
+  25 make the cost visible and controllable. Results are shared, so every member benefits from one
+  call per ad.
+- *Why only fields members chose?* Least work and least load on other people's servers.
+- *What's still weak?* The keyword lists for the new fields were written by hand and have only been
+  checked against the test titles. Run a scrape for one field and read what comes back before
+  trusting it.

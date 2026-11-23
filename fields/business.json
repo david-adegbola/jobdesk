@@ -1,0 +1,49 @@
+{
+  "id": "business",
+  "order": 5,
+  "label_en": "Business",
+  "label_fi": "Liiketalous",
+  "category": "Business",
+  "_comment": "Bilingual terms. Never use bare 'talous' or 'hankinta': they are inside 'metsätalous', 'biotalous' and 'puunhankinta'. Words are matched as substrings unless listed in whole_words.",
+  "search_terms": ["taloushallinto", "kirjanpitäjä", "markkinointi", "myynti", "controller"],
+  "jobly": {
+    "slugs": ["kirjanpitaja"],
+    "title_words": ["kirjanpi", "taloushallin", "palkanlaskij", "accountant", "accounting", "controller", "reskontra"]
+  },
+  "relevance": {
+    "words": ["kirjanpi", "taloushallin", "talousasiantunt", "talouspäällik", "taloussuunnit", "talousjohtaj",
+              "palkanlaskij", "palkkahallin", "reskontra", "tilintarkast", "controller", "markkinoin", "viestintä",
+              "myyntipäällik", "myyntineuvottel", "myyntiedustaj", "asiakkuuspäällik", "henkilöstöhallin",
+              "hr-asiantunt", "rekrytoij", "ostaja", "hankinta-asiantunt", "liiketoiminn", "liiketalou",
+              "accountant", "accounting", "bookkeep", "payroll", "finance", "financial", "auditor", "marketing",
+              "sales manager", "account manager", "business analyst", "business develop", "human resources",
+              "recruiter", "procurement", "buyer", "ekonomi", "redovisning", "marknadsför"],
+    "core_words": ["kirjanpi", "taloushallin", "talousasiantunt", "palkanlaskij", "controller", "markkinoin",
+                   "myyntipäällik", "henkilöstöhallin", "accountant", "accounting", "payroll", "marketing",
+                   "business analyst", "human resources", "procurement"],
+    "whole_words": [],
+    "ignore_patterns": []
+  },
+  "skills": [
+    {"id": "excel", "en": "Excel / spreadsheets", "fi": "Excel / taulukkolaskenta", "group": "Tools", "pattern": "\\bexcel|taulukkolaskent|spreadsheet", "hint": ""},
+    {"id": "bookkeeping", "en": "Bookkeeping", "fi": "Kirjanpito", "group": "Finance", "pattern": "kirjanpi|bookkeep|accounting|tilinpäätö|reskontra", "hint": ""},
+    {"id": "finance_systems", "en": "Finance software (Netvisor, Procountor, SAP)", "fi": "Taloushallinnon ohjelmistot (Netvisor, Procountor, SAP)", "group": "Tools", "pattern": "netvisor|procountor|\\bsap\\b|fennoa|heeros|\\berp\\b|toiminnanohjausjärjestelm", "hint": ""},
+    {"id": "payroll", "en": "Payroll", "fi": "Palkanlaskenta", "group": "Finance", "pattern": "palkanlask|palkkahallin|payroll", "hint": ""},
+    {"id": "reporting", "en": "Financial reporting and analysis", "fi": "Talousraportointi ja analyysi", "group": "Finance", "pattern": "raportoin|talousanalyy|financial analy|reporting|budjetoin|budgeting|power bi", "hint": ""},
+    {"id": "marketing", "en": "Marketing and social media", "fi": "Markkinointi ja some", "group": "Marketing & sales", "pattern": "markkinoin|sosiaalinen media|\\bsome\\b|social media|marketing|seo\\b|google ads|meta ads", "hint": ""},
+    {"id": "sales", "en": "Sales", "fi": "Myynti", "group": "Marketing & sales", "pattern": "\\bmyyn|\\bsales\\b|b2b", "hint": ""},
+    {"id": "crm", "en": "CRM systems", "fi": "CRM-järjestelmät", "group": "Tools", "pattern": "\\bcrm\\b|salesforce|hubspot|dynamics 365", "hint": ""},
+    {"id": "customer", "en": "Customer service", "fi": "Asiakaspalvelu", "group": "Marketing & sales", "pattern": "asiakaspalvel|customer service", "hint": ""},
+    {"id": "hr", "en": "HR and recruitment", "fi": "Henkilöstöhallinto ja rekrytointi", "group": "People", "pattern": "henkilöstöhallin|rekrytoin|\\bhr\\b|human resources|recruit", "hint": ""},
+    {"id": "project", "en": "Project management", "fi": "Projektinhallinta", "group": "People", "pattern": "projektinhallin|project manag|projektien johta", "hint": ""},
+    {"id": "english", "en": "English", "fi": "Englanti", "group": "Languages", "pattern": "englan|\\benglish\\b", "hint": ""},
+    {"id": "swedish", "en": "Swedish", "fi": "Ruotsi", "group": "Languages", "pattern": "ruotsi|swedish|svenska", "hint": ""}
+  ],
+  "role_types": [
+    {"id": "biz_finance", "en": "Finance and accounting", "fi": "Taloushallinto", "pattern": "kirjanpi|taloushallin|talousasiant|palkanlask|controller|accountant|accounting|finance|payroll|reskontra"},
+    {"id": "biz_sales", "en": "Sales and customer accounts", "fi": "Myynti ja asiakkuudet", "pattern": "myyn|sales|asiakkuu|account manager|myyjä"},
+    {"id": "biz_marketing", "en": "Marketing and communications", "fi": "Markkinointi ja viestintä", "pattern": "markkinoin|viestin|marketing|communication|some"},
+    {"id": "biz_hr", "en": "HR and recruitment", "fi": "Henkilöstö ja rekrytointi", "pattern": "henkilöstö|rekrytoi|\\bhr\\b|human resources|recruit"},
+    {"id": "biz_procurement", "en": "Procurement and purchasing", "fi": "Hankinta ja osto", "pattern": "hankinta-|ostaja|procurement|buyer|purchas"}
+  ]
+}

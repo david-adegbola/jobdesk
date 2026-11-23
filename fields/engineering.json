@@ -1,0 +1,46 @@
+{
+  "id": "engineering",
+  "order": 3,
+  "label_en": "Engineering",
+  "label_fi": "Tekniikka ja insinöörityö",
+  "category": "Engineering",
+  "_comment": "Bilingual terms. 'asentaja' (fitter) is left out on purpose: those are vocational jobs, not engineering. Words are matched as substrings unless listed in whole_words.",
+  "search_terms": ["insinööri", "tekniikka", "suunnittelija", "engineer", "ingenjör"],
+  "jobly": {
+    "slugs": ["insinoori"],
+    "title_words": ["insinööri", "engineer", "suunnittelija", "designer", "tekniikka", "technical", "ingenjör"]
+  },
+  "relevance": {
+    "words": ["insinööri", "konetekniik", "sähkötekniik", "automaatiotekniik", "automaatioinsin", "rakennustekniik",
+              "prosessitekniik", "prosessi-insin", "kemiantekniik", "energiatekniik", "talotekniik", "kunnossapitoinsin",
+              "tuotekehitysinsin", "mekaniikkasuunnit", "sähkösuunnit", "rakennesuunnit", "lvi-suunnit",
+              "engineer", "mechanical design", "electrical design", "automation", "process engineer",
+              "civil engineer", "structural", "product development", "r&d", "ingenjör", "konstruktör"],
+    "core_words": ["insinööri", "konetekniik", "sähkötekniik", "automaatiotekniik", "rakennustekniik",
+                   "prosessitekniik", "engineer", "ingenjör"],
+    "whole_words": [],
+    "ignore_patterns": []
+  },
+  "skills": [
+    {"id": "cad", "en": "CAD (AutoCAD, SolidWorks, Revit)", "fi": "CAD (AutoCAD, SolidWorks, Revit)", "group": "Design", "pattern": "\\bcad\\b|autocad|solidworks|revit|creo|catia|inventor", "hint": "Student licences are free for most CAD tools."},
+    {"id": "plc", "en": "PLC / automation", "fi": "PLC / automaatio", "group": "Automation", "pattern": "\\bplc\\b|automaatio|automation|siemens tia|scada", "hint": ""},
+    {"id": "electrical", "en": "Electrical engineering", "fi": "Sähkötekniikka", "group": "Disciplines", "pattern": "sähkötekniik|sähkösuunnit|electrical engineer|electrical design", "hint": ""},
+    {"id": "mechanical", "en": "Mechanical engineering", "fi": "Konetekniikka", "group": "Disciplines", "pattern": "konetekniik|mekaniikka|mechanical", "hint": ""},
+    {"id": "civil", "en": "Civil / structural engineering", "fi": "Rakennustekniikka", "group": "Disciplines", "pattern": "rakennustekniik|rakennesuunnit|civil engineer|structural", "hint": ""},
+    {"id": "process", "en": "Process / chemical engineering", "fi": "Prosessi- ja kemiantekniikka", "group": "Disciplines", "pattern": "prosessitekniik|kemiantekniik|process engineer|chemical engineer", "hint": ""},
+    {"id": "maintenance", "en": "Maintenance", "fi": "Kunnossapito", "group": "Operations", "pattern": "kunnossapi|maintenance", "hint": ""},
+    {"id": "quality", "en": "Quality systems (ISO 9001)", "fi": "Laatujärjestelmät (ISO 9001)", "group": "Operations", "pattern": "laatujärjestelm|iso ?9001|quality management|quality assurance", "hint": ""},
+    {"id": "project", "en": "Project management", "fi": "Projektinhallinta", "group": "Operations", "pattern": "projektinhallin|project manag|projektien johta", "hint": ""},
+    {"id": "matlab", "en": "MATLAB / simulation", "fi": "MATLAB / simulointi", "group": "Design", "pattern": "matlab|simulin|simulointi|simulation|\\bfem\\b|\\bcfd\\b", "hint": ""},
+    {"id": "occupational_safety", "en": "Occupational safety card", "fi": "Työturvallisuuskortti", "group": "Cards & licences", "pattern": "työturvallisuuskort|occupational safety card", "hint": "A one-day course."},
+    {"id": "english", "en": "English", "fi": "Englanti", "group": "Languages", "pattern": "englan|\\benglish\\b", "hint": ""},
+    {"id": "swedish", "en": "Swedish", "fi": "Ruotsi", "group": "Languages", "pattern": "ruotsi|swedish|svenska", "hint": ""}
+  ],
+  "role_types": [
+    {"id": "eng_design", "en": "Design engineering", "fi": "Suunnittelu", "pattern": "suunnittelij|designer|design engineer|konstruktör"},
+    {"id": "eng_automation", "en": "Automation and electrical", "fi": "Automaatio ja sähkö", "pattern": "automaatio|automation|sähkö|electrical"},
+    {"id": "eng_process", "en": "Process and production", "fi": "Prosessi ja tuotanto", "pattern": "prosessi|process|tuotanto|production"},
+    {"id": "eng_maintenance", "en": "Maintenance", "fi": "Kunnossapito", "pattern": "kunnossapi|maintenance"},
+    {"id": "eng_construction", "en": "Construction engineering", "fi": "Rakennustekniikka", "pattern": "rakenn|civil|structural|talotekniik"}
+  ]
+}

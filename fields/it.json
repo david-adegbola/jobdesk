@@ -1,0 +1,51 @@
+{
+  "id": "it",
+  "order": 2,
+  "label_en": "IT and software",
+  "label_fi": "IT ja ohjelmistot",
+  "category": "IT",
+  "_comment": "Bilingual terms. Avoid bare 'it' (an English word); use it- compounds and phrases. Words are matched as substrings unless listed in whole_words.",
+  "search_terms": ["ohjelmisto", "tietohallinto", "it-tuki", "tietoturva", "software", "developer"],
+  "jobly": {
+    "slugs": ["ohjelmistokehittaja"],
+    "title_words": ["ohjelmisto", "kehittäjä", "developer", "software", "engineer", "devops", "data", "full-stack", "full stack"]
+  },
+  "relevance": {
+    "words": ["ohjelmisto", "ohjelmoi", "sovelluskehit", "tietohallin", "tietotekniik", "it-tuki", "it-asiantunt",
+              "it-harjoitt", "it-tukihenkilö", "lähituki", "tietoturva", "kyberturva", "tietojärjestelmäasiantunt",
+              "järjestelmäasiantunt", "verkkoasiantunt", "pilvipalvel", "datakeskus", "data-analyyt", "data-insinöö",
+              "software", "developer", "devops", "cybersecurity", "cyber security", "it support", "it specialist",
+              "helpdesk", "service desk", "system administrator", "systems administrator", "cloud engineer",
+              "full stack", "full-stack", "frontend", "front-end", "backend", "back-end", "machine learning",
+              "data engineer", "data scientist", "data analyst", "ict", "it-stöd", "systemutveckl", "mjukvaru"],
+    "core_words": ["ohjelmistokehit", "sovelluskehit", "ohjelmointi", "kyberturva", "software develop", "developer",
+                   "devops", "cybersecurity", "data engineer", "data scientist", "it-tuki", "it support", "helpdesk"],
+    "whole_words": ["ict"],
+    "ignore_patterns": []
+  },
+  "skills": [
+    {"id": "python", "en": "Python", "fi": "Python", "group": "Programming", "pattern": "\\bpython", "hint": ""},
+    {"id": "javascript", "en": "JavaScript / TypeScript", "fi": "JavaScript / TypeScript", "group": "Programming", "pattern": "javascript|typescript|\\bnode\\.?js|\\breact\\b", "hint": ""},
+    {"id": "java", "en": "Java / Kotlin", "fi": "Java / Kotlin", "group": "Programming", "pattern": "\\bjava\\b|\\bkotlin", "hint": ""},
+    {"id": "csharp", "en": "C# / .NET", "fi": "C# / .NET", "group": "Programming", "pattern": "c#|\\.net\\b|\\bdotnet", "hint": ""},
+    {"id": "sql", "en": "Databases / SQL", "fi": "Tietokannat / SQL", "group": "Data", "pattern": "\\bsql\\b|tietokan|database|postgres|mysql", "hint": ""},
+    {"id": "git", "en": "Git / version control", "fi": "Git / versionhallinta", "group": "Tools", "pattern": "\\bgit\\b|github|gitlab|versionhallin|version control", "hint": ""},
+    {"id": "linux", "en": "Linux", "fi": "Linux", "group": "Systems", "pattern": "\\blinux", "hint": ""},
+    {"id": "cloud", "en": "Cloud (AWS / Azure / GCP)", "fi": "Pilvipalvelut (AWS / Azure / GCP)", "group": "Systems", "pattern": "\\baws\\b|\\bazure|google cloud|\\bgcp\\b|pilvipalvel|\\bcloud\\b", "hint": "Free tiers and student credits exist for all three."},
+    {"id": "networking", "en": "Networking", "fi": "Tietoverkot", "group": "Systems", "pattern": "tietoverk|verkkotekniik|networking|\\btcp/ip|\\bccna", "hint": ""},
+    {"id": "security", "en": "Information security", "fi": "Tietoturva", "group": "Systems", "pattern": "tietoturva|kyberturva|cybersecurity|information security|\\bsecurity\\b", "hint": ""},
+    {"id": "it_support", "en": "IT support / helpdesk", "fi": "IT-tuki / lähituki", "group": "Systems", "pattern": "it-tuki|lähituki|käyttäjätuki|helpdesk|service desk|it support|end-user support", "hint": ""},
+    {"id": "testing", "en": "Software testing", "fi": "Ohjelmistotestaus", "group": "Programming", "pattern": "testau|test automation|\\bqa\\b|quality assurance", "hint": ""},
+    {"id": "data_analysis", "en": "Data analysis", "fi": "Data-analyysi", "group": "Data", "pattern": "data-analy|data analy|analytiikka|power bi|tableau", "hint": ""},
+    {"id": "ml", "en": "Machine learning / AI", "fi": "Koneoppiminen / tekoäly", "group": "Data", "pattern": "koneoppi|tekoäly|machine learning|\\bai\\b|artificial intelligence", "hint": ""},
+    {"id": "excel", "en": "Excel / spreadsheets", "fi": "Excel / taulukkolaskenta", "group": "Tools", "pattern": "\\bexcel|taulukkolaskent|spreadsheet", "hint": ""},
+    {"id": "english", "en": "English", "fi": "Englanti", "group": "Languages", "pattern": "englan|\\benglish\\b", "hint": ""},
+    {"id": "swedish", "en": "Swedish", "fi": "Ruotsi", "group": "Languages", "pattern": "ruotsi|swedish|svenska", "hint": ""}
+  ],
+  "role_types": [
+    {"id": "it_dev", "en": "Software development", "fi": "Ohjelmistokehitys", "pattern": "ohjelmisto|kehittäjä|developer|software|full.?stack|frontend|backend|devops|sovellus"},
+    {"id": "it_data", "en": "Data and analytics", "fi": "Data ja analytiikka", "pattern": "\\bdata\\b|data-|analyyt|analyst|scientist|tekoäly|machine learning"},
+    {"id": "it_security", "en": "Information security", "fi": "Tietoturva", "pattern": "tietoturva|kyberturva|security"},
+    {"id": "it_support", "en": "IT support and systems", "fi": "IT-tuki ja järjestelmät", "pattern": "it-tuki|lähituki|tukihenkilö|helpdesk|service desk|support|järjestelmä|system|verkko|network|ict"}
+  ]
+}

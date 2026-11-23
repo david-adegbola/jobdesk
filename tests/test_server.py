@@ -508,6 +508,114 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 503)
         self.assertIn("owner", error["error"])
 
+    # ------------------------------------------------------------ Phase 3: fields and Finnish level
+
+    def choose_fields(self, headers, fields, level="none"):
+        return self.request("POST", "/api/account/fields", {"fields": fields, "finnish_level": level}, headers=headers)
+
+    def test_members_see_the_jobs_of_their_own_fields(self):
+        db.add_manual({"source": "Community", "external_id": "c1", "title": "Ohjelmistokehittäjä",
+                       "company": "Example", "category": "IT"}, user_id=1)
+        db.add_manual({"source": "Community", "external_id": "c2", "title": "Metsäasiantuntija",
+                       "company": "Example", "category": "Forestry"}, user_id=1)
+        member = self.member_cookie()
+        status, view = self.request("GET", "/api/jobs", headers=member)
+        self.assertEqual([job["title"] for job in view["jobs"]], ["Metsäasiantuntija"])     # default: forestry
+
+        status, saved = self.choose_fields(member, ["it"], "basic")
+        self.assertEqual(status, 200)
+        self.assertEqual(saved, {"fields": ["it"], "finnish_level": "basic"})
+        status, view = self.request("GET", "/api/jobs", headers=member)
+        self.assertEqual([(job["title"], job["category"]) for job in view["jobs"]], [("Ohjelmistokehittäjä", "IT")])
+        status, state = self.request("GET", "/api/state", headers=member)
+        self.assertEqual((state["user_fields"], state["job_types"], state["finnish_level"]), (["it"], ["IT"], "basic"))
+        self.assertEqual(state["llm"]["mode"], "mock")
+        self.assertIsNone(state["classify"])
+
+    def test_personal_jobs_stay_private_even_when_they_match_a_members_field(self):
+        db.upsert_scraped({"source": "Jobly", "external_id": "p1", "url": "", "title": "IT-tukihenkilö",
+                           "company": "", "location": "", "posted": "", "category": "IT-Data centre"}, None)
+        member = self.member_cookie()
+        self.choose_fields(member, ["it"])
+        status, view = self.request("GET", "/api/jobs", headers=member)
+        self.assertEqual(view["jobs"], [])
+        status, admin_view = self.request("GET", "/api/jobs")
+        self.assertTrue(admin_view["jobs"][0]["personal"])
+
+    def test_sharing_a_job_needs_one_of_the_members_fields(self):
+        member = self.member_cookie()
+        status, error = self.request("POST", "/api/jobs", {"title": "Kirjanpitäjä"}, headers=member)
+        self.assertEqual(status, 400)
+        self.assertIn("Only forestry", error["error"])
+        self.choose_fields(member, ["forestry", "business"])
+        status, created = self.request("POST", "/api/jobs", {"title": "Kirjanpitäjä"}, headers=member)
+        self.assertEqual(status, 200)
+        self.assertEqual(db.get_job(created["id"])["category"], "Business")
+
+    def test_field_settings_are_validated_and_the_for_you_form_keeps_them(self):
+        member = self.member_cookie()
+        for body in ([], {"fields": [], "finnish_level": "none"}, {"fields": ["astronomy"], "finnish_level": "none"},
+                     {"fields": ["it"], "finnish_level": "C1"}):
+            status, _ = self.request("POST", "/api/account/fields", body, headers=member)
+            self.assertEqual(status, 400, body)
+        self.choose_fields(member, ["health"], "fluent")
+        status, _ = self.request("POST", "/api/account/profile",
+                                 {"audiences": ["student"], "topics": [], "region": "finland"}, headers=member)
+        self.assertEqual(status, 200)
+        status, state = self.request("GET", "/api/state", headers=member)
+        self.assertEqual((state["user_fields"], state["finnish_level"]), (["health"], "fluent"))
+
+    def test_jobs_show_the_keyword_rule_until_an_llm_result_is_stored_for_the_same_text(self):
+        job_id = db.add_manual({"source": "Community", "external_id": "f1", "title": "Metsäharjoittelija",
+                                "ad_text": "Edellytämme sujuvaa suomen kielen taitoa.", "category": "Forestry"},
+                               user_id=1)
+        status, view = self.request("GET", "/api/jobs")
+        self.assertEqual((view["jobs"][0]["finnish"]["level"], view["jobs"][0]["finnish"]["method"]),
+                         ("required", "baseline_v1"))
+        job = db.get_job(job_id)
+        result = {"level": "preferred", "evidence": ["Edellytämme sujuvaa suomen kielen taitoa."],
+                  "explanation_en": "x", "method": "llm", "model": "claude-opus-5-5",
+                  "prompt_version": server.finnish.PROMPT_VERSION, "verified": True, "rejected_evidence": []}
+        db.save_finnish_level(job_id, server._text_hash(server.finnish_text(job)), result)
+        status, view = self.request("GET", "/api/jobs")
+        self.assertEqual((view["jobs"][0]["finnish"]["level"], view["jobs"][0]["finnish"]["method"]), ("preferred", "llm"))
+        db.update_job_ad_text(job_id, "Työkieli on englanti.")      # the ad changed: the stored result no longer applies
+        status, view = self.request("GET", "/api/jobs")
+        self.assertEqual(view["jobs"][0]["finnish"]["method"], "baseline_v1")
+
+    def test_classification_is_admin_only_refused_in_mock_mode_and_stores_live_results(self):
+        db.add_manual({"source": "Community", "external_id": "f2", "title": "Metsäharjoittelija",
+                       "ad_text": "Työkieli on englanti.", "category": "Forestry"}, user_id=1)
+        db.add_manual({"source": "Community", "external_id": "f3", "title": "Metsuri", "category": "Forestry"},
+                      user_id=1)        # no ad text: not sent
+        status, _ = self.request("POST", "/api/jobs/classify", {}, headers=self.member_cookie())
+        self.assertEqual(status, 403)
+        status, error = self.request("POST", "/api/jobs/classify", {})
+        self.assertEqual(status, 400)
+        self.assertIn("LLM is off", error["error"])
+
+        sent = []
+
+        def fake_classify(text, settings):
+            sent.append(text)
+            return {"level": "not_needed", "evidence": ["Työkieli on englanti."], "explanation_en": "x",
+                    "method": "llm", "model": "claude-opus-5-5", "prompt_version": server.finnish.PROMPT_VERSION,
+                    "verified": True, "rejected_evidence": []}
+        live = server.llm.Settings(mode="live", api_key="test-key")
+        with patch.object(server, "llm_settings", return_value=live), \
+                patch.object(server.finnish, "classify", side_effect=fake_classify):
+            status, started = self.request("POST", "/api/jobs/classify", {})
+            self.assertEqual(status, 200)
+            for _ in range(50):
+                if not server.CLASSIFY["running"]:
+                    break
+                threading.Event().wait(0.05)
+        self.assertEqual(sent, ["Metsäharjoittelija\nTyökieli on englanti."])
+        self.assertEqual(server.CLASSIFY["result"], {"classified": 1, "failed": 0})
+        status, view = self.request("GET", "/api/jobs")
+        levels = {job["title"]: job["finnish"]["level"] for job in view["jobs"]}
+        self.assertEqual(levels, {"Metsäharjoittelija": "not_needed", "Metsuri": "unclear"})
+
     def test_facts_load_raises_a_catchable_error(self):
         with patch.object(facts, "FACTS_FILE", Path(self.temp_dir.name) / "facts.json"), \
                 patch("builtins.print"):

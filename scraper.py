@@ -43,22 +43,30 @@ from xml.etree import ElementTree
 import config
 import db
 from core import fetch as core_fetch
+from core import fields as core_fields
 from core.fetch import PublicRedirectHandler, TextExtractor, is_public_http_url  # noqa: F401 (re-exported)
 from core.robots import RobotsCache
 
-# Each job type -> Jobly category pages, https://www.jobly.fi/tyopaikat/<slug>
-JOB_TYPES = {
+# Field profiles (fields/*.json) and job sources (sources.json) are configuration, not code.
+PROFILES = core_fields.load_profiles(config.FIELDS_DIR)
+FORESTRY = PROFILES["forestry"]
+with open(config.SOURCES_FILE, encoding="utf-8") as _file:
+    SOURCE_CONFIG = json.load(_file)
+SOURCES = {source["id"]: source for source in SOURCE_CONFIG["sources"]}
+SOURCE_BY_NAME = {source["name"]: source for source in SOURCES.values()}
+
+# The administrator's own Jobly searches from before JobDesk covered several fields. These categories
+# are scraped only for the administrator, stored under their account and never shown to members.
+PERSONAL_JOB_TYPES = {
     "Industrial": ["asentaja", "kokoonpanija", "tuotantotyontekija"],
     "Construction": ["rakennustyontekija", "rakennusmies"],
     "Warehouse": ["varastotyontekija", "logistiikkatyontekija"],
-    # Finnish slugs only: Jobly has no English category slugs (see the module docstring).
-    # harjoittelija and kesatyo are filtered by FORESTRY_WORDS in the title, like the others.
-    "Forestry": ["metsuri", "metsatyontekija", "paikkatietoasiantuntija", "harjoittelija", "kesatyo"],
     "IT-Data centre": ["it"],
 }
-# The administrator's own job search from before Woodesk became a forestry portal. These categories
-# are scraped only for the administrator, stored under their account and never shown to members.
-PERSONAL_CATEGORIES = [t for t in JOB_TYPES if t != "Forestry"]
+PERSONAL_CATEGORIES = list(PERSONAL_JOB_TYPES)
+# Each job type -> Jobly category pages, https://www.jobly.fi/tyopaikat/<slug>. Finnish slugs only:
+# Jobly has no English category slugs (see the module docstring).
+JOB_TYPES = {"Forestry": FORESTRY["jobly"]["slugs"], **PERSONAL_JOB_TYPES}
 # Default CV for each job type (the Match column may suggest a better one)
 CV_FOR_TYPE = {
     "Industrial": "industrial-master",
@@ -67,107 +75,47 @@ CV_FOR_TYPE = {
     "Forestry": "forestry-master",
     "IT-Data centre": "it-field-technician",
 }
-# Broad categories: keep only titles containing one of these words (lower-case)
-FORESTRY_WORDS = [
-    "metsä", "metsuri", "puunhankin", "taimikon", "istutus", "raivaus", "metsätalous",
-    "metsänhoito", "metsätalou", "metsävarat", "metsätieto", "metsäekolog", "metsätiete",
-    "paikkatieto", "geoinformati", "kaukokartoit", "maastokartoit", "kartoitus", "luonnonvara",
-    "luonnonhoid",
-    "ennallist", "biodiversiteet", "monimuotoisuus", "luontokato", "hiilinielu", "biotalous",
-    "bioenergia", "forest", "forestry", "timber", "wood sourcing", "forest management",
-    "forest inventory", "remote sensing", "geospatial", "geoinformatics", "bioeconomy",
-    "biodiversity", "natural resources", "ecolog", "sustainable forestry",
-    "puukaup", "timber trade", "wood procurement", "puutavara", "korjuusuunnit", "sawmill",
-    "sahateollisuu", "luontoselvit", "luontokartoit", "nature survey", "luonnonsuojelu",
-    "nature conservation", "peatland", "turvemaa", "suometsä",
-]
-FORESTRY_RELEVANCE_WORDS = [
-    "metsuri", "metsäasiantunt", "metsäalan", "metsäinsin", "metsäkone", "metsätalou",
-    "metsänhoid", "metsänkasvat", "metsävarat", "metsätieto", "metsäekolog", "metsätiete",
-    "metsäteollisuus", "metsätuott", "puunhankin", "puunkorju", "taimikon", "istutus", "raivaus",
-    "paikkatieto", "gis", "geoinformati", "kaukokartoit", "maastokartoit", "kartoitus",
-    "luonnonvar", "luonnonhoid", "ennallist", "biodiversiteet", "monimuotoisuus",
-    "luontokato", "hiilinielu", "biotalous", "bioenergia", "forest", "forestry", "timber",
-    "wood sourcing", "forest management", "forest inventory", "remote sensing", "geospatial",
-    "geoinformatics", "bioeconomy", "biodiversity", "natural resources", "ecolog", "skog",
-    "sustainab", "vastuullisuus", "kestävyys", "ilmasto", "climate", "renewable material",
-    "renewable fibre", "biomaterial",
-    # Finnish / English pairs taken from the 2025 forestry internship job titles
-    "metsänhoit", "metsien", "metsävastaav", "metsäneuvo", "metsätyönjoht", "metsäharjoitt",
-    "metsäpalvel", "forest service", "metsänomist", "metsälannoit", "metsäsuunnit",
-    "metsänjalost", "tree breeding", "taimitarh", "taimituotan", "seedling",
-    "puukaup", "timber trade", "wood procurement", "puutavara", "puunkuljet", "timber transport",
-    "korjuusuunnit", "timber harvesting", "sawmill", "sahateollisuu",
-    "luontoselvit", "luontokartoit", "nature survey", "luonnonsuojelu", "nature conservation",
-    "habitat", "peatland", "turvemaa", "suometsä", "hiilivarast", "carbon stock",
-]
-# Valtiolle and Kuntarekry feeds carry the whole ad, where words such as "ilmasto", "kestävyys",
-# "monimuotoisuus" or "paikkatieto" appear in police, school and water-engineering ads alike. For
-# these sources the title may match any word above, but the ad text must match one of these.
-BROAD_AD_SOURCES = {"Valtiolle", "Kuntarekry"}
-FORESTRY_CORE_WORDS = [
-    "metsuri", "metsäasiantunt", "metsäalan", "metsäinsin", "metsäkone", "metsätalou",
-    "metsänhoid", "metsänhoit", "metsänkasvat", "metsävarat", "metsätieto", "metsäekolog",
-    "metsätiete", "metsäteollisuus", "metsätuott", "metsien", "metsäpalvel", "metsänomist",
-    "metsäsuunnit", "metsänjalost", "puunhankin", "puunkorju", "puukaup", "puutavara", "taimikon",
-    "luonnonhoid", "luonnonsuojelu", "ennallist", "luontoselvit", "luontokartoit", "suometsä",
-    "biotalous", "forest", "timber", "wood procurement", "nature survey", "peatland", "bioeconomy",
-]
-# Organisation names that contain a forestry word but say nothing about the job itself
-ORGANISATION_NAMES = re.compile(r"maa- ja metsätalousministeri\w*|ministry of agriculture and forestry")
-# Boards that only list forestry-sector jobs: everything they publish is kept, even titles such as
-# "Operaatioasiantuntija, tuotanto" that name no forestry word.
-FORESTRY_ONLY_SOURCES = {"Metsälehti"}
+# The forestry word lists now live in fields/forestry.json; these names stay for older code
+FORESTRY_WORDS = FORESTRY["jobly"]["title_words"]
+FORESTRY_RELEVANCE_WORDS = FORESTRY["relevance"]["words"]
+FORESTRY_CORE_WORDS = FORESTRY["relevance"]["core_words"]
+WHOLE_WORDS = set(FORESTRY["relevance"]["whole_words"])
+# Sources by kind (sources.json): field boards list only their fields' jobs; broad portals list
+# every public-sector job, so they get the stricter core-word rule (core/fields.py).
+FORESTRY_ONLY_SOURCES = {s["name"] for s in SOURCES.values() if s["kind"] == "field_board"}
+BROAD_AD_SOURCES = {s["name"] for s in SOURCES.values() if s["kind"] == "broad_portal"}
+# Personal Jobly categories: a title must contain one of these words
 TITLE_MUST_MATCH = {
     "it": ["tuki", "support", "asentaja", "kenttä", "field", "lähituki", "helpdesk", "service desk",
            "teknikko", "technician", "datakeskus", "data center", "data centre", "laite"],
-    **{slug: FORESTRY_WORDS for slug in JOB_TYPES["Forestry"]},
 }
-# Words matched as whole words only ("gis" is inside "logistiikka")
-WHOLE_WORDS = {"gis", "skog"}      # "skog" also ends place names such as Västerskog
 DATA_CENTRE_WORDS = ["datakeskus", "data center", "data centre"]
 
 MAX_PAGES = 3          # about 20 jobs per page
 DELAY_SECONDS = 10     # Jobly robots.txt asks for 10 s between requests
-BASE = "https://www.jobly.fi"
-METSALEHTI_FEED = "https://www.metsalehti.fi/tyopaikat/feed/"
-METSALEHTI_JOBS = "https://www.metsalehti.fi/tyopaikat/"      # read when the feed is empty
-METSALEHTI_JOB_LINK = r"metsalehti\.fi/tyopaikat/(?!feed/?$|page/)[a-z0-9-]+/?$"
-METSAHALLITUS_FEED = "https://metsa.rekrytointi.com/paikat/?o=A_RSS&jgid=2"
-METSAKESKUS_JOBS = (
-    "https://www.metsakeskus.fi/fi/tietoa-meista/toihin-metsakeskukseen/avoimet-tyopaikat"
-)
-DUUNITORI_JOBS = "https://duunitori.fi/tyopaikat?haku=mets%C3%A4ala"
-DUUNITORI_JOENSUU_JOBS = (
-    "https://duunitori.fi/tyopaikat/alue/joensuu?haku=mets%C3%A4ala"
-)
-UEF_JOBS = "https://www.uef.fi/fi/avoimet-tyopaikat"
-UEF_JOBS_EN = "https://www.uef.fi/en/open-positions"
-VARBI_JOB_LINK = r"uef\.varbi\.com/(?:fi|en)/what:job/jobID:(\d+)"
-# Valtiolle.fi: every state agency (Luke, Metsähallitus, MMM, SYKE, ELY, Maanmittauslaitos ...).
-# The whole feed is only a few hundred items, so read all of it in both languages: the English
-# feed carries English-only postings that the Finnish one leaves out. (The old Luke-only feed,
-# organisation=28, returns no items any more.)
-VALTIOLLE_FEEDS = [
-    "https://valtiolle.fi/fi/tyopaikat/?sort=-changetime&limit=1000&format=rss",
-    "https://valtiolle.fi/en/jobs/?sort=-changetime&limit=1000&format=rss",
-]
-# Kuntarekry.fi: municipalities, joint authorities and their companies. The full feed stops at the
-# newest 500 of several thousand jobs, so use its free-text search (desc=) with Finnish, English
-# and Swedish keywords; results are filtered with is_forestry_related like every other source.
-KUNTAREKRY_KEYWORDS = ["metsä", "forest", "skogs", "luonto", "luonnonvara", "paikkatieto"]
-KUNTAREKRY_FEED = "https://kuntarekry.fi/fi/tyopaikat/?desc={}&sort=-changetime&limit=500&format=rss"
+BASE = SOURCES["jobly"]["base_url"]
+# URLs come from sources.json; the names stay because the readers and tests use them
+METSALEHTI_FEED = SOURCES["metsalehti"]["urls"]["feed"]
+METSALEHTI_JOBS = SOURCES["metsalehti"]["urls"]["jobs"]      # read when the feed is empty
+METSALEHTI_JOB_LINK = SOURCES["metsalehti"]["link_pattern"]
+METSAHALLITUS_FEED = SOURCES["metsahallitus"]["urls"]["feed"]
+METSAKESKUS_JOBS = SOURCES["metsakeskus"]["urls"]["jobs"]
+DUUNITORI_JOBS = SOURCES["duunitori"]["urls"]["search"]
+DUUNITORI_JOENSUU_JOBS = SOURCES["duunitori"]["urls"]["joensuu"]
+UEF_JOBS = SOURCES["uef"]["urls"]["fi"]
+UEF_JOBS_EN = SOURCES["uef"]["urls"]["en"]
+VARBI_JOB_LINK = SOURCES["uef"]["id_pattern"]
+# Valtiolle.fi: every state agency. The whole feed is only a few hundred items, so read all of it in
+# both languages: the English feed carries English-only postings that the Finnish one leaves out.
+VALTIOLLE_FEEDS = [SOURCES["valtiolle"]["urls"]["fi"], SOURCES["valtiolle"]["urls"]["en"]]
+# Kuntarekry.fi: the full feed stops at the newest 500 of several thousand jobs, so use its free-text
+# search (desc=) with each active field's search_terms; results are filtered like every other source.
+KUNTAREKRY_KEYWORDS = FORESTRY["search_terms"]
+KUNTAREKRY_FEED = SOURCES["kuntarekry"]["url_template"]
 # Valtiolle and Kuntarekry run on the same platform; a posting keeps its number across languages
 PORTAL_POSTING_ID = r"-(\d+)/?$"
-WORKDAY_SOURCES = [
-    ("Metsä Group", "https://metsagroup.wd103.myworkdayjobs.com/wday/cxs/metsagroup/MetsaGroup_Careers/jobs",
-     "https://metsagroup.wd103.myworkdayjobs.com/fi-FI/MetsaGroup_Careers"),
-    ("UPM", "https://upm.wd103.myworkdayjobs.com/wday/cxs/upm/Careers/jobs",
-     "https://upm.wd103.myworkdayjobs.com/fi-FI/Careers"),
-    ("Stora Enso", "https://storaenso.wd502.myworkdayjobs.com/wday/cxs/storaenso/"
-     "Stora_Enso_site_opportunities/jobs",
-     "https://storaenso.wd502.myworkdayjobs.com/fi-FI/Stora_Enso_site_opportunities"),
-]
+WORKDAY_SOURCES = [(s["name"], s["urls"]["api"], s["urls"]["jobs"])
+                   for s in SOURCES.values() if s["reader"] == "workday"]
 # Names JobDesk instead of pretending to be a browser; robots.txt rules are matched on "JobDesk"
 USER_AGENT = core_fetch.user_agent()
 
@@ -444,21 +392,32 @@ def fetch_workday_jobs(endpoint, job_base):
     return jobs
 
 
+def source_kind(job):
+    """(kind, fields) of the source a job came from; jobs from unknown sources (Community,
+    Manual, Personal) are 'general' and belong to no field by default."""
+    source = SOURCE_BY_NAME.get(job.get("source") or "")
+    if not source:
+        return "general", ()
+    return source["kind"], source["fields"]
+
+
+def is_relevant_to(job, profile):
+    kind, source_fields = source_kind(job)
+    return core_fields.is_relevant(job, profile, kind, source_fields)
+
+
+def relevant_fields(job, field_ids=None):
+    """Ids of the fields (all, or the given ones) this job belongs to, in profile order."""
+    wanted = PROFILES if field_ids is None else [i for i in PROFILES if i in field_ids]
+    return [i for i in wanted if is_relevant_to(job, PROFILES[i])]
+
+
 def is_forestry_related(job):
-    if job.get("source") in FORESTRY_ONLY_SOURCES:
-        return True
-    if job.get("source") in BROAD_AD_SOURCES:
-        ad = " ".join((job.get(field) or "") for field in ("description", "ad_text"))
-        ad = ORGANISATION_NAMES.sub(" ", ad.lower())
-        return (any(title_has(job.get("title") or "", word) for word in FORESTRY_RELEVANCE_WORDS)
-                or any(title_has(ad, word) for word in FORESTRY_CORE_WORDS))
-    text = " ".join((job.get(field) or "") for field in ("title", "description", "ad_text", "location"))
-    return any(title_has(text, word) for word in FORESTRY_RELEVANCE_WORDS)
+    return is_relevant_to(job, FORESTRY)
 
 
 def title_has(title, word):
-    t = title.lower()
-    return re.search(rf"\b{re.escape(word)}\b", t) is not None if word in WHOLE_WORDS else word in t
+    return core_fields.has_word(title, word, WHOLE_WORDS)
 
 
 def jobly_id(url):
@@ -534,34 +493,68 @@ def guess_category(text):
     return "Industrial"
 
 
-def sources():
-    """(source name, reader) for every non-Jobly source. Each reader returns job dicts;
-    is_forestry_related filters them. Duunitori is included only when JOBDESK_ENABLE_DUUNITORI=1."""
-    found = [
-        ("Metsälehti", read_metsalehti),
-        ("Metsähallitus", lambda: parse_rss_jobs(fetch(METSAHALLITUS_FEED) or "<rss/>",
-                                                  "https://metsa.rekrytointi.com/")),
-        ("Valtiolle", lambda: read_portal_feeds(VALTIOLLE_FEEDS)),
-        ("Kuntarekry", lambda: read_portal_feeds(
-            [KUNTAREKRY_FEED.format(quote(word)) for word in KUNTAREKRY_KEYWORDS])),
-        ("Metsäkeskus", lambda: read_links([METSAKESKUS_JOBS], "https://www.metsakeskus.fi/",
-                                           r"ats\.talentadore\.com/apply/")),
-        ("UEF", lambda: read_links([UEF_JOBS, UEF_JOBS_EN], "https://www.uef.fi/",
-                                   VARBI_JOB_LINK, VARBI_JOB_LINK)),
-    ] + [(name, lambda endpoint=endpoint, job_base=job_base: fetch_workday_jobs(endpoint, job_base))
-         for name, endpoint, job_base in WORKDAY_SOURCES]
-    if config.ENABLE_DUUNITORI:
-        found.append(("Duunitori", lambda: read_links([DUUNITORI_JOBS, DUUNITORI_JOENSUU_JOBS],
-                                                      "https://duunitori.fi/", r"duunitori\.fi/tyopaikat/tyo/")))
-    return found
+def active_field_ids(field_ids=None):
+    """The fields to scrape: the given ones, or every field some member has chosen (db), in profile order."""
+    wanted = set(field_ids if field_ids is not None else db.active_field_ids(config.DEFAULT_FIELDS))
+    return [i for i in PROFILES if i in wanted]
 
 
-def run(progress=None, user_id=1, personal=False):
+def _covers(source, field_ids):
+    return source["fields"] in ("all", "per-profile") or bool(set(source["fields"]) & set(field_ids))
+
+
+def _enabled(source):
+    if source.get("enable_env") == "JOBDESK_ENABLE_DUUNITORI":
+        return config.ENABLE_DUUNITORI
+    return source.get("enabled", True)
+
+
+def _reader(source, field_ids):
+    """A function returning the job dicts of one non-Jobly source (sources.json "reader")."""
+    kind, urls = source["reader"], source.get("urls", {})
+    if kind == "metsalehti":
+        return read_metsalehti
+    if kind == "rss":
+        return lambda: parse_rss_jobs(fetch(urls["feed"]) or "<rss/>", source["base_url"])
+    if kind == "portal_feeds":
+        return lambda: read_portal_feeds(list(urls.values()))
+    if kind == "keyword_feeds":       # one search per keyword of every active field
+        words = list(dict.fromkeys(w for i in field_ids for w in PROFILES[i]["search_terms"]))
+        return lambda: read_portal_feeds([source["url_template"].format(quote(word)) for word in words])
+    if kind == "links":
+        return lambda: read_links(list(urls.values()), source["base_url"], source["link_pattern"],
+                                  source.get("id_pattern"))
+    if kind == "workday":
+        return lambda: fetch_workday_jobs(urls["api"], urls["jobs"])
+    raise ValueError(f"Unknown reader {kind!r} in sources.json")
+
+
+def sources(field_ids=None):
+    """(source name, reader) for every enabled non-Jobly source that covers one of the fields
+    (default: every field members have chosen). Duunitori only when JOBDESK_ENABLE_DUUNITORI=1."""
+    field_ids = active_field_ids(field_ids)
+    return [(s["name"], _reader(s, field_ids)) for s in SOURCES.values()
+            if s["reader"] != "jobly" and _enabled(s) and _covers(s, field_ids)]
+
+
+def jobly_pages(field_ids, personal=False):
+    """(category, slug, title words) for each Jobly category page to read."""
+    pages = [(PROFILES[i]["category"], slug, PROFILES[i]["jobly"]["title_words"])
+             for i in field_ids for slug in PROFILES[i]["jobly"]["slugs"]]
+    if personal:
+        pages += [(category, slug, TITLE_MUST_MATCH.get(slug))
+                  for category, slugs in PERSONAL_JOB_TYPES.items() for slug in slugs]
+    return pages
+
+
+def run(progress=None, user_id=1, personal=False, field_ids=None):
     """One full check. progress(message, done, total) is called as pages are read.
+    field_ids: the fields to read (default: every field some member has chosen).
     personal=True also reads the administrator's own PERSONAL_CATEGORIES from Jobly."""
-    pages = [(category, slug) for category in ["Forestry"] + (PERSONAL_CATEGORIES if personal else [])
-             for slug in JOB_TYPES[category]]
-    readers = sources()
+    field_ids = active_field_ids(field_ids)
+    profiles = [PROFILES[i] for i in field_ids]
+    pages = jobly_pages(field_ids, personal)
+    readers = sources(field_ids)
     total = len(pages) + len(readers)
     check_id = db.start_check(user_id)
     found = new = 0
@@ -569,7 +562,7 @@ def run(progress=None, user_id=1, personal=False):
     error = None
     try:
         first = True
-        for n, (category, slug) in enumerate(pages):
+        for n, (category, slug, words) in enumerate(pages):
             for page in range(MAX_PAGES):
                 url = f"{BASE}/tyopaikat/{slug}" + (f"?page={page}" if page else "")
                 if not first:      # Jobly asks for 10 s; a longer Crawl-delay in robots.txt wins
@@ -587,7 +580,6 @@ def run(progress=None, user_id=1, personal=False):
                     break
                 for j in fresh:
                     seen_now.add(("Jobly", j["id"]))
-                    words = TITLE_MUST_MATCH.get(slug)
                     if words and not any(title_has(j["title"], w) for w in words):
                         continue
                     cat = "IT-Data centre" if any(w in j["title"].lower() for w in DATA_CENTRE_WORDS) else category
@@ -602,8 +594,12 @@ def run(progress=None, user_id=1, personal=False):
         for source_index, (source, read) in enumerate(readers, start=len(pages)):
             if progress:
                 progress(f"Reading {source} jobs", source_index, total)
+            kind, source_fields = SOURCE_BY_NAME[source]["kind"], SOURCE_BY_NAME[source]["fields"]
+            covered = [p for p in profiles if source_fields == "all" or p["id"] in source_fields]
             for job in read():
-                if not is_forestry_related({**job, "source": source}):
+                matched = [p for p in covered
+                           if core_fields.is_relevant({**job, "source": source}, p, kind, source_fields)]
+                if not matched:
                     continue
                 key = (source, job["id"])
                 if key in seen_now:
@@ -612,7 +608,7 @@ def run(progress=None, user_id=1, personal=False):
                 is_new = db.upsert_scraped(
                     {"source": source, "external_id": job["id"], "url": job["url"],
                      "title": job["title"], "company": job["company"], "location": job["location"],
-                     "posted": job["posted"], "category": "Forestry",
+                     "posted": job["posted"], "category": matched[0]["category"],
                      "description": job.get("description", "")},
                     check_id, user_id=user_id)
                 found += 1

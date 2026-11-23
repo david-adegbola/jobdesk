@@ -14,8 +14,34 @@ register({
     const feedback = h("div", { "aria-live": "polite" });
     main.append(h("h1", null, "Account"),
       h("p", null, h("strong", null, state.user.name), " · ", state.user.email),
-      h("p", { class: "muted" }, "Your CVs, applications, reading list and focus preferences are private to your account. Shared forestry opportunities and news are visible to all members."),
+      h("p", { class: "muted" }, "Your CVs, applications, reading list and focus preferences are private to your account. Shared job ads are visible to members in the same field; news is visible to all members."),
       feedback);
+
+    const LEVELS = [["none", "None yet"], ["basic", "Basic (A1–A2)"], ["intermediate", "Intermediate (B1–B2)"], ["fluent", "Fluent (C1 or native)"]];
+    const fieldsFeedback = h("div", { "aria-live": "polite" });
+    const fieldsForm = h("form", { class: "account-form", onsubmit: async event => {
+      event.preventDefault();
+      const fields = [...fieldsForm.querySelectorAll("input[name=fields]:checked")].map(input => input.value);
+      if (!fields.length) {
+        fieldsFeedback.replaceChildren(message("Choose at least one field.", true));
+        return;
+      }
+      try {
+        await api("/api/account/fields", { method: "POST", body: { fields, finnish_level: fieldsForm.elements.finnish_level.value } });
+        await getState(true);
+        fieldsFeedback.replaceChildren(message("Saved. Jobs, Match and What to study now use these fields."));
+      } catch (error) { fieldsFeedback.replaceChildren(message(error.message, true)); }
+    } },
+      h("fieldset", null, h("legend", null, "Fields you are looking for work in"),
+        ...state.fields.map(field => h("label", { class: "check" },
+          h("input", { type: "checkbox", name: "fields", value: field.id, checked: state.user_fields.includes(field.id) }),
+          ` ${field.label_en} (${field.label_fi})`))),
+      h("label", { class: "field" }, "Your Finnish",
+        h("select", { name: "finnish_level" }, LEVELS.map(([value, label]) =>
+          h("option", { value, selected: state.finnish_level === value }, label)))),
+      h("p", { class: "muted small" }, "Your Finnish level is used by the ranked shortlist: if you choose Fluent, ads that require Finnish aren't moved to the end. Nothing here is sent to an AI service."),
+      h("button", { type: "submit" }, "Save fields"), fieldsFeedback);
+    main.append(h("section", { class: "card account-section" }, h("h2", null, "Fields and Finnish"), fieldsForm));
 
     const passwordFeedback = h("div", { "aria-live": "polite" });
     const passwordForm = h("form", { class: "account-form", onsubmit: async event => {

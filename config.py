@@ -35,4 +35,7 @@ OWNER_PROFILE_FILE = OWNER_DIR / "profile.json"
 PREP_DIR = Path(os.environ.get("JOBDESK_PREP_DIR")
                 or (OWNER_DIR / "prep" if (OWNER_DIR / "prep").is_dir() else APP / "prep")).resolve()
 CV_TEMPLATE_OWNER = os.environ.get("JOBDESK_CV_TEMPLATE_OWNER", "").strip()
+FIELDS_DIR = APP / "fields"                 # field profiles (forestry, IT, ...): JSON, see core/fields.py
+SOURCES_FILE = APP / "sources.json"         # job sources, their fields and robots.txt/terms notes
+DEFAULT_FIELDS = ["forestry"]               # for members who haven't chosen fields yet
 ENABLE_DUUNITORI = os.environ.get("JOBDESK_ENABLE_DUUNITORI", "0") == "1"

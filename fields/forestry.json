@@ -1,0 +1,631 @@
+{
+  "id": "forestry",
+  "order": 1,
+  "label_en": "Forestry",
+  "label_fi": "Metsäala",
+  "category": "Forestry",
+  "_comment": "Generated from the constants in scraper.py and skills.py at the start of Phase 3; edit here from now on.",
+  "search_terms": [
+    "metsä",
+    "forest",
+    "skogs",
+    "luonto",
+    "luonnonvara",
+    "paikkatieto"
+  ],
+  "jobly": {
+    "slugs": [
+      "metsuri",
+      "metsatyontekija",
+      "paikkatietoasiantuntija",
+      "harjoittelija",
+      "kesatyo"
+    ],
+    "title_words": [
+      "metsä",
+      "metsuri",
+      "puunhankin",
+      "taimikon",
+      "istutus",
+      "raivaus",
+      "metsätalous",
+      "metsänhoito",
+      "metsätalou",
+      "metsävarat",
+      "metsätieto",
+      "metsäekolog",
+      "metsätiete",
+      "paikkatieto",
+      "geoinformati",
+      "kaukokartoit",
+      "maastokartoit",
+      "kartoitus",
+      "luonnonvara",
+      "luonnonhoid",
+      "ennallist",
+      "biodiversiteet",
+      "monimuotoisuus",
+      "luontokato",
+      "hiilinielu",
+      "biotalous",
+      "bioenergia",
+      "forest",
+      "forestry",
+      "timber",
+      "wood sourcing",
+      "forest management",
+      "forest inventory",
+      "remote sensing",
+      "geospatial",
+      "geoinformatics",
+      "bioeconomy",
+      "biodiversity",
+      "natural resources",
+      "ecolog",
+      "sustainable forestry",
+      "puukaup",
+      "timber trade",
+      "wood procurement",
+      "puutavara",
+      "korjuusuunnit",
+      "sawmill",
+      "sahateollisuu",
+      "luontoselvit",
+      "luontokartoit",
+      "nature survey",
+      "luonnonsuojelu",
+      "nature conservation",
+      "peatland",
+      "turvemaa",
+      "suometsä"
+    ]
+  },
+  "relevance": {
+    "words": [
+      "metsuri",
+      "metsäasiantunt",
+      "metsäalan",
+      "metsäinsin",
+      "metsäkone",
+      "metsätalou",
+      "metsänhoid",
+      "metsänkasvat",
+      "metsävarat",
+      "metsätieto",
+      "metsäekolog",
+      "metsätiete",
+      "metsäteollisuus",
+      "metsätuott",
+      "puunhankin",
+      "puunkorju",
+      "taimikon",
+      "istutus",
+      "raivaus",
+      "paikkatieto",
+      "gis",
+      "geoinformati",
+      "kaukokartoit",
+      "maastokartoit",
+      "kartoitus",
+      "luonnonvar",
+      "luonnonhoid",
+      "ennallist",
+      "biodiversiteet",
+      "monimuotoisuus",
+      "luontokato",
+      "hiilinielu",
+      "biotalous",
+      "bioenergia",
+      "forest",
+      "forestry",
+      "timber",
+      "wood sourcing",
+      "forest management",
+      "forest inventory",
+      "remote sensing",
+      "geospatial",
+      "geoinformatics",
+      "bioeconomy",
+      "biodiversity",
+      "natural resources",
+      "ecolog",
+      "skog",
+      "sustainab",
+      "vastuullisuus",
+      "kestävyys",
+      "ilmasto",
+      "climate",
+      "renewable material",
+      "renewable fibre",
+      "biomaterial",
+      "metsänhoit",
+      "metsien",
+      "metsävastaav",
+      "metsäneuvo",
+      "metsätyönjoht",
+      "metsäharjoitt",
+      "metsäpalvel",
+      "forest service",
+      "metsänomist",
+      "metsälannoit",
+      "metsäsuunnit",
+      "metsänjalost",
+      "tree breeding",
+      "taimitarh",
+      "taimituotan",
+      "seedling",
+      "puukaup",
+      "timber trade",
+      "wood procurement",
+      "puutavara",
+      "puunkuljet",
+      "timber transport",
+      "korjuusuunnit",
+      "timber harvesting",
+      "sawmill",
+      "sahateollisuu",
+      "luontoselvit",
+      "luontokartoit",
+      "nature survey",
+      "luonnonsuojelu",
+      "nature conservation",
+      "habitat",
+      "peatland",
+      "turvemaa",
+      "suometsä",
+      "hiilivarast",
+      "carbon stock"
+    ],
+    "core_words": [
+      "metsuri",
+      "metsäasiantunt",
+      "metsäalan",
+      "metsäinsin",
+      "metsäkone",
+      "metsätalou",
+      "metsänhoid",
+      "metsänhoit",
+      "metsänkasvat",
+      "metsävarat",
+      "metsätieto",
+      "metsäekolog",
+      "metsätiete",
+      "metsäteollisuus",
+      "metsätuott",
+      "metsien",
+      "metsäpalvel",
+      "metsänomist",
+      "metsäsuunnit",
+      "metsänjalost",
+      "puunhankin",
+      "puunkorju",
+      "puukaup",
+      "puutavara",
+      "taimikon",
+      "luonnonhoid",
+      "luonnonsuojelu",
+      "ennallist",
+      "luontoselvit",
+      "luontokartoit",
+      "suometsä",
+      "biotalous",
+      "forest",
+      "timber",
+      "wood procurement",
+      "nature survey",
+      "peatland",
+      "bioeconomy"
+    ],
+    "whole_words": [
+      "gis",
+      "skog"
+    ],
+    "ignore_patterns": [
+      "maa- ja metsätalousministeri\\w*|ministry of agriculture and forestry"
+    ]
+  },
+  "skills": [
+    {
+      "id": "gis",
+      "en": "GIS / spatial data",
+      "fi": "Paikkatieto",
+      "group": "GIS & data",
+      "pattern": "\\bgis\\b|paikkatie|geospatial|geoinformat|spatial data",
+      "hint": "Practise with free QGIS and open map data."
+    },
+    {
+      "id": "qgis",
+      "en": "QGIS",
+      "fi": "QGIS",
+      "group": "GIS & data",
+      "pattern": "\\bqgis",
+      "hint": "Free to install; National Land Survey open data works well."
+    },
+    {
+      "id": "arcgis",
+      "en": "ArcGIS",
+      "fi": "ArcGIS",
+      "group": "GIS & data",
+      "pattern": "arcgis|\\besri\\b",
+      "hint": "Student licences are often available."
+    },
+    {
+      "id": "remote_sensing",
+      "en": "Remote sensing / laser scanning",
+      "fi": "Kaukokartoitus ja laserkeilaus",
+      "group": "GIS & data",
+      "pattern": "kaukokartoit|remote sensing|laserkeil|lidar|satelliitti|satellite imag",
+      "hint": ""
+    },
+    {
+      "id": "drones",
+      "en": "Drones (UAV)",
+      "fi": "Droonit",
+      "group": "GIS & data",
+      "pattern": "drooni|\\bdrones?\\b|\\buav\\b|lennokki|kauko-ohjattav\\w* ilma",
+      "hint": "Drone flying needs Traficom's operator registration and an online test."
+    },
+    {
+      "id": "python",
+      "en": "Python",
+      "fi": "Python",
+      "group": "GIS & data",
+      "pattern": "\\bpython",
+      "hint": ""
+    },
+    {
+      "id": "r_lang",
+      "en": "R",
+      "fi": "R",
+      "group": "GIS & data",
+      "pattern": "\\br-(?:kiel|ohjelm)|\\br (?:language|programming)|\\brstudio|\\bin r\\b",
+      "hint": ""
+    },
+    {
+      "id": "sql",
+      "en": "Databases / SQL",
+      "fi": "Tietokannat / SQL",
+      "group": "GIS & data",
+      "pattern": "\\bsql\\b|tietokan|database",
+      "hint": ""
+    },
+    {
+      "id": "excel",
+      "en": "Excel / spreadsheets",
+      "fi": "Excel / taulukkolaskenta",
+      "group": "GIS & data",
+      "pattern": "\\bexcel|taulukkolaskent|spreadsheet",
+      "hint": ""
+    },
+    {
+      "id": "statistics",
+      "en": "Statistics / data analysis",
+      "fi": "Tilastot ja data-analyysi",
+      "group": "GIS & data",
+      "pattern": "tilastoll|tilastotiet|statistic|data-analy|data analy|analytiikka",
+      "hint": ""
+    },
+    {
+      "id": "inventory",
+      "en": "Forest inventory & measurement",
+      "fi": "Metsien inventointi ja mittaus",
+      "group": "Forest knowledge",
+      "pattern": "inventoin|forest inventory|koeala|sample plot|puustotun|tree measurement|relaskoop|mittaustyö|field measurement",
+      "hint": ""
+    },
+    {
+      "id": "planning",
+      "en": "Forest management planning",
+      "fi": "Metsäsuunnittelu",
+      "group": "Forest knowledge",
+      "pattern": "metsäsuunnit|metsänhoitosuunnit|forest (?:management )?plan",
+      "hint": ""
+    },
+    {
+      "id": "silviculture",
+      "en": "Silviculture",
+      "fi": "Metsänhoito",
+      "group": "Forest knowledge",
+      "pattern": "metsänhoi|silvicult|taimikonhoi|metsänuudist|forest regeneration|ensiharvennu",
+      "hint": ""
+    },
+    {
+      "id": "timber_trade",
+      "en": "Timber trade / wood procurement",
+      "fi": "Puukauppa ja puunhankinta",
+      "group": "Forest knowledge",
+      "pattern": "puukaup|puunhank|timber trade|wood procurement|wood sourcing|leimik|virkesköp|virkesinköp",
+      "hint": ""
+    },
+    {
+      "id": "harvesting",
+      "en": "Harvesting & timber logistics",
+      "fi": "Puunkorjuu ja logistiikka",
+      "group": "Forest knowledge",
+      "pattern": "puunkorju|korjuun|harvesting|puutavaralogist|timber logistic|kuljetusten ohjau",
+      "hint": ""
+    },
+    {
+      "id": "certification",
+      "en": "Forest certification (PEFC/FSC)",
+      "fi": "Metsäsertifiointi (PEFC/FSC)",
+      "group": "Forest knowledge",
+      "pattern": "\\bpefc|\\bfsc\\b|metsäsertifi|forest certif",
+      "hint": ""
+    },
+    {
+      "id": "biodiversity",
+      "en": "Biodiversity & nature surveys",
+      "fi": "Luontoselvitykset ja monimuotoisuus",
+      "group": "Forest knowledge",
+      "pattern": "luontoselvit|luontokartoit|monimuotoisuu|biodiversit|nature survey|habitat|luontotyyp|lajintunt|species identif",
+      "hint": ""
+    },
+    {
+      "id": "ecology",
+      "en": "Forest ecology & soils",
+      "fi": "Metsäekologia ja maaperä",
+      "group": "Forest knowledge",
+      "pattern": "metsäekolog|forest ecolog|ecosystem|ekosystee|maaperä|\\bsoils?\\b",
+      "hint": ""
+    },
+    {
+      "id": "carbon",
+      "en": "Climate & carbon",
+      "fi": "Ilmasto ja hiili",
+      "group": "Forest knowledge",
+      "pattern": "hiilinielu|hiilivarast|hiilijalanjälj|carbon|ilmastonmuut|climate change",
+      "hint": ""
+    },
+    {
+      "id": "legislation",
+      "en": "Forest & environmental law",
+      "fi": "Metsä- ja ympäristölainsäädäntö",
+      "group": "Forest knowledge",
+      "pattern": "metsälak|luonnonsuojelulak|forest act|ympäristölainsää|environmental (?:law|legislation)|\\bkemera|\\bmetka\\b",
+      "hint": ""
+    },
+    {
+      "id": "esg",
+      "en": "Sustainability reporting (ESG)",
+      "fi": "Vastuullisuusraportointi (ESG)",
+      "group": "Forest knowledge",
+      "pattern": "\\besg\\b|\\bcsrd\\b|vastuullisuusrapor|sustainability report",
+      "hint": ""
+    },
+    {
+      "id": "forest_owners",
+      "en": "Working with forest owners",
+      "fi": "Metsänomistajien palvelu",
+      "group": "People & work",
+      "pattern": "metsänomistaj|forest owner",
+      "hint": ""
+    },
+    {
+      "id": "customer",
+      "en": "Customer service & sales",
+      "fi": "Asiakaspalvelu ja myynti",
+      "group": "People & work",
+      "pattern": "asiakaspalvel|customer service|\\bmyyn|\\bsales\\b",
+      "hint": ""
+    },
+    {
+      "id": "project",
+      "en": "Project management",
+      "fi": "Projektinhallinta",
+      "group": "People & work",
+      "pattern": "projektinhallin|project manag|projektien johta",
+      "hint": ""
+    },
+    {
+      "id": "occupational_safety",
+      "en": "Occupational safety card",
+      "fi": "Työturvallisuuskortti",
+      "group": "Cards & licences",
+      "pattern": "työturvallisuuskort|occupational safety card",
+      "hint": "A one-day course."
+    },
+    {
+      "id": "forest_machine",
+      "en": "Forest machines",
+      "fi": "Metsäkoneet",
+      "group": "Cards & licences",
+      "pattern": "metsäkone|forest machine|harvester|kuormatraktor|forwarder",
+      "hint": ""
+    },
+    {
+      "id": "swedish",
+      "en": "Swedish",
+      "fi": "Ruotsi",
+      "group": "Languages",
+      "pattern": "ruotsi|swedish|svenska",
+      "hint": ""
+    },
+    {
+      "id": "english",
+      "en": "English",
+      "fi": "Englanti",
+      "group": "Languages",
+      "pattern": "englan|\\benglish\\b",
+      "hint": ""
+    },
+    {
+      "id": "welding",
+      "en": "Welding",
+      "fi": "Hitsaus",
+      "group": "Cards & licences",
+      "pattern": "hitsa|welding|welder",
+      "hint": ""
+    },
+    {
+      "id": "welding_certificate",
+      "en": "Welding certificate",
+      "fi": "Hitsauspätevyys",
+      "group": "Cards & licences",
+      "pattern": "hitsauspätevyy|hitsaussertifik|welding certif",
+      "hint": ""
+    },
+    {
+      "id": "hot_work",
+      "en": "Hot-work card",
+      "fi": "Tulityökortti",
+      "group": "Cards & licences",
+      "pattern": "tulityö|hot[- ]work",
+      "hint": "A one-day course."
+    },
+    {
+      "id": "forklift",
+      "en": "Forklift card",
+      "fi": "Trukkikortti",
+      "group": "Cards & licences",
+      "pattern": "trukki|trukin|forklift",
+      "hint": ""
+    },
+    {
+      "id": "drawings",
+      "en": "Reading drawings",
+      "fi": "Piirustusten lukeminen",
+      "group": "People & work",
+      "pattern": "piirustu|drawings|blueprint",
+      "hint": ""
+    },
+    {
+      "id": "b_licence",
+      "en": "B driving licence",
+      "fi": "B-ajokortti",
+      "group": "Cards & licences",
+      "pattern": "\\bb-(?:ajo)?kort|(?<![c-])\\bajokortti|driving licen[cs]e|driver'?s licen[cs]e|ajokortillinen",
+      "hint": ""
+    },
+    {
+      "id": "c_licence",
+      "en": "C driving licence",
+      "fi": "C-ajokortti",
+      "group": "Cards & licences",
+      "pattern": "\\bc-(?:ajo)?kort|\\bce-(?:ajo)?kort|c-kortillinen|\\bc licen[cs]e",
+      "hint": ""
+    },
+    {
+      "id": "finnish",
+      "en": "Fluent Finnish",
+      "fi": "Sujuva suomi",
+      "group": "Languages",
+      "pattern": "sujuva\\w* suome|hyvä\\w* suomen kiel|erinomai\\w* suomen kiel|fluent finnish|native finnish|suomen kielen taito on (?:edellytys|välttämätön)",
+      "hint": "The YKI test documents your level."
+    },
+    {
+      "id": "electrician",
+      "en": "Electrician qualification",
+      "fi": "Sähköalan pätevyys",
+      "group": "Education",
+      "pattern": "sähköasentaja|sähköpätevyy|sähköalan tutkin",
+      "hint": ""
+    },
+    {
+      "id": "electrical_safety",
+      "en": "Electrical safety card",
+      "fi": "Sähkötyöturvallisuuskortti",
+      "group": "Cards & licences",
+      "pattern": "sähkötyöturvallisuu|sfs ?6002|electrical safety (?:card|training)",
+      "hint": "A one-day course."
+    },
+    {
+      "id": "first_aid",
+      "en": "First aid card (EA1)",
+      "fi": "Ensiapukortti (EA1)",
+      "group": "Cards & licences",
+      "pattern": "\\bea ?1\\b|ensiapukortti|ensiapukoulutus|first aid",
+      "hint": "A two-day EA1 course."
+    },
+    {
+      "id": "vocational",
+      "en": "Vocational qualification",
+      "fi": "Ammatillinen tutkinto",
+      "group": "Education",
+      "pattern": "vocational (?:education|qualification|degree)|technical/vocational|ammatillinen (?:tutkinto|koulutus)|alan (?:ammatillinen|perus)tutkinto|alalle soveltuva koulutus",
+      "hint": ""
+    },
+    {
+      "id": "brush_saw",
+      "en": "Brush saw",
+      "fi": "Raivaussaha",
+      "group": "Cards & licences",
+      "pattern": "raivaussah|brush ?saw|clearing saw",
+      "hint": ""
+    },
+    {
+      "id": "chainsaw",
+      "en": "Chainsaw",
+      "fi": "Moottorisaha",
+      "group": "Cards & licences",
+      "pattern": "moottorisah|chain ?saw",
+      "hint": ""
+    },
+    {
+      "id": "forest_machine_operator",
+      "en": "Forest machine operator qualification",
+      "fi": "Metsäkoneenkuljettajan tutkinto",
+      "group": "Cards & licences",
+      "pattern": "metsäkoneenkuljettaj|forest machine operator",
+      "hint": ""
+    },
+    {
+      "id": "forestry_degree",
+      "en": "Forestry degree",
+      "fi": "Metsäalan tutkinto",
+      "group": "Education",
+      "pattern": "metsä\\w* \\w*tutkin|metsätalousinsinöö|metsänhoitaj|metsätieteiden|forestry degree|degree in forestry|(?:bsc|msc|bachelor|master)\\W+(?:\\w+\\W+)?forestry",
+      "hint": ""
+    }
+  ],
+  "role_types": [
+    {
+      "id": "forest_specialist",
+      "en": "Forest specialist",
+      "fi": "Metsäasiantuntija",
+      "pattern": "metsäasiantunt|metsäneuvo|metsänhoitaj|metsätalousinsin|metsäsuunnittelij|forestry professional|forest specialist|forest officer|\\bforester\\b|metsävastaav|metsäpalvel|forest service"
+    },
+    {
+      "id": "procurement",
+      "en": "Wood procurement & timber trade",
+      "fi": "Puunhankinta ja puukauppa",
+      "pattern": "puunhank|puukaup|wood procurement|timber trade|wood buyer|virkesköp|sourcing|hankinta"
+    },
+    {
+      "id": "harvesting",
+      "en": "Harvesting & logistics",
+      "fi": "Korjuu ja logistiikka",
+      "pattern": "korjuu|logist|kuljetu|harvest|terminaal|terminal|transport"
+    },
+    {
+      "id": "research",
+      "en": "Research",
+      "fi": "Tutkimus",
+      "pattern": "tutki|research|doctoral|väitöskirja|professor|post-?doc|tohtori"
+    },
+    {
+      "id": "gis_data",
+      "en": "GIS & forest data",
+      "fi": "Paikkatieto ja metsätieto",
+      "pattern": "paikkatie|\\bgis\\b|geospatial|kaukokart|remote sensing|\\bdata\\b|metsävarat|kartoit|laserkeil|drone|drooni"
+    },
+    {
+      "id": "nature",
+      "en": "Nature & environment",
+      "fi": "Luonto ja ympäristö",
+      "pattern": "luonto|luonnon|nature|biolog|ympäristö|environment|monimuotois|ecolog|ekolog|biotoop"
+    },
+    {
+      "id": "teaching",
+      "en": "Teaching & advisory",
+      "fi": "Opetus ja neuvonta",
+      "pattern": "opettaja|ohjaaja|lehtori|teacher|instructor|kouluttaja"
+    },
+    {
+      "id": "field_work",
+      "en": "Forest & field work",
+      "fi": "Metsä- ja maastotyö",
+      "pattern": "metsuri|metsätyö|forest worker|metsäkone|taimi|istutu|raivaa|maasto|field work|ulkoalue"
+    }
+  ]
+}

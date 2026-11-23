@@ -8,11 +8,29 @@ function places(text) {
 
 const daysText = d => d == null ? "" : d < 0 ? "closed" : d === 0 ? "today" : `${d} d`;
 
+// How much Finnish the ad asks for. The words carry the meaning; the colour only repeats it.
+const FINNISH = {
+  required: ["Finnish required", "tag bad"],
+  preferred: ["Finnish an advantage", "tag warn"],
+  not_needed: ["Finnish not needed", "tag new"],
+  unclear: ["Finnish unclear", "tag"],
+};
+const FINNISH_METHOD = { llm: "AI; the quote was checked against the ad", baseline_v1: "keyword rule", mock: "mock output" };
+
+function finnishCell(j) {
+  const f = j.finnish || { level: "unclear", evidence: [] };
+  const [label, cls] = FINNISH[f.level] || FINNISH.unclear;
+  const quote = (f.evidence || [])[0];
+  return h("td", null, h("span", { class: cls }, label),
+    quote ? h("div", { class: "small" }, h("q", sourceAttrs(j), quote.length > 160 ? quote.slice(0, 157) + "…" : quote)) : "",
+    h("div", { class: "muted small", title: f.explanation_en || "" }, FINNISH_METHOD[f.method] || ""));
+}
+
 // Sortable columns -> header text. Sort is a list of levels, most important first: [{key, dir: 1 | -1}]
 const SORTABLE = { posted: "Posted", deadline: "Deadline", category: "Type", match: "Match" };
 const MAX_LEVELS = 3;
 const defaultView = () => ({ sort: [{ key: "deadline", dir: 1 }, { key: "match", dir: -1 }],
-  posted: "", deadline: "", hideExpired: true, types: [], minMatch: 0 });
+  posted: "", deadline: "", hideExpired: true, types: [], minMatch: 0, finnish: "" });
 
 function loadJSON(key) {
   try { return JSON.parse(store(key) || "null"); } catch (e) { return null; }
@@ -84,8 +102,8 @@ function addForm(state, onAdded) {
   return h("details", { class: "card" },
     h("summary", null, "Add job manually"),
     h("p", { class: "muted small" }, state.user.is_admin
-      ? "Forestry jobs you add are visible to everyone; don't paste private contact details. Jobs outside forestry (industrial, construction, warehouse, IT) stay in your account only."
-      : "Community listings are visible to everyone. Share only public forestry or forest-bioeconomy opportunities; don't paste private contact details."),
+      ? "Jobs in your fields that you add are visible to members in those fields; don't paste private contact details. Jobs outside every field stay in your account only."
+      : "Community listings are visible to members in the same field. Share only public job or internship ads in your fields; don't paste private contact details."),
     form, out);
 }
 
@@ -95,16 +113,36 @@ register({
     const state = await getState();
     const status = h("span", { class: "muted", role: "status" });
     const checkBtn = state.user.is_admin ? h("button", { onclick: startCheck }, "Check for new jobs") : null;
+    const classifyStatus = h("span", { class: "muted small", role: "status" });
+    const classifyBtn = state.user.is_admin && state.llm.mode === "live"
+      ? h("button", { class: "secondary", onclick: startClassify }, "Check Finnish requirements (AI)") : null;
+    const fieldNames = state.fields.filter(f => state.user_fields.includes(f.id)).map(f => f.label_en.toLowerCase());
     const listArea = h("div");
     main.append(h("h1", null, "Jobs"),
-      h("p", { class: "muted" }, "Shared Finland-wide forestry, forest-bioeconomy and forest-data opportunities. Applications and CV matches are private to your account."),
+      h("p", { class: "muted" }, `Shared Finland-wide job and internship ads in your fields (${fieldNames.join(", ")}; change them on the Account page). ` +
+        "Applications and CV matches are private to your account."),
       state.user.is_admin ? h("p", { class: "muted small" }, "Administrator view: jobs tagged “Only you” (industrial, construction, warehouse and IT) come from your own searches and are never shown to members.") : "",
       h("div", { class: "row" }, checkBtn || "", status),
+      classifyBtn ? h("div", { class: "row" }, classifyBtn, classifyStatus) : "",
       addForm(state, load), listArea);
 
     async function startCheck() {
       await api("/api/scrape", { method: "POST" });
       poll();
+    }
+    async function startClassify() {
+      try { await api("/api/jobs/classify", { method: "POST", body: {} }); pollClassify(); }
+      catch (err) { classifyStatus.textContent = err.message; }
+    }
+    async function pollClassify() {
+      const c = await api("/api/jobs/classify");
+      classifyBtn.disabled = c.running;
+      classifyStatus.textContent = c.running
+        ? `${c.message} (${c.done}/${c.total}). Only the ads' own text is sent to the AI.`
+        : c.result ? `Done: ${c.result.classified} ads checked${c.result.failed ? `, ${c.result.failed} failed` : ""}; ${c.waiting} still waiting.`
+        : `${c.waiting} ads with saved text are waiting to be checked.`;
+      if (c.running) setTimeout(pollClassify, 3000);
+      else if (c.result) load();
     }
     async function poll() {
       const s = await api("/api/scrape");
@@ -146,7 +184,9 @@ register({
         (!(+view.deadline) || (d != null && d >= 0 && d <= +view.deadline)) &&
         (!view.hideExpired || d == null || d >= 0) &&
         (skip === "type" || !view.types.length || view.types.includes(j.category)) &&
-        (!view.minMatch || j.match.score >= view.minMatch);
+        (!view.minMatch || j.match.score >= view.minMatch) &&
+        (view.finnish !== "hide-required" || j.finnish?.level !== "required") &&
+        (view.finnish !== "open" || ["not_needed", "preferred"].includes(j.finnish?.level));
     }
 
     function clickSort(key, shift) {
@@ -195,6 +235,8 @@ register({
           onchange: e => { view.hideExpired = e.target.checked; saveView(); update(); } }), "Hide expired"),
         h("label", { class: "check" }, "Match at least ", h("input", { type: "range", min: 0, max: 100, step: 5, value: view.minMatch,
           oninput: e => { view.minMatch = +e.target.value; matchOut.textContent = view.minMatch; saveView(); update(); } }), matchOut),
+        h("label", { class: "check" }, "Finnish ", sel(view.finnish, setView("finnish"),
+          [["", "Any"], ["hide-required", "Hide “Finnish required”"], ["open", "Only “not needed” or “an advantage”"]])),
         h("label", { class: "check" }, "Status ", sel(filters.status, v => { filters.status = v; store("jobs.status", v); },
           [["", "All"], ["none", "Not saved"], ...state.statuses.map(s => [s, s])])),
         h("button", { class: "secondary", "data-focus": "reset", onclick: () => {
@@ -263,6 +305,7 @@ register({
         h("td", { class: "nowrap" + (j.days_left != null && j.days_left <= 3 && j.days_left >= 0 ? " overdue" : "") },
           j.deadline, j.deadline ? h("div", { class: "small" }, daysText(j.days_left)) : ""),
         h("td", { class: "nowrap" }, j.category),
+        finnishCell(j),
         h("td", null, h("span", { class: "score" }, j.match.score), " ", h("span", { class: "small" }, j.match.score ? j.match.slug : "–"),
           j.match.words.length ? h("div", { class: "muted small" }, j.match.words.join(", ")) : "",
           !j.has_ad_text && j.url ? h("div", null, h("button", { class: "link small", "data-focus": `fetch:${j.id}`, onclick: async e => {
@@ -285,11 +328,12 @@ register({
 
       tableArea.replaceChildren(
         h("p", { class: "muted small" }, `${shown.length} of ${jobs.length} jobs. ` +
-          "Match compares the listing with skills and experience in your own CVs. For Jobly jobs, “read full ad” fetches the description to improve matching."),
+          "Match compares the listing with skills and experience in your own CVs. For Jobly jobs, “read full ad” fetches the description to improve matching. " +
+          "Finnish shows what the ad says about Finnish, with the sentence it is based on; “keyword rule” results can't tell “an advantage” from “not needed”, so check the ad."),
         h("div", { class: "scroll" }, h("table", null,
-          h("thead", null, h("tr", null, ["Job", "Company", "Posted", "Deadline", "Type", "Match", "Use CV", "Status"].map(header))),
-          h("tbody", null, rows.length ? rows : h("tr", null, h("td", { colspan: 8, class: "empty" },
-            jobs.length ? "No jobs match these filters." : "No forestry jobs loaded yet. Refresh the listings or share a public opportunity."))))));
+          h("thead", null, h("tr", null, ["Job", "Company", "Posted", "Deadline", "Type", "Finnish", "Match", "Use CV", "Status"].map(header))),
+          h("tbody", null, rows.length ? rows : h("tr", null, h("td", { colspan: 9, class: "empty" },
+            jobs.length ? "No jobs match these filters." : "No jobs in your fields yet. Refresh the listings or share a public opportunity."))))));
 
       const focusTargets = [...listArea.querySelectorAll("[data-focus]")];
       const again = focusKey && focusTargets.find(el => el.dataset.focus === focusKey);
@@ -302,5 +346,6 @@ register({
 
     await load();
     if (state.user.is_admin) poll();
+    if (classifyBtn) pollClassify();
   },
 });

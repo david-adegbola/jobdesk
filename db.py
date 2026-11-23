@@ -119,6 +119,20 @@ CREATE TABLE IF NOT EXISTS cv_imports (
   cv_id INTEGER REFERENCES cvs(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, source_path)
 );
+CREATE TABLE IF NOT EXISTS finnish_levels (
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  prompt_version TEXT NOT NULL,
+  text_hash TEXT NOT NULL,
+  level TEXT NOT NULL,
+  evidence_json TEXT NOT NULL DEFAULT '[]',
+  explanation TEXT NOT NULL DEFAULT '',
+  method TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  verified INTEGER NOT NULL DEFAULT 1,
+  rejected_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (job_id, prompt_version)
+);
 CREATE TABLE IF NOT EXISTS news_items (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
@@ -319,6 +333,44 @@ def update_user_password(user_id, password_hash):
         if not result.rowcount:
             raise KeyError(user_id)
         conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+
+
+def active_field_ids(default):
+    """Every field chosen by at least one active account; accounts that haven't chosen get default."""
+    fields = set()
+    with connect() as conn:
+        for row in conn.execute("SELECT preferences_json FROM users WHERE is_active=1"):
+            try:
+                chosen = json.loads(row["preferences_json"] or "{}").get("fields")
+            except (ValueError, AttributeError):
+                chosen = None
+            fields.update(chosen if isinstance(chosen, list) and chosen else default)
+    return sorted(fields or default)
+
+
+def finnish_levels(prompt_version):
+    """{job id: stored classification} for one prompt version."""
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM finnish_levels WHERE prompt_version=?", (prompt_version,)).fetchall()
+    return {row["job_id"]: {
+        "level": row["level"], "evidence": json.loads(row["evidence_json"]), "explanation_en": row["explanation"],
+        "method": row["method"], "model": row["model"], "prompt_version": row["prompt_version"],
+        "verified": bool(row["verified"]), "rejected_evidence": json.loads(row["rejected_json"]),
+        "text_hash": row["text_hash"], "created_at": row["created_at"],
+    } for row in rows}
+
+
+def save_finnish_level(job_id, text_hash, result):
+    """Store one classification (core.finnish.classify result) for a job and prompt version."""
+    with connect() as conn:
+        conn.execute("""INSERT OR REPLACE INTO finnish_levels (job_id, prompt_version, text_hash, level,
+                        evidence_json, explanation, method, model, verified, rejected_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                     (job_id, result["prompt_version"], text_hash, result["level"],
+                      json.dumps(result["evidence"], ensure_ascii=False), result.get("explanation_en") or "",
+                      result["method"], result.get("model") or "", int(bool(result.get("verified", True))),
+                      json.dumps(result.get("rejected_evidence") or [], ensure_ascii=False),
+                      datetime.now(timezone.utc).isoformat(timespec="seconds")))
 
 
 def update_user_preferences(user_id, preferences):
