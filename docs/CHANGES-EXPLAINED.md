@@ -28,6 +28,12 @@ title, found none and reported "CV to send" as missing.
 (Warehouse) points one way and whose best CV (trainee-master) points another. Before the fix the
 Prep page said "warehouse"; now it says "trainee".
 
+**A second bug the new test found.** `enrich()` also read `cv["id"]`. Member CVs have an id, but
+the CV-repository roles used by the owner tools don't, so whenever a repository CV matched a job,
+`enrich()` raised `KeyError`, and the dispatcher turned that into **404**. The Prep and
+email-prompt pages failed exactly when they had something useful to show. It now uses
+`cv.get("id")`.
+
 **Interview questions.**
 - *Why didn't any test catch this?* The routes were admin-only and tests replaced `context()` with
   empty roles, so the code path with a real match never ran. The new test gives it a real match.
