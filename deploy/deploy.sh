@@ -19,7 +19,11 @@ git archive --format=tar HEAD | ssh "$HOST" '
   sudo rm -rf /srv/jobdesk/app && sudo mv /srv/jobdesk/app.new /srv/jobdesk/app'
 
 if [ "${2:-}" = "--setup" ]; then
-  ssh -t "$HOST" sudo bash /srv/jobdesk/app/deploy/install.sh
+  CV_GIT_URL=${JOBDESK_CV_GIT_URL:-}
+  case "$CV_GIT_URL" in
+    *"'"*|*" "*) echo "JOBDESK_CV_GIT_URL must not contain quotes or spaces."; exit 1 ;;
+  esac
+  ssh -t "$HOST" "sudo JOBDESK_CV_GIT_URL='$CV_GIT_URL' bash /srv/jobdesk/app/deploy/install.sh"
 else
   ssh "$HOST" sudo bash /srv/jobdesk/app/deploy/install.sh --update
 fi

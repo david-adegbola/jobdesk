@@ -1,9 +1,10 @@
 """Prep page: call script, likely interview questions, honest blocker answers and questions to ask.
 
-No AI calls. Everything comes from the templates in prep/ (one file per job type, plus script.yaml
-and blockers.yaml), filled in with the job's title and contact. Draft answers there use only the
-facts in CV-RULES.md; answers David edits are saved per job type in the database (db.py) and
-replace the drafts for every job of that type.
+No AI calls. Everything comes from the templates in config.PREP_DIR (one file per job type, plus
+script.yaml and blockers.yaml), filled in with the job's title and contact. The prep/ folder in the
+repo holds generic templates with empty answers; the administrator's own drafts live in the
+git-ignored owner/prep/ folder, which is used instead when it exists. Answers edited on the Prep
+page are saved per job type in the database (db.py) and replace the drafts for every job of that type.
 
 The templates are a small YAML subset, read here so Woodesk stays standard-library only:
 top-level "key: value" lines and lists of "- key: value" items, one value per line, optionally quoted.
@@ -12,7 +13,10 @@ top-level "key: value" lines and lists of "- key: value" items, one value per li
 import re
 from pathlib import Path
 
-PREP_DIR = Path(__file__).resolve().parent / "prep"
+import config
+import owner
+
+PREP_DIR = config.PREP_DIR
 TYPES = ["industrial", "warehouse", "it", "trainee", "sales"]
 
 # Which prep type a CV belongs to; for jobs without a CV, which type their Jobly category is
@@ -75,7 +79,8 @@ def build(job, job_type, blocker_labels, saved):
     """The page content for one job. saved = {question id: {"a_fi", "a_en"}} for this type."""
     t = load_yaml(PREP_DIR / f"{job_type}.yaml")
     first_name = (job.get("contact_name") or "").split(" ")[0]
-    fill = {"title": job.get("title") or "", "intro_fi": t["intro_fi"], "intro_en": t["intro_en"]}
+    fill = {"title": job.get("title") or "", "intro_fi": t["intro_fi"], "intro_en": t["intro_en"],
+            "my_name": owner.get("name", "[your name]")}
 
     def line(text):
         text = text.replace(" {name}", f" {first_name}" if first_name else "")

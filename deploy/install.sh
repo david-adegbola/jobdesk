@@ -16,7 +16,9 @@ set -euo pipefail
 
 ROOT=/srv/jobdesk
 APP=$ROOT/app
-CV_URL=https://github.com/david-adegbola/cv.git
+# The CV repository to clone on first set-up, e.g. https://github.com/<you>/cv.git
+# (deploy.sh passes it on from your Mac's environment).
+CV_URL=${JOBDESK_CV_GIT_URL:-}
 
 install_units() {
   install -m 644 "$APP"/deploy/systemd/*.service "$APP"/deploy/systemd/*.timer /etc/systemd/system/
@@ -107,6 +109,11 @@ echo "== User and folders"
 id jobdesk >/dev/null 2>&1 || useradd --system --home-dir "$ROOT" --shell /usr/sbin/nologin jobdesk
 install -d -o jobdesk -g jobdesk -m 700 "$ROOT/data" "$ROOT/backups"
 if [ ! -d "$ROOT/cv/.git" ]; then
+  if [ -z "$CV_URL" ]; then
+    echo "Set JOBDESK_CV_GIT_URL to the CV repository to clone, e.g." >&2
+    echo "  JOBDESK_CV_GIT_URL=https://github.com/<you>/cv.git deploy/deploy.sh <ssh-host> --setup" >&2
+    exit 1
+  fi
   install -d -o jobdesk -g jobdesk -m 755 "$ROOT/cv"
   sudo -u jobdesk git clone -q "$CV_URL" "$ROOT/cv"
 fi

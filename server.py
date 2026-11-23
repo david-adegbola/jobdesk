@@ -36,6 +36,7 @@ import ics      # noqa: E402
 import prep     # noqa: E402
 import prompt   # noqa: E402
 import match    # noqa: E402
+import owner    # noqa: E402
 import scraper  # noqa: E402
 import news     # noqa: E402
 import skills   # noqa: E402
@@ -150,9 +151,13 @@ def enrich(job, roles, f=None):
     best_cv = next((role for role in roles if role["slug"] == best["slug"]), None)
     best = {**best, "slug": best_cv["title"] if best_cv else ""}
     blockers = match.blockers(" ".join(job.get(k) or "" for k in ("title", "ad_text")), f) if f else []
+    # use_cv is the CV's title, for display; use_cv_slug is its slug, for code that looks roles up
+    # (prep.type_for, prompt.build_email). Passing the title there made every lookup miss.
     return {**job, "status": job.get("status") or "", "is_new": bool(job.get("is_new")), "match": best, "blockers": blockers,
             "use_cv": cv["title"] if cv else "",
-            "use_cv_id": cv["id"] if cv else None,
+            "use_cv_slug": cv["slug"] if cv else "",
+            # Member CVs have an id; roles from the CV repository (owner tools) don't
+            "use_cv_id": cv.get("id") if cv else None,
             "cv_ready": cv is not None, "use_cv_link": "",
             "use_cv_language": cv["language"] if cv else "",
             "days_left": days_left, "has_ad_text": bool(job.get("ad_text"))}
@@ -720,6 +725,20 @@ def api_build(h, m):
 
 # ---------------------------------------------------------------- new CV prompt
 
+BODY_ERROR = "The request body must be a JSON object."
+
+
+def _prompt_body(h):
+    """The request body of a prompt route, or None when it (or its "job"/"answers") isn't an object."""
+    body = h.json()
+    if not isinstance(body, dict):
+        return None
+    for key in ("job", "answers"):
+        if body.get(key) is not None and not isinstance(body[key], dict):
+            return None
+    return body
+
+
 def _prompt_job(h, m):
     if m.group(1):
         job = db.get_job(int(m.group(1)), h.user["id"])
@@ -743,8 +762,10 @@ def api_email_prompt(h, m):
     if not h.user["is_admin"]:
         return h.error(404, "Not found.")
     """Application email prompt. With a job id it is also saved in that job's tracker notes."""
+    body = _prompt_body(h)
+    if body is None:
+        return h.error(400, BODY_ERROR)
     f, _, roles = context()
-    body = h.json()
     job = db.get_job(int(m.group(1)), h.user["id"]) if m.group(1) else (body.get("job") or {})
     if m.group(1) and not job:
         raise KeyError(m.group(1))
@@ -755,7 +776,7 @@ def api_email_prompt(h, m):
             job = db.get_job(job["id"], h.user["id"])
     analysis = prompt.analyse(job, roles, f)
     if m.group(1):
-        analysis["suggested_cv"] = enrich(job, roles, f)["use_cv"]
+        analysis["suggested_cv"] = enrich(job, roles, f)["use_cv_slug"]
     if body.get("analyse_only"):
         return analysis
     text, missing = prompt.build_email(job, analysis, body.get("answers") or {}, roles)
@@ -771,8 +792,10 @@ def api_email_prompt(h, m):
 def api_prompt_build(h, m):
     if not h.user["is_admin"]:
         return h.error(404, "Not found.")
+    body = _prompt_body(h)
+    if body is None:
+        return h.error(400, BODY_ERROR)
     f, _, roles = context()
-    body = h.json()
     job = db.get_job(int(m.group(1)), h.user["id"]) if m.group(1) else (body.get("job") or {})
     if m.group(1) and not job:
         raise KeyError(m.group(1))
@@ -800,7 +823,7 @@ def api_prep(h, m):
     if not job:
         raise KeyError(m.group(1))
     e = enrich(job, roles, f)
-    job_type = m.group(2) or prep.type_for(e["use_cv"], job.get("category"))
+    job_type = m.group(2) or prep.type_for(e["use_cv_slug"], job.get("category"))
     if job_type not in prep.TYPES:
         return h.error(400, f"Unknown job type {job_type!r}.")
     app = db.get_application(job["id"], h.user["id"])
@@ -817,10 +840,17 @@ def api_prep_answer(h, m):
     if not h.user["is_admin"]:
         return h.error(404, "Not found.")
     body = h.json()
+    if not isinstance(body, dict):
+        return h.error(400, BODY_ERROR)
     job_type, qid = body.get("type") or "", body.get("id") or ""
+    a_fi, a_en = body.get("a_fi") or "", body.get("a_en") or ""
+    if not all(isinstance(value, str) for value in (job_type, qid, a_fi, a_en)):
+        return h.error(400, "Question type, id and answers must be text.")
+    if len(a_fi) > 5000 or len(a_en) > 5000:
+        return h.error(400, "Answers must be 5,000 characters or fewer.")
     if job_type not in prep.TYPES or qid not in prep.question_ids(job_type):
         return h.error(400, "Unknown question.")
-    db.save_prep_answer(job_type, qid, body.get("a_fi") or "", body.get("a_en") or "", h.user["id"])
+    db.save_prep_answer(job_type, qid, a_fi, a_en, h.user["id"])
     return {"ok": True}
 
 
@@ -950,7 +980,7 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         try:
             return json.loads(self.rfile.read(n) or b"{}")
-        except json.JSONDecodeError:
+        except ValueError:      # invalid JSON, or bytes that aren't UTF-8
             return {}
 
     def error(self, code, message):
@@ -998,6 +1028,9 @@ class Handler(BaseHTTPRequestHandler):
                     result = fn(self, mt)
                 except KeyError:
                     return self.send(404, {"error": "Not found."})
+                except (facts.FactsUnavailable, owner.OwnerProfileMissing) as error:
+                    # Server set-up problems for the owner tools: say so instead of crashing the request
+                    return self.send(503, {"error": str(error)})
                 if isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], int):
                     return self.send(*result)
                 if isinstance(result, tuple):       # (bytes, content-type, headers)
@@ -1092,7 +1125,10 @@ def main():
     moved = db.rename_roles(merged_roles(), SHARED_DATA_OWNER)
     if moved:
         print(f"Moved {moved} tracker entr{'y' if moved == 1 else 'ies'} from merged CVs to the CV that absorbed them.")
-    _, warning = facts.load()
+    try:
+        _, warning = facts.load()
+    except facts.FactsUnavailable as error:
+        warning = f"{error} The owner tools (prompt, prep, insights) answer 503 until it is fixed."
     if warning:
         print("Warning:", warning)
     server = ThreadingHTTPServer((config.HOST, config.PORT), Handler)

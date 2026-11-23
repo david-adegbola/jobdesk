@@ -6,31 +6,28 @@ and tags). Score = (matched keywords + 3 x those also in the job title) / min(ke
 Ties go to the role that matches the title, then to the one with more matched words. Matching allows
 Finnish case endings and compounds (word_matches). The matched words are shown, so every score can be checked by eye.
 
-Blockers: things an ad asks for that David doesn't have, from the "Not held" and "NOT confirmed"
-lists in CV-RULES.md (via facts.json), plus two the ads often ask for: C licence and fluent Finnish.
+Blockers: things an ad asks for that the administrator doesn't have, from the "Not held" and
+"NOT confirmed" lists in CV-RULES.md (via facts.json), plus some the ads often ask for, such as a C
+licence and fluent Finnish.
+
+Public CV links (employer_link, pdf_links) come from the owner profile (owner.py); without one they
+are empty.
 """
 
 import re
+
+import owner
 from config import ROLES_DIR
+# The word helpers live in core/text.py (shared with the Flask app); re-exported here so
+# match.tokens, match.stem, match.word_matches and the word lists keep working everywhere.
+from core.text import (BOILERPLATE, COMPOUND_MIN, STOP_STEMS, STOPWORDS, WORD,  # noqa: F401
+                       stem, tokens, word_matches)
 
-PUBLIC_BASE = "https://david-adegbola.github.io/cv"
-
-WORD = re.compile(r"[a-zåäö0-9][a-zåäö0-9-]*[a-zåäö0-9]|[a-zåäö]", re.I)
-STOPWORDS = set("""
-ja tai sekä on ole olen olet ovat oli myös kanssa joka jotka jossa että kun mutta niin kuin
-the and or of to in for on with at by an a as is are be from this that your our you we
-työ työt työn töitä työssä työhön tehtävä tehtäviin tehtävät haemme etsimme hae oy ab ltd
-cv master role job type sent unchanged similar jobs including want learn opettelen haluan oppia
-basic perustaidot tietotekniikan tietotekniikka computer skills it
-worker workers henkilöstö henkilöstöpalvelut staff
-through under companies employers general projects projektit
-vastaan vastaava vastaavaa vastaavalta käyttö käyttöä
-""".split())
 # Skills-section labels whose rows are not job skills
 SKIP_LABELS = re.compile(r"kielet|languages|sijainti|location|puhelin|phone|sähköposti|email|links|"
                          r"availability|saatavuus|\d{4}", re.I)
 
-# label -> (facts key or None, regex). A blocker only counts if the fact says David lacks it.
+# label -> (facts key or None, regex). A blocker only counts if the fact says the administrator lacks it.
 BLOCKERS = [
     ("welding", "welding", r"hitsa|welding|welder"),
     ("welding certificate", "welding certificates", r"hitsauspätevyy|hitsaussertifik|welding certif"),
@@ -63,26 +60,7 @@ BLOCKERS = [
 
 
 FULL_AD_WORDS = 60   # fewer words than this = a title or short listing, so the smaller cap is used
-
-
-def tokens(text):
-    text = BOILERPLATE.sub(" ", text or "")
-    return [w.lower() for w in WORD.findall(text or "")]
-
-
-# Lines every Jobly ad page has ("Tämä tiivistelmä on luotu tekoälyn avulla" would match the AI skills)
-BOILERPLATE = re.compile(r"tiivistelmä työpaikkailmoituksesta:?|tämä tiivistelmä on luotu tekoälyn avulla\.?|"
-                         r"hae paikkaa|tallenna työpaikka|skip to main content", re.I)
-# Stems of words that are in almost every Finnish ad and say nothing about the job:
-# itsenäinen/itsenäisesti, työskentely/työskentelet, sujuva (usually "sujuva suomen kieli"), perus-
-STOP_STEMS = {"itsenä", "työske", "sujuva", "perust", "tehtäv", "yhteis", "turval", "opiske", "koulut"}
 TITLE_WEIGHT = 3   # a skill word that matches the job title is the strongest sign of the right CV
-COMPOUND_MIN = 6   # a skill word this long also matches inside a longer ad word ("asennus" in "sähköasennustyöt")
-
-
-def stem(word):
-    """Crude stem so Finnish inflections still match: first 6 letters of long words."""
-    return word[:6] if len(word) > 6 else word
 
 
 LEARN_LABELS = re.compile(r"haluan oppia|want to learn", re.I)
@@ -159,23 +137,6 @@ def load_roles():
     return roles
 
 
-def word_matches(word, keyword):
-    """Does an ad word match one of David's skill words?
-
-    - Finnish case endings: the ad word starts with the skill word minus its last 3 letters (at least 6),
-      and adds no more than 6 letters ("asentajaa", "kokoonpanotöissä"); short skill words up to 4.
-    - Compounds: a skill word of 6+ letters inside a longer ad word ("asennus" in "sähköasennustyöt").
-    The old rule (same first 6 letters) matched "asiakaskiinteistöissä" to "asiakaspalvelu".
-    """
-    if word == keyword:
-        return True
-    root = keyword if len(keyword) <= 6 else keyword[:max(6, len(keyword) - 3)]
-    # short words ("sähkö") take case endings only ("sähköä", "sähkön"), not a second word ("sähköalalla")
-    if word.startswith(root) and len(word) - len(root) <= (4 if len(keyword) <= 6 else 6):
-        return True
-    return len(keyword) >= COMPOUND_MIN and len(word) > len(keyword) + 2 and keyword in word
-
-
 def match(text, roles, title=""):
     """Score every role against an ad; best first. Each result lists the matched words.
     A skill word that also matches a word in the job title counts 1 + TITLE_WEIGHT times."""
@@ -203,19 +164,28 @@ def blockers(text, facts):
     found = []
     for label, fact, pattern in BLOCKERS:
         if fact and fact.lower() not in lacking:
-            continue          # David has it now (fact changed), so it's no longer a blocker
+            continue          # the fact changed (they have it now), so it's no longer a blocker
         if re.search(pattern, t):
             found.append(label)
     return found
 
 
+def _public_base():
+    return owner.get("public_cv_base").rstrip("/")
+
+
 def employer_link(slug):
-    return f"{PUBLIC_BASE}/r/{slug}/"
+    """The public page for one role's CV, or '' when no owner profile sets public_cv_base."""
+    base = _public_base()
+    return f"{base}/r/{slug}/" if base else ""
 
 
 def pdf_links(role):
-    """The file to send first (combined, main language first; for en-only the English CV), then each language."""
-    base = f"{PUBLIC_BASE}/david-adegbola-{role['slug']}"
+    """The file to send first (combined, main language first; for en-only the English CV), then each language.
+    Empty when no owner profile sets public_cv_base."""
+    if not _public_base():
+        return {}
+    base = f"{_public_base()}/{owner.get('pdf_prefix')}{role['slug']}"
     links = {}
     if role["langs"] == LANGUAGE_ORDER[role["language"]]:      # every file the setting needs exists
         links["combined"] = f"{base}.pdf"

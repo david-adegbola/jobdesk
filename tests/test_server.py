@@ -10,6 +10,7 @@ from http.server import ThreadingHTTPServer
 
 import db
 import auth
+import facts
 import server
 
 
@@ -457,6 +458,62 @@ class JobApiTests(unittest.TestCase):
         status, error = self.request("POST", f"/api/news/{item_id}/state", {"is_read": "yes"})
         self.assertEqual(status, 400)
         self.assertIn("boolean", error["error"])
+
+    # ------------------------------------------------------------ Phase 1 fixes
+
+    def test_prep_and_email_prompt_look_up_the_cv_by_slug_not_title(self):
+        roles = [{"slug": "trainee-master", "title": "Trainee CV", "keywords": {"harjoi": "harjoittelija"},
+                  "language": "fi-first", "langs": [], "footers": {}, "learn": set()}]
+        db.upsert_scraped({"source": "Jobly", "external_id": "t1", "url": "", "title": "Harjoittelija",
+                           "company": "", "location": "", "posted": "", "category": "Warehouse"}, None)
+        job_id = db.list_jobs()[0]["id"]
+        with patch.object(server, "context", return_value=({}, None, roles)):
+            status, page = self.request("GET", f"/api/prep/{job_id}")
+            self.assertEqual(status, 200)
+            # With the title, prep.type_for missed and fell back to the Warehouse category
+            self.assertEqual(page["type"], "trainee")
+            status, analysis = self.request("POST", f"/api/email-prompt/{job_id}", {"analyse_only": True})
+            self.assertEqual(status, 200)
+            self.assertEqual(analysis["suggested_cv"], "trainee-master")
+
+    def test_owner_routes_reject_bodies_that_are_not_objects(self):
+        cases = [
+            ("/api/email-prompt", []), ("/api/email-prompt/1", "text"), ("/api/email-prompt", {"job": "x"}),
+            ("/api/prompt", []), ("/api/prompt", {"answers": ["yes"]}),
+            ("/api/prep/answer", []), ("/api/prep/answer", {"type": ["trainee"], "id": "about"}),
+        ]
+        for path, body in cases:
+            status, error = self.request("POST", path, body)
+            self.assertEqual(status, 400, (path, body))
+            self.assertIn("error", error, (path, body))
+
+    def test_invalid_utf8_body_is_treated_as_empty_not_a_crash(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_port, timeout=5)
+        # \x80 is not valid UTF-8: json.loads raises UnicodeDecodeError, which isn't a JSONDecodeError
+        connection.request("POST", "/api/cvs", body=b'{"title": "\x80"}', headers={"Cookie": self.cookie})
+        response = connection.getresponse()
+        response.read()
+        connection.close()
+        self.assertEqual(response.status, 400)
+
+    def test_missing_facts_or_owner_profile_answer_503_instead_of_stopping(self):
+        with patch.object(server, "context", side_effect=facts.FactsUnavailable("The CV facts file is missing.")):
+            status, error = self.request("POST", "/api/prompt", {"job": {"title": "Metsuri"}, "analyse_only": True})
+        self.assertEqual(status, 503)
+        self.assertIn("facts", error["error"])
+
+        missing = Path(self.temp_dir.name) / "no-profile.json"
+        with patch.object(server.owner.config, "OWNER_PROFILE_FILE", missing):
+            status, error = self.request("POST", "/api/prompt", {"job": {"title": "Metsuri"}, "answers": {}})
+        self.assertEqual(status, 503)
+        self.assertIn("owner", error["error"])
+
+    def test_facts_load_raises_a_catchable_error(self):
+        with patch.object(facts, "FACTS_FILE", Path(self.temp_dir.name) / "facts.json"), \
+                patch("builtins.print"):
+            with self.assertRaises(facts.FactsUnavailable) as caught:
+                facts.load()
+        self.assertNotIn(self.temp_dir.name, str(caught.exception))     # no server path in the message
 
 
 if __name__ == "__main__":

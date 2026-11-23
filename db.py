@@ -196,7 +196,7 @@ def init():
         if "cv_id" not in cv_import_columns:
             conn.execute("ALTER TABLE cv_imports ADD COLUMN cv_id INTEGER REFERENCES cvs(id) ON DELETE CASCADE")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email COLLATE NOCASE) WHERE email IS NOT NULL")
-        conn.execute("INSERT OR IGNORE INTO users (id, name, is_admin) VALUES (1, 'David Adegbola', 1)")
+        conn.execute("INSERT OR IGNORE INTO users (id, name, is_admin) VALUES (1, 'Administrator', 1)")
         conn.execute("UPDATE users SET is_admin=1 WHERE id=1 AND email IS NULL")
         conn.execute(
             """INSERT OR IGNORE INTO news_user_state (user_id, item_id, is_read, is_saved)
@@ -819,7 +819,7 @@ def get_application(job_id, user_id=1):
         return dict(row) if row else None
 
 
-# ---------------------------------------------------------------- prep answers (David's edits, per job type)
+# ---------------------------------------------------------------- prep answers (the administrator's edits, per job type)
 
 def prep_answers(job_type, user_id=1):
     with connect() as conn:

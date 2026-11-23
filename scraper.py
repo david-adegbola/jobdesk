@@ -14,8 +14,12 @@ LANGUAGE CHECK - every source has Finnish and English variants, and they are not
     harjoittelija + intern/trainee, kesätyö + summer job). Swedish (skog) catches bilingual ads.
   * Jobly has no English category slugs: unknown slugs such as /en/jobs/forestry silently fall back
     to the generic all-jobs list, so check that a new slug returns its own jobs before adding it.
-  * When adding a source, check robots.txt. Duunitori disallows generic crawlers and Työmarkkinatori
-    disallows /api/, so neither is expanded here.
+  * When adding a source, check robots.txt and the site's terms. Duunitori disallows generic
+    crawlers, so its search pages are read only when JOBDESK_ENABLE_DUUNITORI=1 (default off), and
+    even then only if robots.txt allows it. Työmarkkinatori disallows /api/, so it is not read.
+
+ROBOTS.TXT - every automatic request (listing pages, feeds, the Workday API, single ad pages) is
+checked first with core.robots.RobotsCache. Disallowed URLs are skipped and logged, never fetched.
 """
 
 import html
@@ -36,7 +40,11 @@ from html.parser import HTMLParser
 from urllib.parse import quote, urljoin, urlsplit
 from xml.etree import ElementTree
 
+import config
 import db
+from core import fetch as core_fetch
+from core.fetch import PublicRedirectHandler, TextExtractor, is_public_http_url  # noqa: F401 (re-exported)
+from core.robots import RobotsCache
 
 # Each job type -> Jobly category pages, https://www.jobly.fi/tyopaikat/<slug>
 JOB_TYPES = {
@@ -160,7 +168,8 @@ WORKDAY_SOURCES = [
      "Stora_Enso_site_opportunities/jobs",
      "https://storaenso.wd502.myworkdayjobs.com/fi-FI/Stora_Enso_site_opportunities"),
 ]
-USER_AGENT = "Mozilla/5.0 (personal job check; low volume)"
+# Names JobDesk instead of pretending to be a browser; robots.txt rules are matched on "JobDesk"
+USER_AGENT = core_fetch.user_agent()
 
 JOB_PATH = re.compile(r"/(?:en/job|tyopaikka)/([a-z0-9-]+-(\d+))/?$")
 VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
@@ -191,6 +200,22 @@ def ssl_context():
 
 
 SSL_CONTEXT = ssl_context()
+
+
+def _fetch_robots(url):
+    """(status, text) of a robots.txt file for RobotsCache; status None when the site can't be reached."""
+    return core_fetch.fetch_status_text(url, context=SSL_CONTEXT, agent=USER_AGENT)
+
+
+ROBOTS = RobotsCache(_fetch_robots)
+
+
+def robots_allowed(url):
+    """True when robots.txt lets JobDesk read url; logs and returns False otherwise."""
+    if ROBOTS.allowed(url):
+        return True
+    print(f"  - skipped (robots.txt): {url}")
+    return False
 
 
 class JoblyParser(HTMLParser):
@@ -249,29 +274,6 @@ class JoblyParser(HTMLParser):
                               "company": " ".join(j["company"]),
                               "location": ", ".join(dict.fromkeys(j["location"])),
                               "posted": to_iso(" ".join(j["date"]))})
-
-
-class TextExtractor(HTMLParser):
-    """Visible text of one ad page (for Match and Blockers), without scripts, styles and menus."""
-    SKIP = {"script", "style", "noscript", "nav", "header", "footer", "svg", "form"}
-
-    def __init__(self):
-        super().__init__()
-        self.parts, self._skip = [], 0
-
-    def handle_starttag(self, tag, attrs):
-        if tag in self.SKIP:
-            self._skip += 1
-
-    def handle_endtag(self, tag):
-        if tag in self.SKIP and self._skip:
-            self._skip -= 1
-
-    def handle_data(self, data):
-        if not self._skip:
-            t = " ".join(data.split())
-            if t:
-                self.parts.append(t)
 
 
 def to_iso(text):
@@ -405,6 +407,8 @@ def fetch_workday_jobs(endpoint, job_base):
     offset = 0
     page_size = 20
     total = None
+    if not robots_allowed(endpoint):
+        return jobs
     while total is None or offset < total:
         body = json.dumps({
             "appliedFacets": {},
@@ -463,6 +467,9 @@ def jobly_id(url):
 
 
 def fetch(url):
+    """Body of a listing page or feed, or None when it can't be read or robots.txt disallows it."""
+    if not robots_allowed(url):
+        return None
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "fi,en"})
     try:
         with urllib.request.urlopen(req, timeout=30, context=SSL_CONTEXT) as resp:
@@ -473,48 +480,8 @@ def fetch(url):
 
 
 def fetch_ad_text(url):
-    """Text of a single ad page, or '' if it can't be read."""
-    if not is_public_http_url(url):
-        return ""
-    opener = urllib.request.build_opener(
-        urllib.request.HTTPSHandler(context=SSL_CONTEXT),
-        PublicRedirectHandler(),
-    )
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "fi,en"})
-    try:
-        with opener.open(req, timeout=15) as response:
-            body = response.read(2_000_000).decode("utf-8", errors="replace")
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as error:
-        print(f"  ! {url} -> {getattr(error, 'code', '')} {getattr(error, 'reason', error)}")
-        return ""
-    p = TextExtractor()
-    p.feed(body)
-    return "\n".join(p.parts)[:20000]
-
-
-def is_public_http_url(url):
-    try:
-        parsed = urlsplit(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-            return False
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        try:
-            addresses = {ipaddress.ip_address(parsed.hostname)}
-        except ValueError:
-            addresses = {
-                ipaddress.ip_address(result[4][0])
-                for result in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
-            }
-        return bool(addresses) and all(address.is_global for address in addresses)
-    except (OSError, ValueError, TypeError):
-        return False
-
-
-class PublicRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, response, code, message, headers, new_url):
-        if not is_public_http_url(new_url):
-            raise urllib.error.HTTPError(request.full_url, code, "Redirect to a non-public address refused.", headers, response)
-        return super().redirect_request(request, response, code, message, headers, new_url)
+    """Text of a single ad page, or '' if it can't be read or robots.txt disallows it (core/fetch.py)."""
+    return core_fetch.fetch_ad_text(url, robots_allowed, context=SSL_CONTEXT, agent=USER_AGENT)
 
 
 def read_metsalehti():
@@ -567,13 +534,10 @@ def guess_category(text):
     return "Industrial"
 
 
-def run(progress=None, user_id=1, personal=False):
-    """One full check. progress(message, done, total) is called as pages are read.
-    personal=True also reads the administrator's own PERSONAL_CATEGORIES from Jobly."""
-    pages = [(category, slug) for category in ["Forestry"] + (PERSONAL_CATEGORIES if personal else [])
-             for slug in JOB_TYPES[category]]
-    # (source name, reader). Each reader returns job dicts; is_forestry_related filters them.
-    sources = [
+def sources():
+    """(source name, reader) for every non-Jobly source. Each reader returns job dicts;
+    is_forestry_related filters them. Duunitori is included only when JOBDESK_ENABLE_DUUNITORI=1."""
+    found = [
         ("Metsälehti", read_metsalehti),
         ("Metsähallitus", lambda: parse_rss_jobs(fetch(METSAHALLITUS_FEED) or "<rss/>",
                                                   "https://metsa.rekrytointi.com/")),
@@ -582,13 +546,23 @@ def run(progress=None, user_id=1, personal=False):
             [KUNTAREKRY_FEED.format(quote(word)) for word in KUNTAREKRY_KEYWORDS])),
         ("Metsäkeskus", lambda: read_links([METSAKESKUS_JOBS], "https://www.metsakeskus.fi/",
                                            r"ats\.talentadore\.com/apply/")),
-        ("Duunitori", lambda: read_links([DUUNITORI_JOBS, DUUNITORI_JOENSUU_JOBS],
-                                         "https://duunitori.fi/", r"duunitori\.fi/tyopaikat/tyo/")),
         ("UEF", lambda: read_links([UEF_JOBS, UEF_JOBS_EN], "https://www.uef.fi/",
                                    VARBI_JOB_LINK, VARBI_JOB_LINK)),
     ] + [(name, lambda endpoint=endpoint, job_base=job_base: fetch_workday_jobs(endpoint, job_base))
          for name, endpoint, job_base in WORKDAY_SOURCES]
-    total = len(pages) + len(sources)
+    if config.ENABLE_DUUNITORI:
+        found.append(("Duunitori", lambda: read_links([DUUNITORI_JOBS, DUUNITORI_JOENSUU_JOBS],
+                                                      "https://duunitori.fi/", r"duunitori\.fi/tyopaikat/tyo/")))
+    return found
+
+
+def run(progress=None, user_id=1, personal=False):
+    """One full check. progress(message, done, total) is called as pages are read.
+    personal=True also reads the administrator's own PERSONAL_CATEGORIES from Jobly."""
+    pages = [(category, slug) for category in ["Forestry"] + (PERSONAL_CATEGORIES if personal else [])
+             for slug in JOB_TYPES[category]]
+    readers = sources()
+    total = len(pages) + len(readers)
     check_id = db.start_check(user_id)
     found = new = 0
     seen_now = set()
@@ -597,10 +571,10 @@ def run(progress=None, user_id=1, personal=False):
         first = True
         for n, (category, slug) in enumerate(pages):
             for page in range(MAX_PAGES):
-                if not first:
-                    time.sleep(DELAY_SECONDS)
-                first = False
                 url = f"{BASE}/tyopaikat/{slug}" + (f"?page={page}" if page else "")
+                if not first:      # Jobly asks for 10 s; a longer Crawl-delay in robots.txt wins
+                    time.sleep(max(DELAY_SECONDS, ROBOTS.crawl_delay(url) or 0))
+                first = False
                 if progress:
                     progress(f"Reading {slug} page {page + 1}", n, total)
                 body = fetch(url)
@@ -625,7 +599,7 @@ def run(progress=None, user_id=1, personal=False):
                     found += 1
                     new += is_new
 
-        for source_index, (source, read) in enumerate(sources, start=len(pages)):
+        for source_index, (source, read) in enumerate(readers, start=len(pages)):
             if progress:
                 progress(f"Reading {source} jobs", source_index, total)
             for job in read():

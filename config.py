@@ -1,11 +1,20 @@
-"""Where Woodesk finds things. The defaults suit David's Mac; the server sets them in deploy/jobdesk.env.
+"""Where JobDesk finds things. Everything comes from environment variables (see .env.example);
+the defaults suit a local checkout, and the server sets them in deploy/jobdesk.env and the
+uncommitted /srv/jobdesk/private.env.
 
-JOBDESK_CV_REPO  clone of the public cv repo (default: ../CV next to this repo). Only its files are
-                 read (roles/, facts.json); none of its code is run.
-JOBDESK_DATA     folder for jobdesk.db (default: data/ in this repo, git-ignored)
-JOBDESK_HOST     address to listen on (default 127.0.0.1; on the server Caddy sits in front)
-JOBDESK_PORT     port (default 8765)
-JOBDESK_SECURE_COOKIE Set to 1 behind HTTPS so authentication cookies are sent only over TLS.
+JOBDESK_CV_REPO           clone of the CV repository (default: ../CV next to this repo). Only its
+                          files are read (roles/, facts.json, shared/cv-style.sty); none of its code is run.
+JOBDESK_DATA              folder for jobdesk.db (default: data/ in this repo, git-ignored)
+JOBDESK_HOST              address to listen on (default 127.0.0.1; on the server Caddy sits in front)
+JOBDESK_PORT              port (default 8765)
+JOBDESK_SECURE_COOKIE     1 behind HTTPS so authentication cookies are sent only over TLS.
+JOBDESK_OWNER_DIR         the administrator's private folder (default: owner/ in this repo, git-ignored):
+                          profile.json for the owner-only tools and an optional prep/ folder.
+JOBDESK_PREP_DIR          prep templates (default: <owner dir>/prep when it exists, else prep/ in this repo)
+JOBDESK_CV_TEMPLATE_OWNER the name written in the shared LaTeX template's footer. Member PDFs replace
+                          it with the member's own name; when unset, member PDFs are not built.
+JOBDESK_ENABLE_DUUNITORI  1 to read Duunitori search pages (default 0: its robots.txt disallows
+                          generic crawlers, and the robots.txt check would skip it anyway).
 """
 
 import os
@@ -20,3 +29,10 @@ DATA_DIR = Path(os.environ.get("JOBDESK_DATA") or APP / "data").resolve()
 HOST = os.environ.get("JOBDESK_HOST", "127.0.0.1")
 PORT = int(os.environ.get("JOBDESK_PORT", "8765"))
 SECURE_COOKIE = os.environ.get("JOBDESK_SECURE_COOKIE", "0") == "1"
+
+OWNER_DIR = Path(os.environ.get("JOBDESK_OWNER_DIR") or APP / "owner").resolve()
+OWNER_PROFILE_FILE = OWNER_DIR / "profile.json"
+PREP_DIR = Path(os.environ.get("JOBDESK_PREP_DIR")
+                or (OWNER_DIR / "prep" if (OWNER_DIR / "prep").is_dir() else APP / "prep")).resolve()
+CV_TEMPLATE_OWNER = os.environ.get("JOBDESK_CV_TEMPLATE_OWNER", "").strip()
+ENABLE_DUUNITORI = os.environ.get("JOBDESK_ENABLE_DUUNITORI", "0") == "1"

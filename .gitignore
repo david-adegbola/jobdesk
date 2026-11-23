@@ -1,9 +1,14 @@
-# JobDesk data never goes into git: job ads, recruiter contacts and the tracker live in data/
-data/
+# JobDesk data never goes into git: job ads, recruiter contacts and the tracker live in data/.
+# data/eval/ is the exception: the hand-labelled evaluation set is meant to be committed.
+data/*
+!data/eval/
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
+
+# The administrator's private profile and prep answers (see owner_profile.example.json)
+owner/
 
 # Python caches
 __pycache__/

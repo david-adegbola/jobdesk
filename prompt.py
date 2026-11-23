@@ -1,13 +1,17 @@
-"""Builds the Claude Code prompt for a job, following the template in CV-RULES.md / David's workflow.
+"""Builds the Claude Code prompt for a job, following the template in CV-RULES.md (owner tool).
 
 It never writes placeholders: questions() lists everything the ad raises that the facts don't answer,
 and build() refuses to produce a prompt until every one of them is answered.
+
+The CV repository, public CV address and the owner's tailoring notes come from owner/profile.json
+(owner.py). Without it, build() and build_email() raise owner.OwnerProfileMissing (HTTP 503).
 """
 
 import re
 import unicodedata
 
 import match
+import owner
 
 # Questions an ad can raise that the facts (facts.json) don't answer.
 # (id, question, kind, regex that triggers it; None = always ask)
@@ -23,7 +27,7 @@ QUESTIONS = [
      r"palkkatoive|palkkapyyn|salary expectation|salary request"),
     ("hobbies", "Which hobbies should the application mention?", "text", r"harrastu|harrastuks|hobbies|hobby"),
 ]
-# Blockers David could list as "want to learn" in the CV
+# Blockers the owner could list as "want to learn" in the CV
 LEARNABLE = {"welding", "reading drawings", "hot-work card", "forklift card", "C licence", "welding certificate"}
 
 
@@ -64,7 +68,7 @@ def _ad_keywords(text, role):
 
 
 def _is_blocker(word):
-    """Ad words for things David doesn't have (e.g. "hitsauspätevyydet") are never keywords to use."""
+    """Ad words for things the owner doesn't have (e.g. "hitsauspätevyydet") are never keywords to use."""
     return any(re.search(pattern, word) for _, _, pattern in match.BLOCKERS)
 
 
@@ -110,6 +114,7 @@ def analyse(job, roles, facts):
 
 def build(analysis, answers):
     """Returns (prompt, missing). missing lists unanswered questions/fields; prompt is None then."""
+    profile = owner.load()
     a = {k: (v or "").strip() if isinstance(v, str) else v for k, v in (answers or {}).items()}
     missing = [q["question"] for q in analysis["questions"] if not a.get(q["id"])]
     mode = a.get("mode") or "new"
@@ -146,10 +151,12 @@ def build(analysis, answers):
     cards = "occupational safety card" + ("; B driving licence (confirmed by me: correction for all CVs, "
                                           "update section 7 of CV-RULES.md)" if licence else "")
     lines = [
-        "In my repo david-adegbola/cv, read CV-RULES.md in full first and follow it exactly.",
+        f"In my repo {profile['cv_repo']}, read CV-RULES.md in full first and follow it exactly.",
         "If anything below conflicts with CV-RULES.md or its facts, stop and ask me.",
         "",
     ]
+    summary_lead = profile.get("summary_lead") or "lead with my most relevant experience"
+    tags_job = profile.get("tags_job") or "my most relevant job"
     if mode == "new":
         lines += [
             "Task: new CV",
@@ -170,12 +177,12 @@ def build(analysis, answers):
     if mode == "new":
         lines += [
             "Tailoring:",
-            "- Summary angle: lead with the Axioma Servisas UAB job (certificate wording) and the kiitettävä rating; "
+            f"- Summary angle: {summary_lead}; "
             "stress " + (", ".join(analysis["keywords"][:6]) or "the closest matching skills") + ".",
             f"- Experience order and wording: as in roles/{closest}/, tailored to this ad.",
             "- Skills / Taidot: the ad keywords above" + (f"; want to learn: {', '.join(learn)}" if learn else "") + ".",
             f"- Cards / Kortit: {cards}.",
-            "- Tags under the Axioma job: " + (", ".join(analysis["tags"]) or "5–6 tags from the ad keywords") + ".",
+            f"- Tags under {tags_job}: " + (", ".join(analysis["tags"]) or "5–6 tags from the ad keywords") + ".",
         ]
         if hard:
             lines.append(f"- The ad also asks for {', '.join(hard)}. Say it honestly in my report; don't claim it.")
@@ -193,7 +200,7 @@ def build(analysis, answers):
     pdfs = ("the combined PDF (the English CV)" if language == "en-only"
             else "the combined PDF and both language links")
     lines += [
-        f"Report: the employer link https://david-adegbola.github.io/cv/r/{slug if mode == 'new' else closest}/ first, "
+        f"Report: the employer link {match.employer_link(slug if mode == 'new' else closest)} first, "
         f"then {pdfs}, and any facts that differ from my other CVs.",
     ]
     return "\n".join(lines) + "\n", []
@@ -218,6 +225,7 @@ def _finnish_keywords(job, role):
 
 def build_email(job, analysis, answers, roles):
     """Prompt for the application emails only. Returns (prompt, missing); prompt is None while anything is missing."""
+    profile = owner.load()
     a = {k: (v or "").strip() if isinstance(v, str) else v for k, v in (answers or {}).items()}
     missing = [q["question"] for q in analysis["questions"] if not a.get(q["id"])]
     slug = a.get("cv_role") or analysis.get("suggested_cv") or analysis["closest"]
@@ -250,7 +258,7 @@ def build_email(job, analysis, answers, roles):
         answer_lines.append("  (CV-RULES.md section 6 says the B driving licence is NOT confirmed. Ask me whether this is a "
                             "correction for all CVs before the email mentions it.)")
     lines = [
-        "In my repo david-adegbola/cv, read CV-RULES.md in full first and follow it exactly.",
+        f"In my repo {profile['cv_repo']}, read CV-RULES.md in full first and follow it exactly.",
         "If anything below conflicts with CV-RULES.md or its facts, stop and ask me.",
         "",
         "Task: application email only. Don't create or change any CV.",

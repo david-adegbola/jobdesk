@@ -34,8 +34,6 @@ evaluated or certified against WCAG 2.1 Level AA.
   ELY centres and Maanmittauslaitos),
   [Kuntarekry](https://kuntarekry.fi/fi/tyopaikat/) (municipalities, by keyword search),
   [Metsäkeskus](https://www.metsakeskus.fi/fi/tietoa-meista/toihin-metsakeskukseen/avoimet-tyopaikat),
-  [Duunitori's Metsäala search](https://duunitori.fi/tyopaikat?haku=mets%C3%A4ala),
-  [Duunitori's Joensuu search](https://duunitori.fi/tyopaikat/alue/joensuu?haku=mets%C3%A4ala),
   [University of Eastern Finland](https://www.uef.fi/fi/avoimet-tyopaikat),
   [Metsä Group](https://metsagroup.wd103.myworkdayjobs.com/fi-FI/MetsaGroup_Careers),
   [UPM](https://upm.wd103.myworkdayjobs.com/fi-FI/Careers) and
@@ -45,6 +43,9 @@ evaluated or certified against WCAG 2.1 Level AA.
   the Finnish listing. Duplicates are merged by posting number. Search keywords and filter words
   come in Finnish/English pairs (metsä/forest, puukauppa/timber trade). When you add a source,
   check its fi and en slugs, category tags and robots.txt; the notes are at the top of `scraper.py`.
+  Every automatic request is checked against the site's robots.txt first and skipped when disallowed.
+  Duunitori's search pages are off by default (`JOBDESK_ENABLE_DUUNITORI`), because its robots.txt
+  disallows generic crawlers.
   RSS descriptions are checked
   as well as titles, and postings are filtered for forestry, forest bioeconomy, natural resources,
   forest-data and geospatial/GIS-related terms.
@@ -137,11 +138,17 @@ Paths, host and port come from environment variables; see `config.py`.
 3. **Check SSH works:** `ssh ubuntu@<ip>`.
 4. **Install** from this repo on the Mac:
    ```bash
-   deploy/deploy.sh ubuntu@<ip> --setup
+   JOBDESK_CV_GIT_URL=https://github.com/<you>/cv.git deploy/deploy.sh ubuntu@<ip> --setup
    ```
    It installs Python, git, SQLite, Caddy and the LaTeX packages used by the shared CV template,
-   opens the firewall, clones the public CV repository, configures HTTPS and starts the app. It
-   prints the address at the end. The HTTPS certificate is fetched on the first visit.
+   opens the firewall, clones the CV repository named in `JOBDESK_CV_GIT_URL`, configures HTTPS and
+   starts the app. It prints the address at the end. The HTTPS certificate is fetched on the first visit.
+
+   Private settings never go in the repo. Put them in `/srv/jobdesk/private.env` on the server (read by
+   the service if it exists), for example `JOBDESK_CV_TEMPLATE_OWNER=<the name in the CV template footer>`;
+   without it, member CV PDFs are not built. The owner tools (prompt builder, Prep page) read
+   `/srv/jobdesk/owner/profile.json` (see `owner_profile.example.json`); without it they answer
+   "not set up". Both must be readable by the `jobdesk` user. See `.env.example` for every setting.
 5. **Copy your data up**, once:
    ```bash
    deploy/upload-data.sh ubuntu@<ip>

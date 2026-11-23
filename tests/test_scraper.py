@@ -34,6 +34,12 @@ class MetsalehtiFeedTests(unittest.TestCase):
         self.addCleanup(self.data_dir_patch.stop)
         self.addCleanup(self.db_file_patch.stop)
         db.init()
+        # robots.txt is checked before every fetch; tests must never touch the network, so the
+        # check allows everything here and is tested on its own in test_robots.py and below.
+        for name, value in (("allowed", True), ("crawl_delay", None)):
+            patcher = patch.object(scraper.ROBOTS, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def test_parser_reads_feed_job_fields(self):
         self.assertEqual(scraper.parse_metsalehti_feed(FEED), [{
@@ -232,13 +238,28 @@ class MetsalehtiFeedTests(unittest.TestCase):
                 patch.object(scraper.time, "sleep"):
             result = scraper.run()
 
-        self.assertEqual(result, {"found": 8, "new": 8, "error": None})
+        # Duunitori is off by default (JOBDESK_ENABLE_DUUNITORI), so 7 sources, not 8
+        self.assertEqual(result, {"found": 7, "new": 7, "error": None})
         jobs = db.list_jobs()
         self.assertEqual({job["source"] for job in jobs}, {
-            "Metsähallitus", "Metsäkeskus", "Kuntarekry", "Duunitori", "Metsä Group", "UPM",
+            "Metsähallitus", "Metsäkeskus", "Kuntarekry", "Metsä Group", "UPM",
             "Valtiolle", "UEF",
         })
         self.assertTrue(all(job["category"] == "Forestry" for job in jobs))
+
+    def test_duunitori_is_read_only_when_enabled(self):
+        self.assertNotIn("Duunitori", [name for name, _ in scraper.sources()])
+        with patch.object(scraper.config, "ENABLE_DUUNITORI", True):
+            self.assertIn("Duunitori", [name for name, _ in scraper.sources()])
+
+    def test_fetches_disallowed_by_robots_txt_are_skipped(self):
+        with patch.object(scraper.ROBOTS, "allowed", return_value=False), \
+                patch.object(scraper.urllib.request, "urlopen") as urlopen, \
+                patch("builtins.print"):
+            self.assertIsNone(scraper.fetch("https://www.jobly.fi/tyopaikat/metsuri"))
+            self.assertEqual(scraper.fetch_workday_jobs("https://example.wd.jobs/api", "https://example.wd.jobs"), [])
+            self.assertEqual(scraper.fetch_ad_text("https://8.8.8.8/job/1"), "")
+        urlopen.assert_not_called()
 
     def test_portal_feeds_merge_finnish_and_english_postings(self):
         fi_feed = """<rss version="2.0"><channel>

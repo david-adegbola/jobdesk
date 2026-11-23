@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy to owner/profile.json (git-ignored). Used only by the administrator's owner tools: the Claude Code prompt builder and the Prep page.",
+  "name": "Alex Example",
+  "cv_repo": "alex-example/cv",
+  "public_cv_base": "https://alex-example.github.io/cv",
+  "pdf_prefix": "alex-example-",
+  "summary_lead": "lead with my most relevant job and what my employer said about my work",
+  "tags_job": "my most relevant job"
+}

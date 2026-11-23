@@ -350,9 +350,15 @@ def render_tex(cv, style_source):
     ))
     # The shared template's multi-page footer names its owner. Substitute a macro only in this
     # temporary copy so each member's PDF carries their own name and the repository stays untouched.
-    if "David Adegbola" not in style_source:
+    # Fail closed: without the configured name, or when the template doesn't contain it, no PDF is
+    # built, so the template owner's name can never end up on someone else's CV.
+    template_owner = config.CV_TEMPLATE_OWNER
+    if not template_owner:
+        raise PdfBuildError(
+            "Member CV PDFs are switched off on this server: JOBDESK_CV_TEMPLATE_OWNER is not set.")
+    if template_owner not in style_source:
         raise PdfBuildError("The shared CV template is missing its expected footer name.")
-    style = style_source.replace("David Adegbola", r"\woodeskCVFooterName")
+    style = style_source.replace(template_owner, r"\woodeskCVFooterName")
     return source, style
 
 

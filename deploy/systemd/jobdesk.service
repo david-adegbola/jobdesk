@@ -7,6 +7,9 @@ Wants=network-online.target
 User=jobdesk
 Group=jobdesk
 EnvironmentFile=/srv/jobdesk/app/deploy/jobdesk.env
+# Private settings that are never committed (e.g. JOBDESK_CV_TEMPLATE_OWNER, later ANTHROPIC_API_KEY).
+# The leading "-" means the service still starts when the file doesn't exist.
+EnvironmentFile=-/srv/jobdesk/private.env
 ExecStart=/usr/bin/python3 /srv/jobdesk/app/server.py --no-browser
 Restart=on-failure
 RestartSec=5

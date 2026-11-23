@@ -1,9 +1,27 @@
 import unittest
+from unittest.mock import patch
 
 import cv_latex
 
 
 class CvLatexTests(unittest.TestCase):
+    def setUp(self):
+        # The footer name now comes from JOBDESK_CV_TEMPLATE_OWNER (config), not from the code
+        patcher = patch.object(cv_latex.config, "CV_TEMPLATE_OWNER", "Template Owner")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_member_pdfs_are_refused_without_a_configured_template_owner(self):
+        cv = {"title": "CV", "language": "en", "content": {"full_name": "Alex Forest"}}
+        with patch.object(cv_latex.config, "CV_TEMPLATE_OWNER", ""):
+            with self.assertRaisesRegex(cv_latex.PdfBuildError, "JOBDESK_CV_TEMPLATE_OWNER"):
+                cv_latex.render_tex(cv, r"\fancyfoot[L]{Template Owner}")
+
+    def test_member_pdfs_are_refused_when_the_template_has_another_name(self):
+        cv = {"title": "CV", "language": "en", "content": {"full_name": "Alex Forest"}}
+        with self.assertRaisesRegex(cv_latex.PdfBuildError, "expected footer name"):
+            cv_latex.render_tex(cv, r"\fancyfoot[L]{Someone Else}")
+
     def test_example_cv_has_fictional_content_and_template_sections(self):
         cv = cv_latex.example_cv()
 
@@ -12,7 +30,7 @@ class CvLatexTests(unittest.TestCase):
         self.assertTrue(cv["content"]["email"].endswith(".test"))
         self.assertGreater(len(cv["content"]["experience"].splitlines()), 5)
         self.assertIn("2024: Forest inventory project", cv["content"]["projects"])
-        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{David Adegbola}")
+        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{Template Owner}")
         self.assertIn(r"\section{\cvt{summary}}", tex)
         self.assertIn(r"\section{\cvt{education}}", tex)
         self.assertIn(r"\section{\cvt{skills}}", tex)
@@ -43,7 +61,7 @@ class CvLatexTests(unittest.TestCase):
                 "links": "GitHub: https://github.com/alex-forest",
             },
         }
-        style = r"\fancyfoot[L]{David Adegbola}"
+        style = r"\fancyfoot[L]{Template Owner}"
 
         tex, customized_style = cv_latex.render_tex(cv, style)
 
@@ -94,7 +112,7 @@ class CvLatexTests(unittest.TestCase):
         self.assertIn(r"\titlespacing{\section}{0pt}{0.55em}{2pt}", tex)
         self.assertIn(r"\newcommand{\woodeskCVFooterName}{A\&B\_\#1}", tex)
         self.assertIn(r"\fancyfoot[L]{\woodeskCVFooterName}", customized_style)
-        self.assertEqual(style, r"\fancyfoot[L]{David Adegbola}")
+        self.assertEqual(style, r"\fancyfoot[L]{Template Owner}")
 
     def test_unsafe_email_is_rendered_as_text_without_a_mailto_link(self):
         cv = {
@@ -106,7 +124,7 @@ class CvLatexTests(unittest.TestCase):
             },
         }
 
-        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{David Adegbola}")
+        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{Template Owner}")
 
         self.assertNotIn(r"\href{mailto:", tex)
         self.assertIn(r"alex\}\textbackslash{}input\{bad\}@example.org", tex)
@@ -126,7 +144,7 @@ class CvLatexTests(unittest.TestCase):
             },
         }
 
-        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{David Adegbola}")
+        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{Template Owner}")
 
         self.assertIn(
             r"\begin{cventry}{Aug 2025--Oct 2025}"
@@ -154,7 +172,7 @@ class CvLatexTests(unittest.TestCase):
             },
         }
 
-        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{David Adegbola}")
+        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{Template Owner}")
 
         self.assertIn(
             r"\begin{cventry}{Nov 2024--Aug 2026}"
@@ -171,7 +189,7 @@ class CvLatexTests(unittest.TestCase):
             "content": {"full_name": "Metsä Opiskelija", "skills": "Paikkatieto"},
         }
 
-        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{David Adegbola}")
+        tex, _ = cv_latex.render_tex(cv, r"\fancyfoot[L]{Template Owner}")
 
         self.assertIn(r"\cvlang{fi}", tex)
         self.assertIn(r"\section{\cvt{skills}}", tex)
