@@ -477,3 +477,7 @@ label.field.inline > select { min-height: 40px; }
 .segmented input:checked + span { background: var(--text-primary, #161616); color: var(--background, #fff); font-weight: 600; }
 .segmented input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; position: relative; z-index: 1; }
 @media (forced-colors: active) { .segmented input:checked + span { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
+
+/* Draft page: checked sentences. The word UNSUPPORTED carries the meaning; the colour repeats it. */
+.draft-sentences > li { margin-bottom: 12px; padding: 6px 8px; }
+.draft-sentences > li.unsupported { background: var(--status-rejected-bg); color: var(--status-rejected-fg); }

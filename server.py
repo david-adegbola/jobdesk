@@ -42,7 +42,7 @@ import news     # noqa: E402
 import skills   # noqa: E402
 import language  # noqa: E402
 from core import fields as core_fields  # noqa: E402
-from core import draft, finnish, llm  # noqa: E402
+from core import batch, draft, finnish, llm, rank  # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -719,6 +719,85 @@ def api_update_account_ai(h, m):
     preferences = {**user_preferences(h.user), "llm_opt_in": body["llm_opt_in"]}
     db.update_user_preferences(h.user["id"], preferences)
     return {"llm_opt_in": preferences["llm_opt_in"]}
+
+
+# ---------------------------------------------------------------- shortlist: many ads at once
+
+SHORTLIST_MAX_ADS = 20          # per request: each ad is one AI call in live mode
+SHORTLIST_MAX_URLS = 10         # links are fetched one by one, with the robots.txt check
+SHORTLIST_DAILY_LIMIT = 200     # ads per member per day in live mode: a cost guard for the pilot
+SHORTLIST_USAGE = {}            # (user id, date) -> ads classified with the AI today
+SHORTLIST_LOCK = threading.Lock()
+
+
+def _take_ai_quota(user_id, count):
+    """Reserve count AI classifications for today; False when the member's daily limit would be passed."""
+    key = (user_id, date.today().isoformat())
+    with SHORTLIST_LOCK:
+        if SHORTLIST_USAGE.get(key, 0) + count > SHORTLIST_DAILY_LIMIT:
+            return False
+        SHORTLIST_USAGE[key] = SHORTLIST_USAGE.get(key, 0) + count
+        return True
+
+
+def classify_ads(ads, settings):
+    """{ad id: Finnish result}. Live: the AI (4 at a time); a failed call falls back to the keyword rule.
+    Mock: the keyword rule (core.finnish.fallback), as on the Jobs page."""
+    def one(ad):
+        if not settings.live:
+            return finnish.fallback(ad["ad_text"])
+        try:
+            return finnish.classify(ad["ad_text"], settings)
+        except (llm.LLMError, ValueError) as error:
+            print(f"  ! Finnish level for {ad['id']}: {error}")
+            result = finnish.fallback(ad["ad_text"])
+            return {**result, "explanation_en": "The AI service failed for this ad, so the keyword rule was used. "
+                                                + result["explanation_en"]}
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4 if settings.live else 1) as pool:
+        return dict(zip([ad["id"] for ad in ads], pool.map(one, ads)))
+
+
+@route("POST", "/api/shortlist")
+def api_shortlist(h, m):
+    """Rank a batch of ads for this member: Finnish level with the quoted sentence, skill matches and
+    reasons. Only the ads' text goes to the AI service (live mode); skills and Finnish level stay here."""
+    body = h.json()
+    if not isinstance(body, dict):
+        return h.error(400, BODY_ERROR)
+    texts = {key: body.get(key, "") for key in ("ads_text", "csv_text", "urls_text")}
+    skills = body.get("skills", [])
+    if not all(isinstance(value, str) for value in texts.values()):
+        return h.error(400, "Ads, CSV and links must be text.")
+    if not isinstance(skills, list) or len(skills) > 30 or \
+            not all(isinstance(skill, str) and len(skill) <= 100 for skill in skills):
+        return h.error(400, "Give up to 30 skills, each up to 100 characters.")
+    if texts["csv_text"].strip():
+        parsed = batch.fill_from_urls(batch.parse_csv(texts["csv_text"]), scraper.fetch_ad_text)
+    elif texts["urls_text"].strip():
+        links = batch.split_urls(texts["urls_text"])
+        parsed = batch.fetch_urls(links[:SHORTLIST_MAX_URLS], scraper.fetch_ad_text)
+        if len(links) > SHORTLIST_MAX_URLS:
+            parsed["errors"].append({"item": "links", "message": f"Only the first {SHORTLIST_MAX_URLS} links were read."})
+    else:
+        parsed = batch.parse_pasted(texts["ads_text"])
+    ads, errors = parsed["ads"], parsed["errors"]
+    if len(ads) > SHORTLIST_MAX_ADS:
+        errors.append({"item": "input", "message": f"Only the first {SHORTLIST_MAX_ADS} ads were checked."})
+        ads = ads[:SHORTLIST_MAX_ADS]
+    if not ads:
+        return {"rows": [], "errors": errors or [{"item": "input", "message": "Paste at least one ad."}],
+                "method": ""}
+    settings = llm_settings()
+    if settings.live and not _take_ai_quota(h.user["id"], len(ads)):
+        return h.error(429, f"You've checked {SHORTLIST_DAILY_LIMIT} ads with the AI today, the pilot's daily "
+                            "limit. Try again tomorrow.")
+    level = user_preferences(h.user).get("finnish_level") or "none"
+    rows = rank.rank(ads, [s.strip() for s in skills if s.strip()], classify_ads(ads, settings), level)
+    text_of = {ad["id"]: ad["ad_text"] for ad in ads}
+    rows = [{**row, "ad_text": text_of[row["id"]]} for row in rows]     # for "Draft an answer" on each row
+    return {"rows": rows, "errors": errors, "method": "llm" if settings.live else "baseline_v1",
+            "finnish_level": level}
 
 
 # ---------------------------------------------------------------- grounded application answers

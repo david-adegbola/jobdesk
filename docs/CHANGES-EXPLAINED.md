@@ -522,3 +522,56 @@ sentences the model produced, how many the verifier caught, how many it missed, 
   leave an answer that reads oddly. Marking them lets the student fix or remove them knowingly.
 - *Why send facts and not the whole CV?* Less personal data leaves the server, and the facts have ids
   the model must cite.
+
+---
+
+## Pilot P1–P2: one shared core, the shortlist page and the drafting page
+
+### Why JobDesk and finnish-check stay two apps
+
+`finnish-check` is the small Flask app for the Metropolia application: about 600 lines that can be explained line by
+line. JobDesk is the full multi-user app (accounts, CVs, tracker, drafting) that a pilot needs. Both use the same
+logic in `core/`. To stop the two copies drifting apart:
+- the fixes made in `finnish-check` (OpenRouter support, evaluations that stop at the first failed API call) are now in
+  JobDesk too;
+- `finnish-check/core/__init__.py` records the JobDesk commit its copy matches.
+
+### OpenRouter (`core/llm.py`)
+
+`OPENROUTER_API_KEY` is a second way to reach Claude, used when it is set:
+- **Model names:** `openrouter_model()` turns `claude-haiku-5-5` into OpenRouter's `anthropic/claude-haiku-5.5`.
+- **Request:** `build_request()` returns the URL, headers and body for whichever service is in use. OpenRouter uses
+  OpenAI-style `messages` and `response_format`.
+- **Provider rules:** `provider: {"require_parameters": true, "data_collection": "deny"}` lets only providers that
+  support the JSON schema, and that don't store or train on the data, answer.
+- **Reading the reply:** `answer_text()` reads either service's reply shape. A cut-off or refused answer is an error.
+
+### Shortlist page (`POST /api/shortlist`, `static/pages/shortlist.js`)
+
+1. **Input:** pasted ads (separated by `---`), a CSV, or up to 10 links. Links go through `scraper.fetch_ad_text`,
+   so the SSRF guard and robots.txt both apply. A link that can't be read gets a "paste the ad text instead" message.
+2. **Limits:** at most 20 ads per request. In live mode there is a **daily limit of 200 AI checks per member**,
+   counted in memory (`SHORTLIST_USAGE`). It is a simple cost guard for the pilot; it resets when the server restarts.
+3. **Finnish level:** each ad is classified by the AI in live mode, 4 at a time, or by the keyword rule otherwise. If
+   one AI call fails, that ad falls back to the keyword rule and says so.
+4. **Ranking:** `core.rank` uses the member's saved Finnish level. Skills are prefilled from a chosen CV's Skills rows,
+   but "Want to learn" rows are skipped.
+5. **Privacy:** only the ads' text goes to the AI service; skills stay on the server.
+6. **Next step:** each row has **Draft an answer**, which hands the ad to the drafting page through sessionStorage
+   (this browser tab only).
+
+### Drafting page (`static/pages/draft.js`, using `POST /api/draft` from Phase 4)
+
+- **Input:** choose a CV and a job (or paste the ad), type the question and the word limit.
+- **If AI drafting is off:** in live mode without the member's opt-in, the page says so and links to Account → AI
+  drafting.
+- **Result:** every checked sentence is listed with the CV facts it cites. Unsupported ones are marked
+  **UNSUPPORTED** with their reasons.
+- **The answer box** starts with the supported sentences only, and says how many unsupported ones were left out, so
+  nothing is dropped silently. The word count updates as the student edits, and there is a copy button. Nothing is
+  sent anywhere.
+- **Tip on the page:** answer in the CV's language, because the check compares words.
+
+**Interview question.** *Why is the daily limit in memory and not in the database?* For a pilot with a few dozen
+students it is enough, and it needs no new table. If the pilot grows, the count should move to the database so a
+restart doesn't reset it.

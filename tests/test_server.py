@@ -682,6 +682,54 @@ class JobApiTests(unittest.TestCase):
             status, _ = self.request("POST", "/api/draft", body, headers=member)
             self.assertEqual(status, 400, body)
 
+    # ------------------------------------------------------------ Pilot P2: shortlist
+
+    ADS = ("Data intern\nWe use Python and SQL. Edellytämme sujuvaa suomen kielen taitoa.\n---\n"
+           "Research assistant\nPython and statistics. Our working language is English.")
+
+    def test_shortlist_ranks_pasted_ads_with_the_keyword_rule_in_mock_mode(self):
+        status, result = self.request("POST", "/api/shortlist", {"ads_text": self.ADS, "skills": ["Python", "SQL"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(result["method"], "baseline_v1")
+        self.assertEqual([row["title"] for row in result["rows"]], ["Research assistant", "Data intern"])
+        self.assertEqual(result["rows"][1]["finnish"]["level"], "required")
+        self.assertIn("ad_text", result["rows"][0])
+
+    def test_shortlist_validates_input_and_caps_the_batch(self):
+        for body in ([], {"ads_text": 5}, {"ads_text": "x", "skills": "Python"}, {"ads_text": "x", "skills": ["a"] * 31}):
+            status, _ = self.request("POST", "/api/shortlist", body)
+            self.assertEqual(status, 400, body)
+        many = "\n---\n".join(f"Ad {i}\nPython." for i in range(25))
+        status, result = self.request("POST", "/api/shortlist", {"ads_text": many, "skills": []})
+        self.assertEqual(len(result["rows"]), 20)
+        self.assertIn("Only the first 20 ads", result["errors"][-1]["message"])
+        status, result = self.request("POST", "/api/shortlist", {"ads_text": "  "})
+        self.assertEqual((status, result["rows"]), (200, []))
+
+    def test_shortlist_reads_links_through_the_safe_fetcher(self):
+        with patch.object(server.scraper, "fetch_ad_text", side_effect=lambda url: "" if "blocked" in url else
+                          "GIS intern\nWorking language is English.") as fetch:
+            status, result = self.request("POST", "/api/shortlist", {
+                "urls_text": "https://example.org/a\nhttps://blocked.example/b", "skills": ["GIS"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual([row["url"] for row in result["rows"]], ["https://example.org/a"])
+        self.assertIn("Paste the ad text instead", result["errors"][0]["message"])
+
+    def test_shortlist_live_mode_uses_the_ai_and_has_a_daily_limit(self):
+        def fake(text, settings, call=None):
+            return {"level": "not_needed", "evidence": [], "explanation_en": "x", "method": "llm", "model": "m",
+                    "prompt_version": "v", "verified": True, "rejected_evidence": []}
+        live = server.llm.Settings(mode="live", api_key="test-key")
+        with patch.object(server, "llm_settings", return_value=live), \
+                patch.object(server.finnish, "classify", side_effect=fake), \
+                patch.object(server, "SHORTLIST_DAILY_LIMIT", 3), patch.dict(server.SHORTLIST_USAGE, clear=True):
+            status, result = self.request("POST", "/api/shortlist", {"ads_text": self.ADS, "skills": []})
+            self.assertEqual((status, result["method"]), (200, "llm"))
+            status, error = self.request("POST", "/api/shortlist", {"ads_text": self.ADS, "skills": []})
+            self.assertEqual(status, 429)
+            self.assertIn("daily", error["error"])
+
     def test_facts_load_raises_a_catchable_error(self):
         with patch.object(facts, "FACTS_FILE", Path(self.temp_dir.name) / "facts.json"), \
                 patch("builtins.print"):
