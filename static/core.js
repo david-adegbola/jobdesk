@@ -1,4 +1,4 @@
-// Woodesk front end core: a small hash router and shared page helpers.
+// JobDesk front end core: a small hash router and shared page helpers.
 export async function api(path, options = {}) {
   const opts = { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } };
   if (opts.body && typeof opts.body !== "string") opts.body = JSON.stringify(opts.body);
@@ -56,7 +56,7 @@ export async function getState(refresh) {
 
 function renderLogin(main) {
   document.body.classList.add("login-state");
-  document.title = "Sign in · Woodesk";
+  document.title = "Sign in · JobDesk";
   const feedback = h("div", { "aria-live": "polite" });
   let signup = false;
   const card = h("section", { class: "auth-card" });
@@ -89,7 +89,7 @@ function renderLogin(main) {
       h("button", { type: "submit" }, signup ? "Create account" : "Sign in"));
     card.replaceChildren(
       h("p", { class: "eyebrow" }, "FORESTRY CAREERS PORTAL"),
-      h("h1", null, signup ? "Join Woodesk" : "Welcome back"),
+      h("h1", null, signup ? "Join JobDesk" : "Welcome back"),
       h("p", { class: "muted" }, signup
         ? "Create your private account with the invitation code you received."
         : "Sign in to see shared forestry opportunities and your private CVs and applications."),
@@ -128,7 +128,7 @@ async function show(focusMain = false) {
     else link.removeAttribute("aria-current");
   }
   main.replaceChildren();
-  document.title = `${page.title} · Woodesk`;
+  document.title = `${page.title} · JobDesk`;
   try { await page.render(main, location.hash.split("?")[1] || ""); }
   catch (error) { main.append(message(error.message, true)); }
   if (focusMain) main.focus();

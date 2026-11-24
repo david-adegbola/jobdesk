@@ -1,5 +1,5 @@
 [Unit]
-Description=Woodesk forestry careers portal
+Description=JobDesk forestry careers portal
 After=network-online.target
 Wants=network-online.target
 

@@ -1,4 +1,4 @@
-"""All Woodesk data access. Shared forestry listings sit beside user-owned application data."""
+"""All JobDesk data access. Shared forestry listings sit beside user-owned application data."""
 
 import difflib
 import hashlib

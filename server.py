@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Woodesk forestry careers portal.
+"""JobDesk forestry careers portal.
 
     python3 server.py            # opens http://localhost:8765
     python3 server.py --no-browser
@@ -309,14 +309,14 @@ def api_cv_example_pdf(h, m):
         pdf = cv_latex.build_pdf(cv_latex.example_cv())
     except FileNotFoundError:
         return h.error(
-            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+            503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
         )
     except cv_latex.PdfBuildError as error:
         return h.error(422, str(error))
     return (
         pdf,
         "application/pdf",
-        {"Content-Disposition": 'inline; filename="Woodesk-CV-example.pdf"'},
+        {"Content-Disposition": 'inline; filename="JobDesk-CV-example.pdf"'},
     )
 
 
@@ -333,7 +333,7 @@ def api_build_user_cv(h, m):
             pdf = _read_imported_cv_pdf(source_path)
         except FileNotFoundError:
             return h.error(
-                503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+                503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
             )
         except cv_latex.PdfBuildError as error:
             return h.error(422, str(error))
@@ -350,7 +350,7 @@ def api_build_user_cv(h, m):
         pdf = cv_latex.build_pdf(cv)
     except FileNotFoundError:
         return h.error(
-            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+            503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
         )
     except cv_latex.PdfBuildError as error:
         return h.error(422, str(error))
@@ -394,7 +394,7 @@ def api_original_cv_file(h, m):
         content = _read_imported_cv_pdf(source_path) if is_pdf else file.read_bytes()
     except FileNotFoundError:
         return h.error(
-            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+            503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
         )
     except cv_latex.PdfBuildError as error:
         return h.error(422, str(error))
@@ -940,7 +940,7 @@ def api_scrape_status(h, m):
 # ---------------------------------------------------------------- HTTP plumbing
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Woodesk"
+    server_version = "JobDesk"
 
     def log_message(self, fmt, *args):     # quiet: only errors
         if args and str(args[1]).startswith(("4", "5")):
@@ -1097,7 +1097,7 @@ def main():
         print("Warning:", warning)
     server = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
     url = f"http://localhost:{config.PORT}"
-    print(f"Woodesk running at {url} (CV repository: {config.CV_REPO}). Press Ctrl+C to stop.")
+    print(f"JobDesk running at {url} (CV repository: {config.CV_REPO}). Press Ctrl+C to stop.")
     if "--no-browser" not in sys.argv:
         threading.Timer(0.5, webbrowser.open, [url]).start()
     try:

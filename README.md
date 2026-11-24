@@ -1,4 +1,4 @@
-# Woodesk
+# JobDesk
 
 A multi-user forestry careers portal for students, researchers, forest owners and professionals.
 Members share forestry opportunities and news, while CVs, applications and recommendation
@@ -13,7 +13,7 @@ server; they cover authentication, ownership boundaries, forestry filtering and 
 
 ## Accessibility requirements
 
-Digital accessibility is a key product requirement. Woodesk targets **WCAG 2.1 Level AA** for
+Digital accessibility is a key product requirement. JobDesk targets **WCAG 2.1 Level AA** for
 all user-facing flows. Changes should preserve keyboard operation and visible focus, accessible
 names and form labels, sufficient text and control contrast, and content reflow at 320 CSS pixels
 and 200% zoom. Do not rely on color alone to convey meaning. Verify the affected flow with keyboard
@@ -95,7 +95,7 @@ evaluated or certified against WCAG 2.1 Level AA.
   Edit, copy or delete a CV, then
   view its formatted PDF using the same LaTeX document layout and shared style as the
   original role CVs. Imported role PDFs are compiled on demand from their original LaTeX source when
-  a prebuilt PDF is not present in the CV repository. On startup, Woodesk imports the administrator's
+  a prebuilt PDF is not present in the CV repository. On startup, JobDesk imports the administrator's
   existing Finnish and English role CVs from the configured CV repository once, including forestry, industrial, IT, sales, trainee
   and warehouse versions. These are editable text copies stored only in the administrator's account.
   Their download uses the exact original, role-specific PDF compiled from the LaTeX source in the
@@ -157,7 +157,7 @@ works the same way.
 
 ### Migrating an existing server
 
-Deploy the new code normally; the installer removes Caddy Basic Auth and enables Woodesk accounts.
+Deploy the new code normally; the installer removes Caddy Basic Auth and enables JobDesk accounts.
 Then set credentials on the existing owner record without replacing the server database:
 
 ```bash
@@ -183,7 +183,7 @@ What runs on the server (`deploy/systemd/`):
 - `jobdesk.service`: the app as the `jobdesk` user, on 127.0.0.1:8765, restarted if it stops.
 - `jobdesk-pull.timer`: `git pull` of the cv repo every 10 minutes.
 - `jobdesk-backup.timer`: a copy of the database every day in `/srv/jobdesk/backups`, 14 kept.
-- Caddy (`deploy/Caddyfile`): HTTPS, `noindex` and security headers; Woodesk handles accounts.
+- Caddy (`deploy/Caddyfile`): HTTPS, `noindex` and security headers; JobDesk handles accounts.
 
 ## Privacy
 

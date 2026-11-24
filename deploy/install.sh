@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sets up Woodesk on an Ubuntu 24.04 server (Oracle Cloud Always Free). Run as root; deploy.sh does it:
+# Sets up JobDesk on an Ubuntu 24.04 server (Oracle Cloud Always Free). Run as root; deploy.sh does it:
 #
 #   deploy/deploy.sh ubuntu@<server-ip> --setup     first time, or to change the login password
 #   deploy/deploy.sh ubuntu@<server-ip>             later code updates (runs this with --update)
@@ -10,8 +10,8 @@
 #   /srv/jobdesk/data     jobdesk.db (mode 700)
 #   /srv/jobdesk/backups  one copy of the database per day, 14 days kept (mode 700)
 #
-# Caddy serves HTTPS and passes requests to Woodesk on 127.0.0.1:8765. Accounts are managed by
-# Woodesk; the first administrator is provisioned after the database has been uploaded.
+# Caddy serves HTTPS and passes requests to JobDesk on 127.0.0.1:8765. Accounts are managed by
+# JobDesk; the first administrator is provisioned after the database has been uploaded.
 set -euo pipefail
 
 ROOT=/srv/jobdesk
@@ -83,7 +83,7 @@ if [ "${1:-}" = "--update" ]; then
   install_units
   configure_caddy
   systemctl reload-or-restart caddy
-  echo "Woodesk updated and restarted."
+  echo "JobDesk updated and restarted."
   exit 0
 fi
 
@@ -119,5 +119,5 @@ install_units
 systemctl reload-or-restart caddy
 
 echo
-echo "Woodesk: https://$DOMAIN"
+echo "JobDesk: https://$DOMAIN"
 echo "Copy your data and set the administrator account with: deploy/upload-data.sh <ssh-host>"

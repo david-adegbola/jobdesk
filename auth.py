@@ -1,4 +1,4 @@
-"""Password and opaque-cookie session helpers for Woodesk accounts."""
+"""Password and opaque-cookie session helpers for JobDesk accounts."""
 
 import hashlib
 import hmac

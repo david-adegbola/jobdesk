@@ -48,7 +48,7 @@ JOB_TYPES = {
     "Forestry": ["metsuri", "metsatyontekija", "paikkatietoasiantuntija", "harjoittelija", "kesatyo"],
     "IT-Data centre": ["it"],
 }
-# The administrator's own job search from before Woodesk became a forestry portal. These categories
+# The administrator's own job search from before JobDesk became a forestry portal. These categories
 # are scraped only for the administrator, stored under their account and never shown to members.
 PERSONAL_CATEGORIES = [t for t in JOB_TYPES if t != "Forestry"]
 # Default CV for each job type (the Match column may suggest a better one)

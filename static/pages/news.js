@@ -187,7 +187,7 @@ register({
       if (!visible.length) {
         itemList.replaceChildren(h("p", { class: "empty" },
           items.length ? "No stories match these filters. Try another topic, date range or search." :
-            "No news loaded yet. Refresh the feeds to bring current stories into Woodesk."));
+            "No news loaded yet. Refresh the feeds to bring current stories into JobDesk."));
         return;
       }
       const focused = document.activeElement?.dataset.focus;

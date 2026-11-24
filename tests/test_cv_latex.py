@@ -92,8 +92,8 @@ class CvLatexTests(unittest.TestCase):
                         tex.index(r"\section{\cvt{references}}"))
         self.assertIn(r"\setlength{\cvlabelw}{3.9cm}", tex)
         self.assertIn(r"\titlespacing{\section}{0pt}{0.55em}{2pt}", tex)
-        self.assertIn(r"\newcommand{\woodeskCVFooterName}{A\&B\_\#1}", tex)
-        self.assertIn(r"\fancyfoot[L]{\woodeskCVFooterName}", customized_style)
+        self.assertIn(r"\newcommand{\jobdeskCVFooterName}{A\&B\_\#1}", tex)
+        self.assertIn(r"\fancyfoot[L]{\jobdeskCVFooterName}", customized_style)
         self.assertEqual(style, r"\fancyfoot[L]{David Adegbola}")
 
     def test_unsafe_email_is_rendered_as_text_without_a_mailto_link(self):

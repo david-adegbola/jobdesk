@@ -1,4 +1,4 @@
-"""Where Woodesk finds things. The defaults suit David's Mac; the server sets them in deploy/jobdesk.env.
+"""Where JobDesk finds things. The defaults suit David's Mac; the server sets them in deploy/jobdesk.env.
 
 JOBDESK_CV_REPO  clone of the public cv repo (default: ../CV next to this repo). Only its files are
                  read (roles/, facts.json); none of its code is run.

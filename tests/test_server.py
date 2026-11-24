@@ -393,7 +393,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(headers["Content-Type"], "application/pdf")
         self.assertEqual(
             headers["Content-Disposition"],
-            'inline; filename="Woodesk-CV-example.pdf"',
+            'inline; filename="JobDesk-CV-example.pdf"',
         )
         build.assert_called_once_with(example)
         self.assertEqual(db.list_cvs(1), [])
