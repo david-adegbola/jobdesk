@@ -128,8 +128,10 @@ evaluated or certified against WCAG 2.1 Level AA.
   one exists (imported role CVs come in Finnish/English pairs; drafts from What to study are
   rebuilt in that language). Without one, the text stays as written and only the PDF headings
   change, so translate it before saving.
-- **Account:** change your password, download your private data and sign out. Administrators can
-  create single-use, seven-day invitation codes to onboard classmates.
+- **Account:** download your private data, sign out, or delete the account (type your email to
+  confirm). There are no passwords: you sign in with a one-time link sent to your email
+  (`JOBDESK_EMAIL_BACKEND`, see `mailer.py`). Administrators can create single-use, seven-day
+  invitation codes; with `JOBDESK_OPEN_SIGNUP=0` only people with a code can create an account.
 
 ## AI and mock mode
 
@@ -180,8 +182,8 @@ Paths, host and port come from environment variables; see `config.py`.
    ```bash
    deploy/upload-data.sh ubuntu@<ip>
    ```
-   The upload provisions the existing owner account without dropping existing tracker data. Use the
-   email/password you set to sign in, then create invitation codes from **Account**. From then on,
+   The upload provisions the existing owner account without dropping existing tracker data. Sign in
+   with a link sent to the owner email, then create invitation codes from **Account**. From then on,
    use the server copy.
 
 To use your own domain instead of sslip.io, point its DNS at the server's IP, then run:
@@ -192,7 +194,8 @@ works the same way.
 ### Migrating an existing server
 
 Deploy the new code normally; the installer removes Caddy Basic Auth and enables Woodesk accounts.
-Then set credentials on the existing owner record without replacing the server database:
+Then set the owner's email on the existing owner record without replacing the server database
+(sign-in is by emailed link; old passwords are cleared):
 
 ```bash
 ssh -t ubuntu@<ip> sudo -u jobdesk env JOBDESK_DATA=/srv/jobdesk/data JOBDESK_CV_REPO=/srv/jobdesk/cv \
@@ -208,7 +211,7 @@ applications and invitation records with the local database.
 | What | How |
 |---|---|
 | Ship a code change | commit, then `deploy/deploy.sh ubuntu@<ip>` (only committed files are sent) |
-| Change your password | Sign in, then use **Account → Change password** |
+| Sign in | Enter your email on the sign-in page and open the link (development mode prints it in the server log) |
 | Download a backup to the Mac | `deploy/backup.sh ubuntu@<ip>` → `data/backups/` |
 | See the logs | `ssh ubuntu@<ip> journalctl -u jobdesk -n 50` |
 
@@ -223,7 +226,8 @@ What runs on the server (`deploy/systemd/`):
 
 Job ads, recruiter names and numbers, the tracker, and News reading-list state live in
 `data/jobdesk.db` (git-ignored here too) and on the server in `/srv/jobdesk/data`, readable only by
-the `jobdesk` user. Passwords are PBKDF2-hashed; sessions use HttpOnly, SameSite cookies and HTTPS
+the `jobdesk` user. There are no passwords: sign-in links are single-use, expire after 15 minutes, are stored only as
+SHA-256 hashes and are rate-limited per email and per IP; sessions use HttpOnly, SameSite cookies and HTTPS
 Secure cookies on the server. CVs, applications, preferences and news read/save state are scoped to
 each user. Forestry listings and news are shared. Invitation codes are one-time, hashed at rest and
 expire after seven days. The site sends `noindex` and refuses cross-site state changes. Oracle hosts

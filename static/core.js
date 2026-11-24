@@ -7,7 +7,7 @@ export async function api(path, options = {}) {
   try { data = await res.json(); }
   catch { throw new Error(`Unexpected response from server (${res.status}).`); }
   if (!res.ok) {
-    if (res.status === 401 && !["/api/auth/me", "/api/auth/login", "/api/auth/register"].includes(path)) {
+    if (res.status === 401 && !path.startsWith("/api/auth/")) {
       currentUser = null;
       state = null;
       mountNav();
@@ -59,40 +59,40 @@ function renderLogin(main) {
   document.title = "Sign in · JobDesk";
   const feedback = h("div", { "aria-live": "polite" });
   let signup = false;
+  let authConfig = { open_signup: true, dev_email: false };
   const card = h("section", { class: "auth-card" });
 
   function draw() {
     const form = h("form", { class: "auth-form", onsubmit: async event => {
       event.preventDefault();
       const body = Object.fromEntries(new FormData(form).entries());
+      const button = form.querySelector("button[type=submit]");
+      button.disabled = true;
       feedback.replaceChildren();
       try {
-        const path = signup ? "/api/auth/register" : "/api/auth/login";
-        const result = await api(path, { method: "POST", body });
-        currentUser = result.user;
-        state = null;
-        document.body.classList.remove("login-state");
-        await mountNav();
-        location.hash = "#/home";
-        await show();
-      } catch (error) { feedback.replaceChildren(message(error.message, true)); }
+        const result = await api("/api/auth/link", { method: "POST", body });
+        form.replaceWith(h("div", null,
+          message(result.message),
+          authConfig.dev_email ? h("p", { class: "muted small" }, "Development mode: the link is in the server log, not in an email.") : "",
+          h("button", { type: "button", class: "secondary", onclick: () => draw() }, "Use another address")));
+      } catch (error) {
+        feedback.replaceChildren(message(error.message, true));
+        button.disabled = false;
+      }
     } },
       signup ? h("label", { class: "field" }, "Name",
         h("input", { name: "name", autocomplete: "name", required: true, maxlength: 100 })) : "",
       h("label", { class: "field" }, "Email",
         h("input", { name: "email", type: "email", autocomplete: "email", required: true, maxlength: 254 })),
-      signup ? h("label", { class: "field" }, "Invitation code",
-        h("input", { name: "invite", autocomplete: "off", required: true })) : "",
-      h("label", { class: "field" }, "Password",
-        h("input", { name: "password", type: "password", autocomplete: signup ? "new-password" : "current-password",
-          required: true, minlength: signup ? 12 : 1, maxlength: 256 })),
-      h("button", { type: "submit" }, signup ? "Create account" : "Sign in"));
+      signup && !authConfig.open_signup ? h("label", { class: "field" }, "Invitation code",
+        h("input", { name: "invite", autocomplete: "off", required: true, maxlength: 128 })) : "",
+      h("button", { type: "submit" }, signup ? "Email me a link to create my account" : "Email me a sign-in link"));
     card.replaceChildren(
       h("p", { class: "eyebrow" }, "JOBS AND INTERNSHIPS FOR STUDENTS IN FINLAND"),
-      h("h1", null, signup ? "Join JobDesk" : "Welcome back"),
+      h("h1", null, signup ? "Create your JobDesk account" : "Welcome"),
       h("p", { class: "muted" }, signup
-        ? "Create your private account with the invitation code you received."
-        : "Sign in to see job and internship ads in your fields, and your private CVs and applications."),
+        ? "Free for students at any university or university of applied sciences. No password: we email you a link."
+        : "No password needed: enter your email and we'll send you a link to sign in."),
       feedback, form,
       h("button", { class: "secondary auth-switch", type: "button", onclick: () => {
         signup = !signup;
@@ -100,10 +100,29 @@ function renderLogin(main) {
         draw();
         card.querySelector("input")?.focus();
       } },
-        signup ? "Already have an account? Sign in" : "Have an invitation? Create an account"));
+        signup ? "Already have an account? Sign in" : "New here? Create an account"));
   }
   draw();
   main.replaceChildren(card);
+  api("/api/auth/config").then(c => { authConfig = c; draw(); }).catch(() => {});
+}
+
+// The page a magic link opens: #/auth?token=... The token is posted (not sent in a GET), so email
+// security scanners that open links can't use them up.
+async function openMagicLink(main) {
+  const token = new URLSearchParams(location.hash.split("?")[1] || "").get("token");
+  history.replaceState(null, "", location.pathname + "#/home");     // the token never stays in the address bar
+  main.replaceChildren(h("p", { class: "muted", role: "status" }, "Signing you in…"));
+  try {
+    currentUser = (await api("/api/auth/verify", { method: "POST", body: { token } })).user;
+    state = null;
+    document.body.classList.remove("login-state");
+    await mountNav();
+    await show();
+  } catch (error) {
+    renderLogin(main);
+    main.prepend(message(error.message, true));
+  }
 }
 
 // A page may name the fields it belongs to (page.fields, e.g. ["forestry"] for the forestry News desk).
@@ -121,6 +140,7 @@ export async function mountNav() {
 
 async function show(focusMain = false) {
   const main = document.getElementById("page");
+  if (location.hash.startsWith("#/auth")) return openMagicLink(main);
   if (!currentUser) {
     renderLogin(main);
     if (focusMain) main.focus();

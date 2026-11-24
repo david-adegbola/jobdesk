@@ -1,5 +1,6 @@
 import http.client
 import json
+import re
 import tempfile
 import threading
 import unittest
@@ -26,7 +27,12 @@ class JobApiTests(unittest.TestCase):
         self.addCleanup(self.data_dir_patch.stop)
         self.addCleanup(self.db_file_patch.stop)
         db.init()
-        db.provision_admin("admin@example.test", auth.hash_password("administrator-password"))
+        db.provision_admin("admin@example.test")
+        for patcher in (patch.dict("os.environ", {"JOBDESK_EMAIL_BACKEND": "memory"}),
+                        patch.dict(server.LINK_REQUESTS, clear=True)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        server.mailer.OUTBOX.clear()
         token, _ = auth.new_session(1)
         self.cookie = f"jobdesk_session={token}"
 
@@ -79,23 +85,34 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(listing["jobs"][0]["title"], "Forest data analyst")
         self.assertNotIn("contact_phone", listing["jobs"][0])
 
-    def member_cookie(self):
-        invite = "member-invitation-code"
-        db.create_invitation(1, invite, (datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
-        status, _, headers = self.request("POST", "/api/auth/register", {
-            "name": "Forest Student", "email": "member@example.test",
-            "password": "a-very-long-password", "invite": invite,
-        }, headers={"Cookie": ""}, include_headers=True)
+    def last_link_token(self):
+        return re.search(r"token=([\w-]+)", server.mailer.OUTBOX[-1]["text"]).group(1)
+
+    def sign_in_by_link(self, email, name="", invite=""):
+        """The whole magic-link flow: ask for a link, read it from the (memory) outbox, open it."""
+        status, _ = self.request("POST", "/api/auth/link", {"email": email, "name": name, "invite": invite},
+                                 headers={"Cookie": ""})
+        self.assertEqual(status, 200)
+        status, _, headers = self.request("POST", "/api/auth/verify", {"token": self.last_link_token()},
+                                          headers={"Cookie": ""}, include_headers=True)
         self.assertEqual(status, 200)
         return {"Cookie": headers["Set-Cookie"].split(";", 1)[0]}
 
-    def test_members_cannot_add_non_forestry_jobs(self):
-        status, error = self.request("POST", "/api/jobs", {
-            "title": "Warehouse worker", "company": "Example employer",
-        }, headers=self.member_cookie())
+    def member_cookie(self):
+        return self.sign_in_by_link("member@example.test", "Forest Student")
+
+    def test_members_save_any_job_privately_but_share_only_their_fields(self):
+        member = self.member_cookie()
+        status, created = self.request("POST", "/api/jobs", {"title": "Warehouse worker", "company": "Example employer"},
+                                       headers=member)
+        self.assertEqual(status, 200)
+        status, view = self.request("GET", "/api/jobs", headers=member)
+        self.assertEqual([(job["title"], job["private"]) for job in view["jobs"]], [("Warehouse worker", 1)])
+        status, admin_view = self.request("GET", "/api/jobs")
+        self.assertEqual(admin_view["jobs"], [])                                   # nobody else sees it
+        status, error = self.request("POST", "/api/jobs", {"title": "Warehouse worker", "share": True}, headers=member)
         self.assertEqual(status, 400)
         self.assertIn("Only forestry", error["error"])
-        self.assertEqual(db.list_jobs(), [])
 
     def test_admin_personal_jobs_are_hidden_from_members(self):
         status, created = self.request("POST", "/api/jobs", {
@@ -110,7 +127,8 @@ class JobApiTests(unittest.TestCase):
         status, admin_view = self.request("GET", "/api/jobs")
         self.assertEqual(status, 200)
         personal = {job["title"]: job["category"] for job in admin_view["jobs"] if job["personal"]}
-        self.assertEqual(personal, {"Varastotyöntekijä": "Warehouse", "Asentaja": "Industrial"})
+        self.assertEqual(personal, {"Asentaja": "Industrial"})
+        self.assertTrue(next(j for j in admin_view["jobs"] if j["title"] == "Varastotyöntekijä")["private"])
 
         member = self.member_cookie()
         status, member_view = self.request("GET", "/api/jobs", headers=member)
@@ -171,54 +189,82 @@ class JobApiTests(unittest.TestCase):
         self.assertIn("Sign in", error["error"])
 
     def test_api_rejects_non_object_request_bodies(self):
-        for path in ("/api/auth/login", "/api/cvs", "/api/account/profile"):
+        for path in ("/api/auth/link", "/api/cvs", "/api/account/profile"):
             status, error = self.request("POST", path, [])
             self.assertEqual(status, 400, path)
             self.assertIn("error", error, path)
 
-    def test_invitation_registration_and_password_login(self):
-        invite = "single-use-invitation-code"
-        db.create_invitation(1, invite, (datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
-        status, registered, headers = self.request("POST", "/api/auth/register", {
-            "name": "Forest Student", "email": "student@example.test",
-            "password": "a-very-long-password", "invite": invite,
-        }, include_headers=True)
+    def test_magic_link_creates_an_account_and_signs_in_once(self):
+        status, result = self.request("POST", "/api/auth/link", {"email": "Student@Example.test", "name": "Student"},
+                                      headers={"Cookie": ""})
         self.assertEqual(status, 200)
-        self.assertEqual(registered["user"]["email"], "student@example.test")
+        mail = server.mailer.OUTBOX[-1]
+        self.assertEqual((mail["to"], mail["subject"]), ("student@example.test", "Create your JobDesk account"))
+        self.assertIsNone(db.get_user_by_email("student@example.test"))      # nothing until the link is opened
+        token = self.last_link_token()
+        status, signed_in, headers = self.request("POST", "/api/auth/verify", {"token": token},
+                                                  headers={"Cookie": ""}, include_headers=True)
+        self.assertEqual(status, 200)
+        self.assertEqual(signed_in["user"]["name"], "Student")
         self.assertIn("HttpOnly", headers["Set-Cookie"])
-        self.assertTrue(db.get_user_by_email("student@example.test")["is_active"])
+        status, error = self.request("POST", "/api/auth/verify", {"token": token}, headers={"Cookie": ""})
+        self.assertEqual(status, 400)                                         # a link works once
+        self.assertIn("already used", error["error"])
+        status, _ = self.request("POST", "/api/auth/link", {"email": "student@example.test"}, headers={"Cookie": ""})
+        self.assertEqual(server.mailer.OUTBOX[-1]["subject"], "Your JobDesk sign-in link")
 
-        status, logged_in, headers = self.request("POST", "/api/auth/login", {
-            "email": "student@example.test", "password": "a-very-long-password",
-        }, headers={"Cookie": ""}, include_headers=True)
-        self.assertEqual(status, 200)
-        self.assertEqual(logged_in["user"]["name"], "Forest Student")
-        self.assertIn("jobdesk_session=", headers["Set-Cookie"])
-        status, error = self.request("POST", "/api/auth/register", {
-            "name": "Second Registration", "email": "second-student@example.test",
-            "password": "a-very-long-password", "invite": invite,
-        })
-        self.assertEqual(status, 400)
-        self.assertIn("invalid, expired or already used", error["error"])
+    def test_the_answer_does_not_reveal_whether_an_account_exists(self):
+        _, unknown = self.request("POST", "/api/auth/link", {"email": "nobody@example.test"}, headers={"Cookie": ""})
+        _, known = self.request("POST", "/api/auth/link", {"email": "admin@example.test"}, headers={"Cookie": ""})
+        self.assertTrue(known["message"].startswith(server.SENT))
+        self.assertTrue(unknown["message"].startswith(server.SENT))
+        self.assertEqual([m["to"] for m in server.mailer.OUTBOX], ["admin@example.test"])   # only real accounts
 
-    def test_password_change_revokes_old_sessions_and_export_is_private(self):
+    def test_expired_and_made_up_links_are_refused(self):
+        db.create_login_link("an-expired-token-of-sufficient-length", "late@example.test", "Late", minutes=-1)
+        for token in ("an-expired-token-of-sufficient-length", "x" * 40, 5, ""):
+            status, _ = self.request("POST", "/api/auth/verify", {"token": token}, headers={"Cookie": ""})
+            self.assertEqual(status, 400, token)
+
+    def test_sign_in_emails_are_rate_limited(self):
+        for _ in range(server.LINK_LIMIT_PER_EMAIL):
+            self.request("POST", "/api/auth/link", {"email": "admin@example.test"}, headers={"Cookie": ""})
+        status, error = self.request("POST", "/api/auth/link", {"email": "admin@example.test"}, headers={"Cookie": ""})
+        self.assertEqual(status, 429)
+
+    def test_rate_limits_use_the_address_caddy_adds_not_the_visitors_claim(self):
+        class Fake:
+            client_address = ("127.0.0.1", 1234)
+            headers = {"X-Forwarded-For": "6.6.6.6, 203.0.113.9"}
+        self.assertEqual(server.client_ip(Fake()), "203.0.113.9")
+        Fake.client_address = ("198.51.100.4", 1234)                          # not behind Caddy: header ignored
+        self.assertEqual(server.client_ip(Fake()), "198.51.100.4")
+
+    def test_invitation_only_mode(self):
+        codes, _ = server.create_invitations(1, 7)
+        with patch.object(server.config, "OPEN_SIGNUP", False):
+            _, result = self.request("POST", "/api/auth/link", {"email": "p1@example.test", "name": "P1"},
+                                     headers={"Cookie": ""})
+            self.assertEqual(server.mailer.OUTBOX, [])                         # no code, no link
+            self.assertIn("invitation code", result["message"])
+            member = self.sign_in_by_link("p1@example.test", "P1", invite=codes[0])
+            status, _ = self.request("GET", "/api/state", headers=member)
+            self.assertEqual(status, 200)
+            self.request("POST", "/api/auth/link", {"email": "p2@example.test", "name": "P2", "invite": codes[0]},
+                         headers={"Cookie": ""})
+            status, error = self.request("POST", "/api/auth/verify", {"token": self.last_link_token()},
+                                         headers={"Cookie": ""})
+            self.assertEqual(status, 400)                                     # the code was used up
+            self.assertIn("invitation", error["error"])
+
+    def test_export_is_a_private_download_and_sign_out_ends_the_session(self):
         status, exported, export_headers = self.request("GET", "/api/account/export", include_headers=True)
         self.assertEqual(status, 200)
         self.assertEqual(exported["account"]["email"], "admin@example.test")
         self.assertIn("attachment;", export_headers["Content-Disposition"])
-
-        old_cookie = self.cookie
-        status, result, headers = self.request("POST", "/api/account/password", {
-            "current_password": "administrator-password",
-            "new_password": "another-secure-password",
-        }, include_headers=True)
-        self.assertEqual(status, 200)
-        new_cookie = headers["Set-Cookie"].split(";", 1)[0]
-        self.assertEqual(result["ok"], True)
-        status, error = self.request("GET", "/api/jobs", headers={"Cookie": old_cookie})
+        self.request("POST", "/api/auth/logout", {})
+        status, _ = self.request("GET", "/api/jobs")
         self.assertEqual(status, 401)
-        status, result = self.request("GET", "/api/jobs", headers={"Cookie": new_cookie})
-        self.assertEqual(status, 200)
 
     def test_cvs_and_applications_are_private_while_jobs_are_shared(self):
         job_id = db.add_manual({
@@ -228,8 +274,7 @@ class JobApiTests(unittest.TestCase):
         db.set_status(job_id, "Applied", user_id=1)
         invite = "second-account-invitation"
         db.create_invitation(1, invite, (datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
-        second_user = db.create_user("Second User", "second@example.test",
-                                     auth.hash_password("second-user-password"), invite)
+        second_user = db.create_user("Second User", "second@example.test")
         token, _ = auth.new_session(second_user)
         headers = {"Cookie": f"jobdesk_session={token}"}
 
@@ -307,10 +352,7 @@ class JobApiTests(unittest.TestCase):
 
         invite = "original-cv-access-invitation"
         db.create_invitation(1, invite, (datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
-        second_user = db.create_user(
-            "Second User", "second@example.test",
-            auth.hash_password("second-user-password"), invite,
-        )
+        second_user = db.create_user("Second User", "second@example.test")
         token, _ = auth.new_session(second_user)
         status, error = self.request(
             "GET", "/api/cvs/1/original.pdf",
@@ -366,10 +408,7 @@ class JobApiTests(unittest.TestCase):
 
         invite = "formatted-cv-private-invitation"
         db.create_invitation(1, invite, (datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
-        second_user = db.create_user(
-            "Second User", "second@example.test",
-            auth.hash_password("second-user-password"), invite,
-        )
+        second_user = db.create_user("Second User", "second@example.test")
         token, _ = auth.new_session(second_user)
         status, error = self.request(
             "GET", f"/api/cvs/{cv_id}/formatted.pdf",
@@ -544,11 +583,11 @@ class JobApiTests(unittest.TestCase):
 
     def test_sharing_a_job_needs_one_of_the_members_fields(self):
         member = self.member_cookie()
-        status, error = self.request("POST", "/api/jobs", {"title": "Kirjanpitäjä"}, headers=member)
+        status, error = self.request("POST", "/api/jobs", {"title": "Kirjanpitäjä", "share": True}, headers=member)
         self.assertEqual(status, 400)
         self.assertIn("Only forestry", error["error"])
         self.choose_fields(member, ["forestry", "business"])
-        status, created = self.request("POST", "/api/jobs", {"title": "Kirjanpitäjä"}, headers=member)
+        status, created = self.request("POST", "/api/jobs", {"title": "Kirjanpitäjä", "share": True}, headers=member)
         self.assertEqual(status, 200)
         self.assertEqual(db.get_job(created["id"])["category"], "Business")
 
@@ -755,13 +794,15 @@ class JobApiTests(unittest.TestCase):
         member = self.member_cookie()
         member_id = db.get_user_by_email("member@example.test")["id"]
         cv_id = self.member_cv(member)
-        status, created = self.request("POST", "/api/jobs", {"title": "Metsäharjoittelija"}, headers=member)
+        status, created = self.request("POST", "/api/jobs", {"title": "Metsäharjoittelija", "share": True},
+                                       headers=member)
         db.set_status(created["id"], "Saved", user_id=member_id)
+        status, mine = self.request("POST", "/api/jobs", {"title": "Kesätyö, oma"}, headers=member)
         self.request("POST", "/api/finnish/feedback", {"level_shown": "unclear", "vote": "right",
                                                        "method": "baseline_v1"}, headers=member)
-        status, error = self.request("POST", "/api/account/delete", {"password": "wrong-password"}, headers=member)
+        status, error = self.request("POST", "/api/account/delete", {"confirm_email": "someone@else.test"}, headers=member)
         self.assertEqual(status, 400)
-        status, _, headers = self.request("POST", "/api/account/delete", {"password": "a-very-long-password"},
+        status, _, headers = self.request("POST", "/api/account/delete", {"confirm_email": "Member@Example.test"},
                                           headers=member, include_headers=True)
         self.assertEqual(status, 200)
         self.assertIn("Max-Age=0", headers["Set-Cookie"])
@@ -772,26 +813,21 @@ class JobApiTests(unittest.TestCase):
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM finnish_feedback").fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM sessions WHERE user_id=?", (member_id,)).fetchone()[0], 0)
         self.assertEqual(db.get_job(created["id"])["user_id"], 1)       # the shared ad stays, owned by the admin
+        self.assertIsNone(db.get_job(mine["id"]))                         # their private job is deleted
         status, _ = self.request("GET", "/api/jobs", headers=member)
         self.assertEqual(status, 401)
 
     def test_the_administrator_account_cannot_be_deleted(self):
-        status, error = self.request("POST", "/api/account/delete", {"password": "administrator-password"})
+        status, error = self.request("POST", "/api/account/delete", {"confirm_email": "admin@example.test"})
         self.assertEqual(status, 400)
         self.assertIn("administrator", error["error"])
 
     # ------------------------------------------------------------ Pilot P4: administration commands
 
-    def test_bulk_invitations_work_once_each_and_respect_limits(self):
+    def test_bulk_invitations_respect_limits(self):
         codes, expires = server.create_invitations(3, 30)
         self.assertEqual(len(set(codes)), 3)
         self.assertGreater(expires, datetime.now(timezone.utc) + timedelta(days=29))
-        status, _ = self.request("POST", "/api/auth/register", {"name": "Pilot Student", "email": "p1@example.test",
-                                 "password": "a-very-long-password", "invite": codes[0]}, headers={"Cookie": ""})
-        self.assertEqual(status, 200)
-        status, _ = self.request("POST", "/api/auth/register", {"name": "Second", "email": "p2@example.test",
-                                 "password": "a-very-long-password", "invite": codes[0]}, headers={"Cookie": ""})
-        self.assertEqual(status, 400)
         for count, days in ((0, 7), (501, 7), (1, 0), (1, 121)):
             with self.assertRaises(ValueError):
                 server.create_invitations(count, days)

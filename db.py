@@ -133,6 +133,15 @@ CREATE TABLE IF NOT EXISTS finnish_levels (
   created_at TEXT NOT NULL,
   PRIMARY KEY (job_id, prompt_version)
 );
+CREATE TABLE IF NOT EXISTS login_links (
+  token_hash TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  invite TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
 CREATE TABLE IF NOT EXISTS finnish_feedback (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -218,12 +227,16 @@ def init():
         for column, definition in migrations.items():
             if column not in columns:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
+        job_columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+        if "private" not in job_columns:      # 1 = a job a student collected for themselves; only they see it
+            conn.execute("ALTER TABLE jobs ADD COLUMN private INTEGER NOT NULL DEFAULT 0")
         cv_import_columns = {row["name"] for row in conn.execute("PRAGMA table_info(cv_imports)")}
         if "cv_id" not in cv_import_columns:
             conn.execute("ALTER TABLE cv_imports ADD COLUMN cv_id INTEGER REFERENCES cvs(id) ON DELETE CASCADE")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email COLLATE NOCASE) WHERE email IS NOT NULL")
         conn.execute("INSERT OR IGNORE INTO users (id, name, is_admin) VALUES (1, 'Administrator', 1)")
         conn.execute("UPDATE users SET is_admin=1 WHERE id=1 AND email IS NULL")
+        conn.execute("UPDATE users SET password_hash='' WHERE password_hash!=''")    # sign-in is by magic link only
         conn.execute(
             """INSERT OR IGNORE INTO news_user_state (user_id, item_id, is_read, is_saved)
                SELECT user_id, id, is_read, is_saved FROM news_items"""
@@ -234,7 +247,8 @@ def _hash_token(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def provision_admin(email, password):
+def provision_admin(email):
+    """Make user 1 the administrator with this email address. They sign in with a magic link."""
     email = email.strip().lower()
     if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise ValueError("Enter a valid administrator email address.")
@@ -244,8 +258,8 @@ def provision_admin(email, password):
             raise ValueError("That email already belongs to another account.")
         conn.execute(
             """UPDATE users SET name=CASE WHEN name='' THEN ? ELSE name END, email=?,
-               password_hash=?, is_admin=1, is_active=1 WHERE id=1""",
-            (email.split("@")[0], email, password),
+               password_hash='', is_admin=1, is_active=1 WHERE id=1""",
+            (email.split("@")[0], email),
         )
         return dict(conn.execute("SELECT id, name, email, is_admin FROM users WHERE id=1").fetchone())
 
@@ -253,7 +267,7 @@ def provision_admin(email, password):
 def get_user(user_id):
     with connect() as conn:
         row = conn.execute(
-            "SELECT id, name, email, password_hash, is_admin, is_active, preferences_json FROM users WHERE id=?",
+            "SELECT id, name, email, is_admin, is_active, preferences_json FROM users WHERE id=?",
             (user_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -262,35 +276,67 @@ def get_user(user_id):
 def get_user_by_email(email):
     with connect() as conn:
         row = conn.execute(
-            """SELECT id, name, email, password_hash, is_admin, is_active, preferences_json
+            """SELECT id, name, email, is_admin, is_active, preferences_json
                FROM users WHERE email=? COLLATE NOCASE""",
             (email.strip(),),
         ).fetchone()
         return dict(row) if row else None
 
 
-def create_user(name, email, password_hash, invite_token):
-    token_hash = _hash_token(invite_token)
+def create_user(name, email, invite_token=None):
+    """A new member account. With invite_token (invitation-only mode) the code must be valid and unused,
+    and is used up in the same transaction."""
     with connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        invite = conn.execute(
-            """SELECT id FROM invitations WHERE token_hash=? AND used_by IS NULL AND expires_at>?""",
-            (token_hash, datetime.now(timezone.utc).isoformat(timespec="seconds")),
-        ).fetchone()
-        if not invite:
-            raise ValueError("That invitation is invalid, expired or already used.")
+        invite = None
+        if invite_token is not None:
+            invite = conn.execute(
+                """SELECT id FROM invitations WHERE token_hash=? AND used_by IS NULL AND expires_at>?""",
+                (_hash_token(invite_token), datetime.now(timezone.utc).isoformat(timespec="seconds")),
+            ).fetchone()
+            if not invite:
+                raise ValueError("That invitation is invalid, expired or already used.")
         try:
             user_id = conn.execute(
-                "INSERT INTO users (name, email, password_hash, created_at) VALUES (?,?,?,?)",
-                (name.strip(), email.strip().lower(), password_hash, now()),
+                "INSERT INTO users (name, email, password_hash, created_at) VALUES (?,?,'',?)",
+                (name.strip(), email.strip().lower(), now()),
             ).lastrowid
         except sqlite3.IntegrityError as exc:
             raise ValueError("An account with that email already exists.") from exc
-        conn.execute(
-            "UPDATE invitations SET used_by=?, used_at=? WHERE id=? AND used_by IS NULL",
-            (user_id, datetime.now(timezone.utc).isoformat(timespec="seconds"), invite["id"]),
-        )
+        if invite:
+            conn.execute(
+                "UPDATE invitations SET used_by=?, used_at=? WHERE id=? AND used_by IS NULL",
+                (user_id, datetime.now(timezone.utc).isoformat(timespec="seconds"), invite["id"]),
+            )
         return user_id
+
+
+def create_login_link(token, email, name="", invite="", minutes=15):
+    """Store a magic link (only its hash). name/invite are kept for links that create a new account."""
+    expires = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    with connect() as conn:
+        conn.execute("""INSERT INTO login_links (token_hash, email, name, invite, created_at, expires_at)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                     (_hash_token(token), email.strip().lower(), name.strip(), invite.strip(),
+                      datetime.now(timezone.utc).isoformat(timespec="seconds"), expires.isoformat(timespec="seconds")))
+    return expires
+
+
+def use_login_link(token):
+    """The link's email, name and invite if the link is valid, unused and unexpired; it is used up at once,
+    so the same link can never sign in twice. None otherwise."""
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("""SELECT email, name, invite FROM login_links
+                              WHERE token_hash=? AND used_at IS NULL AND expires_at>?""",
+                           (_hash_token(token), datetime.now(timezone.utc).isoformat(timespec="seconds"))).fetchone()
+        if not row:
+            return None
+        conn.execute("UPDATE login_links SET used_at=? WHERE token_hash=?",
+                     (datetime.now(timezone.utc).isoformat(timespec="seconds"), _hash_token(token)))
+        conn.execute("DELETE FROM login_links WHERE expires_at<?",            # tidy up old links
+                     ((datetime.now(timezone.utc) - timedelta(days=1)).isoformat(timespec="seconds"),))
+        return dict(row)
 
 
 def create_session(user_id, token_hash, expires_at):
@@ -334,17 +380,6 @@ def list_invitations(created_by):
             (created_by,),
         ).fetchall()
         return [dict(row) for row in rows]
-
-
-def update_user_password(user_id, password_hash):
-    with connect() as conn:
-        result = conn.execute(
-            "UPDATE users SET password_hash=? WHERE id=? AND is_active=1",
-            (password_hash, user_id),
-        )
-        if not result.rowcount:
-            raise KeyError(user_id)
-        conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
 
 
 def active_field_ids(default):
@@ -410,7 +445,8 @@ def finnish_feedback_summary():
 def delete_user(user_id):
     """Delete an account and everything personal in it, in one transaction.
 
-    Deleted: CVs, applications, prep answers, sessions, news reading state, feedback, the account.
+    Deleted: CVs, applications, jobs they collected privately, prep answers, sessions, news reading state,
+    feedback, the account.
     Kept: job listings the member shared with others (public ads, moved to the administrator account so they
     don't disappear for everyone else). The administrator account (id 1) owns shared data and can't be deleted."""
     if user_id == 1:
@@ -423,7 +459,8 @@ def delete_user(user_id):
                     "DELETE FROM invitations WHERE created_by=?",
                     "UPDATE invitations SET used_by=NULL WHERE used_by=?",
                     "UPDATE news_items SET user_id=1 WHERE user_id=?",
-                    "UPDATE jobs SET user_id=1 WHERE user_id=?",
+                    "DELETE FROM jobs WHERE user_id=? AND private=1",       # their own collected jobs go too
+                    "UPDATE jobs SET user_id=1 WHERE user_id=?",              # shared ads stay for others
                     "DELETE FROM users WHERE id=?"):       # cascades: sessions, cvs, cv_imports, news state, feedback
             conn.execute(sql, (user_id,))
 
@@ -612,7 +649,8 @@ def upsert_scraped(job, check_id, user_id=1):
 
 
 def add_manual(fields, user_id=1):
-    """Publish a community job, deduplicating by source and external id across accounts."""
+    """Add a job by hand. Shared (community) jobs are deduplicated across accounts by source and external id;
+    private jobs carry the member's id in their external id, so each member has their own copy."""
     today = date.today().isoformat()
     cols = ["url", "title", "company", "location", "posted", "deadline", "category", "ad_text",
             "contact_name", "contact_phone"]
@@ -629,10 +667,11 @@ def add_manual(fields, user_id=1):
                          args + [today, row["id"]])
             return row["id"]
         return conn.execute(
-            f"""INSERT INTO jobs (user_id, source, external_id, {', '.join(cols)}, manual,
+            f"""INSERT INTO jobs (user_id, source, external_id, {', '.join(cols)}, manual, private,
                   first_check_id, first_seen, last_seen)
-                VALUES (?,?,?,{','.join('?' * len(cols))},1,NULL,?,?)""",
-            [user_id, fields["source"], fields["external_id"]] + [vals[c] for c in cols] + [today, today]
+                VALUES (?,?,?,{','.join('?' * len(cols))},1,?,NULL,?,?)""",
+            [user_id, fields["source"], fields["external_id"]] + [vals[c] for c in cols]
+            + [1 if fields.get("private") else 0, today, today]
         ).lastrowid
 
 

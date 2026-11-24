@@ -14,6 +14,9 @@ JOBDESK_PREP_DIR          prep templates (default: <owner dir>/prep when it exis
 JOBDESK_CV_TEMPLATE_OWNER the name written in the shared LaTeX template's footer. Member PDFs replace
                           it with the member's own name; when unset, member PDFs are not built.
 JOBDESK_DEFAULT_FIELDS    fields for members who haven't chosen any (default forestry)
+JOBDESK_OPEN_SIGNUP       1 (default): anyone can create an account with their email; 0: invitation codes only
+JOBDESK_PUBLIC_URL        the site's address, used in sign-in links (default http://localhost:8765)
+JOBDESK_EMAIL_BACKEND     log (default, development), smtp or memory; see mailer.py
 JOBDESK_AI_DAILY_LIMIT    AI checks per member per day on the Shortlist page (default 200)
 JOBDESK_ENABLE_DUUNITORI  1 to read Duunitori search pages (default 0: its robots.txt disallows
                           generic crawlers, and the robots.txt check would skip it anyway).
@@ -42,5 +45,9 @@ SOURCES_FILE = APP / "sources.json"         # job sources, their fields and robo
 # Fields for members who haven't chosen yet (comma-separated ids; the pilot asks everyone on first login)
 DEFAULT_FIELDS = [f.strip() for f in os.environ.get("JOBDESK_DEFAULT_FIELDS", "forestry").split(",") if f.strip()]
 ENABLE_DUUNITORI = os.environ.get("JOBDESK_ENABLE_DUUNITORI", "0") == "1"
+# Sign-up: anyone with an email address (1, default), or invitation codes only (0, e.g. for a closed pilot)
+OPEN_SIGNUP = os.environ.get("JOBDESK_OPEN_SIGNUP", "1") == "1"
+# The address in sign-in links (no trailing slash), e.g. https://jobdesk.example.fi
+PUBLIC_URL = os.environ.get("JOBDESK_PUBLIC_URL", "http://localhost:8765").rstrip("/")
 # Pilot cost guard: AI checks per member per day on the Shortlist page
 AI_DAILY_LIMIT = int(os.environ.get("JOBDESK_AI_DAILY_LIMIT", "200"))

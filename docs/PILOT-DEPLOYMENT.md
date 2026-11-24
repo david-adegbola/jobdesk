@@ -27,6 +27,11 @@ JOBDESK_DEFAULT_FIELDS=it,engineering,health,business,culture
 # The administrator's own tools stay off: point the owner folder at an empty directory
 JOBDESK_OWNER_DIR=/srv/jobdesk/no-owner
 
+# Sign-in: email links. JOBDESK_OPEN_SIGNUP=0 makes a closed pilot (invitation codes only)
+JOBDESK_OPEN_SIGNUP=0
+JOBDESK_PUBLIC_URL=https://your-pilot-domain.example
+JOBDESK_EMAIL_BACKEND=smtp            # with JOBDESK_SMTP_HOST/PORT/USER/PASSWORD and JOBDESK_EMAIL_FROM (see mailer.py)
+
 # Member CV PDFs: the name in the LaTeX template's footer (see "CV repository" below)
 JOBDESK_CV_TEMPLATE_OWNER=...
 ```
@@ -44,7 +49,7 @@ turned AI drafting on.
 ## 3. Accounts
 
 ```bash
-# The administrator (once)
+# The administrator (once; they sign in with a link sent to this address)
 sudo -u jobdesk env $(cat /srv/jobdesk/app/deploy/jobdesk.env /srv/jobdesk/private.env | xargs) \
   /usr/bin/python3 /srv/jobdesk/app/server.py --provision-admin
 
@@ -53,7 +58,7 @@ sudo -u jobdesk env $(cat /srv/jobdesk/app/deploy/jobdesk.env /srv/jobdesk/priva
   /usr/bin/python3 /srv/jobdesk/app/server.py --create-invitations 30 --days 30
 ```
 
-Give each student one code, directly (not in a shared list). A code works once.
+Give each student one code, directly (not in a shared list). A code works once: the student enters it with their name and email on "Create an account", and the account is created when they open the link.
 
 ## 4. During the pilot
 

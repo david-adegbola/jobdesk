@@ -13,12 +13,12 @@
 
 | Data | Why | Who can see it |
 |---|---|---|
-| Name, email address, password (stored only as a salted PBKDF2 hash) | Your account and signing in | You; the administrator can see that the account exists |
+| Name and email address | Your account; signing in with a one-time link sent to your email (no password is stored) | You; the administrator can see that the account exists |
 | Settings: your fields, your Finnish level, whether AI drafting is on | Showing the right job ads and ordering the shortlist | You |
 | CVs you create | Matching ads to your skills, drafting answers, PDF CVs | Only you |
 | Applications you track (status, dates, notes, contacts you add) | The Tracker and reminders | Only you |
 | "Was this right?" answers (the Finnish level shown, your yes/no, your correction, the quoted sentence from the ad) | Measuring how accurate the tool is in the pilot | The administrator, as totals and per answer, linked to your account until it is deleted |
-| Job ads you share with others | Other students in your field can see them | Members in that field (your name is not shown) |
+| Job ads you save (private: only you see them), and public ads you choose to share | Collecting and comparing opportunities | Saved: only you. Shared: members in that field (your name is not shown) |
 | A session cookie (`jobdesk_session`) | Keeping you signed in. It is strictly necessary; there are no analytics or advertising cookies | — |
 
 **Not stored:** the ads you paste on the Shortlist page, and the answers you draft. They are processed for that one
@@ -58,5 +58,5 @@ at most 14 days later].
 
 ## Security
 
-HTTPS only; passwords stored as salted hashes; each student's CVs and applications are visible only to that student;
-accounts by single-use invitation only; the site asks search engines not to index it.
+HTTPS only; no passwords (one-time sign-in links that expire after 15 minutes and are stored only as hashes); each student's CVs and applications are visible only to that student;
+sign-in emails rate-limited; the site asks search engines not to index it.

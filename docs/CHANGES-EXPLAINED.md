@@ -672,3 +672,41 @@ that promise checkable. Students can still delete their own account at any time.
 **Interview question.** *Why leave blanks in the privacy notice instead of filling them in?* The controller, the legal
 basis and the transfer mechanism are legal decisions for the university. Guessing them would make the document look
 finished when it isn't. The draft is precise about what the software does, and leaves the rest visibly open.
+
+## Platform A: sign-in by email link, and private jobs
+
+JobDesk is opening up from one Metropolia pilot to students at any Finnish university, so two foundations changed.
+
+**1. No more passwords.** Students sign in with a one-time link sent to their email ("magic link").
+
+How it works, step by step:
+
+1. The sign-in page asks for an email (and a name, when creating an account). It POSTs `/api/auth/link`.
+2. The server makes a random token, stores only its SHA-256 hash in the `login_links` table with a 15-minute expiry,
+   and emails `JOBDESK_PUBLIC_URL/#/auth?token=...` through `mailer.py`.
+3. The answer is the same whether or not the email has an account, so the form can't be used to find out who uses
+   JobDesk.
+4. Opening the link loads the page, which first removes the token from the address bar and then POSTs it to
+   `/api/auth/verify`. Using a POST matters: email security scanners open links with GET, and a GET that signed in
+   would use the link up before the student clicks it.
+5. `use_login_link` marks the link used inside one `BEGIN IMMEDIATE` transaction, so two clicks at the same time can't
+   both succeed. A new email gets an account at this point, not before, so a mistyped address never creates one.
+6. Limits: 5 links per email and 30 per IP address per hour. Behind the Caddy proxy, the IP is the right-most
+   `X-Forwarded-For` entry, trusted only when the request comes from 127.0.0.1 (otherwise anyone could fake it).
+
+`JOBDESK_OPEN_SIGNUP=0` keeps a closed pilot: then a new account needs an invitation code. Email goes out by SMTP
+(any provider), or, in development, is printed to the server log. Tests use an in-memory outbox. Existing password
+hashes are cleared by a migration, and deleting an account now needs the account's email typed in as confirmation.
+
+**2. Jobs you add are private.** Before, any job a member added was shown to everyone in that field. Now it is
+saved for that member only (`jobs.private`), unless they tick "Share this public ad with students in my field".
+Deleting an account deletes its private jobs; shared ones stay, without the name.
+
+**Interview questions.**
+- *Why are magic links safer than passwords here?* Students reuse passwords, and a leaked password database is the
+  usual breach. With links there is nothing to leak: the server only holds hashes of short-lived, single-use tokens.
+  The risk moves to the student's email account, which is usually better protected than a new site's password.
+- *Why does the page POST the token instead of the link signing you in directly?* Link scanners in Outlook and
+  similar services fetch every URL in an email. If a GET signed in, the scanner would consume the single-use link.
+- *Why make jobs private by default?* A student may save an ad they found through a contact or an internal list.
+  Sharing should be a choice, not a side effect.

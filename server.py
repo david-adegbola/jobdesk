@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import secrets
 import uuid
 import webbrowser
 from datetime import date, datetime, timedelta, timezone
@@ -41,6 +42,7 @@ import scraper  # noqa: E402
 import news     # noqa: E402
 import skills   # noqa: E402
 import language  # noqa: E402
+import mailer   # noqa: E402
 from core import fields as core_fields  # noqa: E402
 from core import batch, draft, finnish, llm, rank  # noqa: E402
 
@@ -62,22 +64,41 @@ def route(method, pattern):
     return register
 
 
-LOGIN_ATTEMPTS = {}
-LOGIN_ATTEMPTS_LOCK = threading.Lock()
-LOGIN_WINDOW = 15 * 60
-LOGIN_LIMIT = 10
 CV_CONTENT_FIELDS = {
     "target_role", "full_name", "email", "phone", "location", "summary", "education",
     "experience", "skills", "projects", "hobbies", "certifications", "languages", "links",
 }
+EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+# Sign-in emails are limited per address and per network address, so the form can't be used to flood
+# someone's inbox or to run up the email bill: (key) -> recent request times
+LINK_REQUESTS = {}
+LINK_REQUESTS_LOCK = threading.Lock()
+LINK_WINDOW = 60 * 60
+LINK_LIMIT_PER_EMAIL = 5
+LINK_LIMIT_PER_IP = 30
 
 
-def _password_error(password):
-    if not isinstance(password, str) or len(password) < 12:
-        return "Use a password with at least 12 characters."
-    if len(password) > 256:
-        return "Password must be 256 characters or fewer."
-    return ""
+def _allowed(key, limit):
+    """Record one request for key; False when key already made limit requests in the last LINK_WINDOW."""
+    now_time = datetime.now(timezone.utc).timestamp()
+    with LINK_REQUESTS_LOCK:
+        recent = [t for t in LINK_REQUESTS.get(key, []) if now_time - t < LINK_WINDOW]
+        if len(recent) >= limit:
+            LINK_REQUESTS[key] = recent
+            return False
+        LINK_REQUESTS[key] = recent + [now_time]
+        return True
+
+
+def client_ip(h):
+    """The visitor's address. Behind Caddy every request comes from 127.0.0.1, so the address Caddy adds
+    to X-Forwarded-For is used: the LAST entry, because earlier entries can be written by the visitor."""
+    direct = h.client_address[0]
+    forwarded = h.headers.get("X-Forwarded-For", "")
+    if direct in ("127.0.0.1", "::1") and forwarded:
+        return forwarded.split(",")[-1].strip()
+    return direct
 
 
 def _account_user(user):
@@ -88,22 +109,6 @@ def _set_login_cookie(h, user_id):
     token, expires = auth.new_session(user_id)
     h.auth_cookie = auth.cookie(token, secure=config.SECURE_COOKIE)
     return expires
-
-
-def _rate_limited(email):
-    now_time = datetime.now(timezone.utc).timestamp()
-    with LOGIN_ATTEMPTS_LOCK:
-        attempts = [value for value in LOGIN_ATTEMPTS.get(email, []) if now_time - value < LOGIN_WINDOW]
-        LOGIN_ATTEMPTS[email] = attempts
-        return len(attempts) >= LOGIN_LIMIT
-
-
-def _record_login_attempt(email):
-    now_time = datetime.now(timezone.utc).timestamp()
-    with LOGIN_ATTEMPTS_LOCK:
-        attempts = [value for value in LOGIN_ATTEMPTS.get(email, []) if now_time - value < LOGIN_WINDOW]
-        attempts.append(now_time)
-        LOGIN_ATTEMPTS[email] = attempts
 
 
 # ---------------------------------------------------------------- helpers
@@ -186,7 +191,10 @@ def is_personal(job):
 
 
 def can_see(job, user, owner_key="user_id", fields=None):
-    """Personal jobs: only their administrator. Shared jobs: members whose fields they belong to."""
+    """Private jobs: only the member who collected them. Personal jobs: only their administrator.
+    Shared jobs: members whose fields they belong to."""
+    if job.get("private"):
+        return job.get(owner_key) == user["id"]
     if is_personal(job):
         return bool(user["is_admin"]) and job.get(owner_key) == user["id"]
     return bool(scraper.relevant_fields(job, fields if fields is not None else user_fields(user)))
@@ -231,52 +239,69 @@ def api_auth_me(h, m):
     return {"user": _account_user(h.user) if h.user else None}
 
 
-@route("POST", "/api/auth/login")
-def api_auth_login(h, m):
+@route("GET", "/api/auth/config")
+def api_auth_config(h, m):
+    """What the sign-in page needs to know before anyone is signed in."""
+    return {"open_signup": config.OPEN_SIGNUP, "dev_email": mailer.backend() == "log"}
+
+
+SENT = "If that address can receive email, a sign-in link is on its way. It works once, for 15 minutes."
+
+
+@route("POST", "/api/auth/link")
+def api_auth_link(h, m):
+    """Email a magic link. Existing account: a sign-in link. New address with a name: a link that creates
+    the account when it is opened (so nobody can create an account with someone else's address).
+    The answer is the same whether or not the address has an account, so the form can't reveal who uses JobDesk."""
     body = h.json()
     if not isinstance(body, dict):
-        return h.error(400, "Enter your email and password.")
-    email = body.get("email", "").strip().lower() if isinstance(body.get("email"), str) else ""
-    password = body.get("password", "")
-    if not email or len(email) > 254 or not isinstance(password, str):
-        return h.error(400, "Enter your email and password.")
-    if _rate_limited(email):
-        return h.error(429, "Too many sign-in attempts. Try again in 15 minutes.")
+        return h.error(400, "Enter your email address.")
+    email, name, invite = (body.get(key, "") if isinstance(body.get(key, ""), str) else None
+                           for key in ("email", "name", "invite"))
+    if email is None or name is None or invite is None:
+        return h.error(400, "Enter your email address.")
+    email, name, invite = email.strip().lower(), name.strip(), invite.strip()
+    if not EMAIL_RE.fullmatch(email) or len(email) > 254 or len(name) > 100 or len(invite) > 128:
+        return h.error(400, "Enter a valid email address (and a name of up to 100 characters).")
+    if not _allowed("ip:" + client_ip(h), LINK_LIMIT_PER_IP) or not _allowed("email:" + email, LINK_LIMIT_PER_EMAIL):
+        return h.error(429, "Too many sign-in emails requested. Try again in an hour.")
     user = db.get_user_by_email(email)
-    valid = auth.verify_password(password, user["password_hash"] if user else "")
-    if not user or not user["is_active"] or not valid:
-        _record_login_attempt(email)
-        return h.error(401, "Email or password is incorrect.")
-    with LOGIN_ATTEMPTS_LOCK:
-        LOGIN_ATTEMPTS.pop(email, None)
-    _set_login_cookie(h, user["id"])
-    h.user = user
-    return {"user": _account_user(user)}
-
-
-@route("POST", "/api/auth/register")
-def api_auth_register(h, m):
-    body = h.json()
-    if not isinstance(body, dict):
-        return h.error(400, "Enter your name, email, password and invitation code.")
-    name = body.get("name", "").strip() if isinstance(body.get("name"), str) else ""
-    email = body.get("email", "").strip().lower() if isinstance(body.get("email"), str) else ""
-    password = body.get("password", "")
-    invite = body.get("invite", "").strip() if isinstance(body.get("invite"), str) else ""
-    if not name or len(name) > 100:
-        return h.error(400, "Enter your name (up to 100 characters).")
-    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) or len(email) > 254:
-        return h.error(400, "Enter a valid email address.")
-    if _password_error(password):
-        return h.error(400, _password_error(password))
-    if not invite or len(invite) > 128:
-        return h.error(400, "Enter an invitation code.")
+    if user and not user["is_active"]:
+        return {"ok": True, "message": SENT}
+    new_account = user is None
+    if new_account and (not name or (not config.OPEN_SIGNUP and not invite)):
+        return {"ok": True, "message": SENT + " New here? Choose “Create an account” and add your name"
+                + ("." if config.OPEN_SIGNUP else " and invitation code.")}
+    token = secrets.token_urlsafe(32)
+    db.create_login_link(token, email, name if new_account else "", invite if new_account else "")
     try:
-        user_id = db.create_user(name, email, auth.hash_password(password), invite)
-    except ValueError as error:
-        return h.error(400, str(error))
-    _set_login_cookie(h, user_id)
-    user = db.get_user(user_id)
+        mailer.send(email, "Your JobDesk sign-in link" if not new_account else "Create your JobDesk account",
+                    mailer.sign_in_text(f"{config.PUBLIC_URL}/#/auth?token={token}", new_account))
+    except mailer.MailError as error:
+        print("Email error:", error)
+        return h.error(503, "The sign-in email couldn't be sent right now. Try again in a few minutes.")
+    return {"ok": True, "message": SENT}
+
+
+@route("POST", "/api/auth/verify")
+def api_auth_verify(h, m):
+    """Open a magic link: the page posts the token (a GET would let email scanners use links up)."""
+    body = h.json()
+    token = body.get("token") if isinstance(body, dict) else None
+    link = db.use_login_link(token) if isinstance(token, str) and 20 <= len(token) <= 100 else None
+    if not link:
+        return h.error(400, "This link is invalid, expired or already used. Ask for a new one.")
+    user = db.get_user_by_email(link["email"])
+    if user is None:
+        try:
+            user_id = db.create_user(link["name"] or link["email"].split("@")[0], link["email"],
+                                     None if config.OPEN_SIGNUP else link["invite"])
+        except ValueError as error:
+            return h.error(400, str(error))
+        user = db.get_user(user_id)
+    if not user["is_active"]:
+        return h.error(400, "This account is closed.")
+    _set_login_cookie(h, user["id"])
     h.user = user
     return {"user": _account_user(user)}
 
@@ -287,23 +312,6 @@ def api_auth_logout(h, m):
         db.delete_session(db._hash_token(h.session_token))
     h.auth_cookie = auth.cookie("", max_age=0, secure=config.SECURE_COOKIE)
     h.user = None
-    return {"ok": True}
-
-
-@route("POST", "/api/account/password")
-def api_change_password(h, m):
-    body = h.json()
-    if not isinstance(body, dict):
-        return h.error(400, "Enter your current and new passwords.")
-    current = body.get("current_password", "")
-    password = body.get("new_password", "")
-    user = db.get_user(h.user["id"])
-    if not isinstance(current, str) or not auth.verify_password(current, user["password_hash"]):
-        return h.error(400, "Current password is incorrect.")
-    if _password_error(password):
-        return h.error(400, _password_error(password))
-    db.update_user_password(h.user["id"], auth.hash_password(password))
-    _set_login_cookie(h, h.user["id"])
     return {"ok": True}
 
 
@@ -584,29 +592,21 @@ def api_add_job(h, m):
         return h.error(400, "The public job description must be 20,000 characters or fewer.")
     member_fields = user_fields(h.user)
     matched = scraper.relevant_fields({**body, "source": "Community"}, member_fields)
-    personal = not matched
-    if personal and not h.user["is_admin"]:
+    share = body.get("share") is True
+    if share and not matched:
         labels = " or ".join(scraper.PROFILES[i]["label_en"].lower() for i in member_fields)
         return h.error(400, f"Only {labels} opportunities can be shared here. "
-                            "You can choose more fields on the Account page.")
+                            "You can still save it for yourself, or choose more fields on the Account page.")
     jid = scraper.jobly_id(url)
-    if jid:
-        source, external = "Jobly", jid
-    elif url:
-        source, external = "Manual", url
-    else:
-        source, external = "Manual", f"manual-{uuid.uuid4().hex[:12]}"
+    external = f"jobly-{jid}" if jid else (url or f"manual-{uuid.uuid4().hex[:12]}")
     fields = {key: body.get(key, "").strip() for key in text_fields}
-    fields.update(url=url, title=title, source=source, external_id=external)
-    if personal:      # the administrator's own job: stays in their account, never shared
-        category = body.get("category", "")
-        fields["category"] = (category if category in scraper.PERSONAL_CATEGORIES
-                              else scraper.guess_category(f"{title} {fields['ad_text']}"))
-        fields["source"] = "Personal"
-        fields["external_id"] = f"personal-{h.user['id']}-{external}"
-    else:
-        fields["category"] = scraper.PROFILES[matched[0]]["category"]
-        fields["source"] = "Community"
+    fields.update(url=url, title=title)
+    matched_any = matched or scraper.relevant_fields({**body, "source": "Community"})
+    fields["category"] = scraper.PROFILES[matched_any[0]]["category"] if matched_any else "Other"
+    if share:      # shared with members in the same field (the old community listings)
+        fields.update(source="Community", external_id=external, private=False)
+    else:          # the default: a job this member collects for themselves; nobody else sees it
+        fields.update(source="Saved", external_id=f"private-{h.user['id']}-{external}", private=True)
     fields["contact_name"] = ""
     fields["contact_phone"] = ""
     return {"id": db.add_manual(fields, h.user["id"])}
@@ -841,13 +841,13 @@ def api_finnish_feedback_summary(h, m):
 
 @route("POST", "/api/account/delete")
 def api_account_delete(h, m):
-    """Delete the signed-in account and everything personal in it (see db.delete_user). The password is
-    asked again so a forgotten open session can't be used to delete someone's account."""
+    """Delete the signed-in account and everything personal in it (see db.delete_user). The member types
+    their email address to confirm, so a slip of the mouse can't delete an account."""
     body = h.json()
-    password = body.get("password") if isinstance(body, dict) else None
+    confirm = body.get("confirm_email") if isinstance(body, dict) else None
     user = db.get_user(h.user["id"])
-    if not isinstance(password, str) or not auth.verify_password(password, user["password_hash"]):
-        return h.error(400, "Your password is incorrect.")
+    if not isinstance(confirm, str) or confirm.strip().lower() != (user["email"] or "").lower():
+        return h.error(400, "Type your email address exactly to confirm.")
     try:
         db.delete_user(user["id"])
     except ValueError as error:
@@ -1370,7 +1370,7 @@ class Handler(BaseHTTPRequestHandler):
             morsel = cookie.get("jobdesk_session")
             self.session_token = morsel.value if morsel else ""
             self.user = auth.session_user(self.session_token)
-            public_auth = {"/api/auth/me", "/api/auth/login", "/api/auth/register"}
+            public_auth = {"/api/auth/me", "/api/auth/config", "/api/auth/link", "/api/auth/verify"}
             if path not in public_auth and not self.user:
                 return self.send(401, {"error": "Sign in to continue."})
         for meth, pattern, fn in ROUTES:
@@ -1478,25 +1478,13 @@ def _option(name, default):
 def main():
     db.init()
     if "--provision-admin" in sys.argv:
-        import getpass
-
-        email = input("Administrator email: ").strip()
-        while True:
-            password = getpass.getpass("Administrator password (12+ characters): ")
-            if _password_error(password):
-                print(_password_error(password))
-                continue
-            confirmation = getpass.getpass("Again: ")
-            if password != confirmation:
-                print("They don't match.")
-                continue
-            break
+        email = _option("--provision-admin", "") or input("Administrator email: ")
         try:
-            user = db.provision_admin(email, auth.hash_password(password))
+            user = db.provision_admin(email)
         except ValueError as error:
             print(error, file=sys.stderr)
             raise SystemExit(1)
-        print(f"Administrator account ready for {user['email']}.")
+        print(f"Administrator account ready for {user['email']}. Sign in with a link sent to that address.")
         return
     if "--create-invitations" in sys.argv:
         codes, expires = create_invitations(int(_option("--create-invitations", "1")), int(_option("--days", "7")))

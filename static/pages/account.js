@@ -66,33 +66,6 @@ register({
         : "This server runs in mock mode: drafts are made locally from your CV and nothing is sent to an AI service, whatever you choose here."),
       h("label", { class: "check" }, aiToggle, " Allow AI drafting with my CV facts (off by default)"), aiFeedback));
 
-    const passwordFeedback = h("div", { "aria-live": "polite" });
-    const passwordForm = h("form", { class: "account-form", onsubmit: async event => {
-      event.preventDefault();
-      const current = passwordForm.elements.current_password.value;
-      const next = passwordForm.elements.new_password.value;
-      if (next !== passwordForm.elements.confirm_password.value) {
-        passwordFeedback.replaceChildren(message("The new passwords don't match.", true));
-        return;
-      }
-      try {
-        await api("/api/account/password", { method: "POST", body: {
-          current_password: current, new_password: next,
-        } });
-        passwordForm.reset();
-        passwordFeedback.replaceChildren(message("Password updated. Other active sessions have been signed out."));
-      } catch (error) { passwordFeedback.replaceChildren(message(error.message, true)); }
-    } },
-      h("label", { class: "field" }, "Current password",
-        h("input", { name: "current_password", type: "password", autocomplete: "current-password", required: true })),
-      h("label", { class: "field" }, "New password (at least 12 characters)",
-        h("input", { name: "new_password", type: "password", autocomplete: "new-password", minlength: 12, maxlength: 256, required: true })),
-      h("label", { class: "field" }, "Confirm new password",
-        h("input", { name: "confirm_password", type: "password", autocomplete: "new-password", minlength: 12, maxlength: 256, required: true })),
-      h("button", { type: "submit" }, "Change password"), passwordFeedback);
-    main.append(h("section", { class: "card account-section" },
-      h("h2", null, "Change password"), passwordForm));
-
     if (state.user.is_admin) {
       const invitationArea = h("div");
       const invitationList = h("div", { class: "invite-list" });
@@ -149,14 +122,14 @@ register({
     const deleteForm = h("form", { class: "account-form", onsubmit: async event => {
       event.preventDefault();
       try {
-        await api("/api/account/delete", { method: "POST", body: { password: deleteForm.elements.delete_password.value } });
+        await api("/api/account/delete", { method: "POST", body: { confirm_email: deleteForm.elements.confirm_email.value } });
         window.location.reload();
       } catch (error) { deleteFeedback.replaceChildren(message(error.message, true)); }
     } },
       h("p", null, "Deletes your account, CVs, applications, settings, reading list and feedback, straight away. " +
         "Job ads you shared stay visible to others, without your name. This can't be undone; download your data first if you want a copy."),
-      h("label", { class: "field" }, "Your password, to confirm",
-        h("input", { name: "delete_password", type: "password", autocomplete: "current-password", required: true })),
+      h("label", { class: "field" }, `Type your email address (${state.user.email}) to confirm`,
+        h("input", { name: "confirm_email", type: "email", autocomplete: "off", required: true })),
       h("button", { type: "submit", class: "danger secondary" }, "Delete my account"), deleteFeedback);
     if (!state.user.is_admin || state.user.id !== 1) {
       main.append(h("section", { class: "card account-section" }, h("h2", null, "Delete my account"), deleteForm));

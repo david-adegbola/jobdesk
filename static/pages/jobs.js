@@ -72,13 +72,15 @@ function addForm(state, onAdded) {
   const field = (name, label, attrs = {}) =>
     h("label", { class: "field" }, label, f[name] = h(attrs.tag || "input", { name, ...attrs, tag: null }));
   const out = h("div");
+  const share = h("input", { type: "checkbox" });
   const form = h("form", { class: "grid", onsubmit: async e => {
       e.preventDefault();
       const body = Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value]));
+      body.share = share.checked;
       try {
         await api("/api/jobs", { method: "POST", body });
         form.reset();
-        out.replaceChildren(message("Job added."));
+        out.replaceChildren(message(share.checked ? "Job added and shared." : "Job saved for you."));
         onAdded();
       } catch (err) { out.replaceChildren(message(err.message, true)); }
     } },
@@ -92,12 +94,13 @@ function addForm(state, onAdded) {
         state.job_types.map(t => h("option", { value: t }, t)))),
     h("label", { class: "field", style: "grid-column: 1 / -1" }, "Public job description (for CV matching)",
       f.ad_text = h("textarea", { name: "ad_text" })),
+    h("label", { class: "check", style: "grid-column: 1 / -1" }, share,
+      " Share this public ad with students in my field (otherwise only you see it)"),
     h("div", { class: "row" }, h("button", { type: "submit" }, "Add job")));
   return h("details", { class: "card" },
     h("summary", null, "Add job manually"),
-    h("p", { class: "muted small" }, state.user.is_admin
-      ? "Jobs in your fields that you add are visible to members in those fields; don't paste private contact details. Jobs outside every field stay in your account only."
-      : "Community listings are visible to members in the same field. Share only public job or internship ads in your fields; don't paste private contact details."),
+    h("p", { class: "muted small" }, "Jobs you add are private: only you see them. If it's a public ad, you can share it " +
+      "with students in the same field. Don't paste private contact details."),
     form, out);
 }
 
@@ -291,7 +294,7 @@ register({
         h("td", null, j.is_new ? h("div", null, h("span", { class: "tag new" }, "NEW")) : "",
           j.url ? h("a", { href: j.url, target: "_blank", rel: "noopener", ...sourceAttrs(j) }, j.title)
             : h("span", sourceAttrs(j), j.title),
-          j.personal ? h("div", null, h("span", { class: "tag" }, "Only you")) : "",
+          j.personal || j.private ? h("div", null, h("span", { class: "tag" }, "Only you")) : "",
           j.source !== "Jobly" || j.manual ? h("div", { class: "muted small" },
             j.source === "Community" ? "shared by a member" : j.manual ? "added by hand" : j.source) : ""),
         h("td", null, j.company, j.location ? h("div", { class: "muted small" }, places(j.location)) : ""),
