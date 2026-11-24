@@ -75,7 +75,10 @@ evaluated or certified against WCAG 2.1 Level AA.
   and method, so the same comparison never runs twice; editing the CV or the ad marks it out of
   date. *Not a fit* is a status, so you can set it aside. Statuses: Saved, Shortlisted, Applied,
   Interview, Offer, Rejected, Not a fit.
-- **Prepare** (menu): for one of your jobs, a tailored CV, a cover letter and an application email,
+- **Prepare** (Applications): a workspace with the three documents on the left (with the sentence checks), the
+  letter edited as a page in the middle (paragraphs the AI wrote are shaded lilac, paragraphs with a sentence your CV
+  doesn't support are shaded coral with a note), and a live A4 preview on the right that follows your typing. With
+  both languages written, a switch shows one at a time. For one of your jobs, a tailored CV, a cover letter and an application email,
   in English, Finnish or both. Set your **master profile** once: the main CV, and practical details
   (start date, hours, places, work permit, licences) that the letter may use. The tailored CV is a
   copy of the main CV with a summary written for the job and the ad's skills first. The letter
