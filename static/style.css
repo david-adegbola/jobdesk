@@ -741,11 +741,38 @@ label.field.inline > select { min-height: 40px; }
   }
 }
 
-/* What to study */
-.skill-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.study-role { margin: 16px 0; }
+/* What to study: one card per type of role, "Study next" beside "Already in your CVs" */
+.skill-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.skill-list li { display: grid; gap: 4px; }
+.skill-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.skill-line .tag { margin: 0; }
+.study-role { margin: 16px 0; display: grid; gap: 18px; }
+.study-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; }
+.study-head h2 { margin: 0; }
+.study-head p { margin: 0; }
 .study-role h2 .tag { margin-left: 8px; vertical-align: middle; }
-.study-role h3 { margin: 8px 0; }
+.study-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.study-col { padding: 18px 20px; border-radius: var(--radius-lg); }
+.study-col.next { background: var(--fit-gap-bg); }
+.study-col.have { background: var(--fit-strength-bg); }
+.study-col.next .tag { background: var(--bg-surface); color: var(--fit-gap-fg); }
+.study-col.have .tag { background: var(--bg-surface); color: var(--fit-strength-fg); }
+.study-col h3 { margin: 0 0 12px; font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; }
+.study-col .muted { color: var(--text-primary); }
+.study-role > p { margin: 0; }
+.study-role > .row { margin: 0; }
+@media (max-width: 760px) { .study-cols { grid-template-columns: 1fr; } }
+
+/* Shortlist results: ranked rows */
+.shortlist-title { margin: 0; font-size: 1.5rem; }
+.shortlist-list + p { margin-top: 14px; }
+.shortlist-list { margin: 0; padding: 0; list-style: none; border-top: 1.5px solid var(--border-strong); }
+.shortlist-list .rank {
+  display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--bg-inverse); color: var(--text-inverse);
+  font-family: var(--font-display); font-weight: 800; font-size: 1.375rem;
+}
+.shortlist-list .job-card { grid-template-columns: 56px minmax(0, 1fr) auto; }
+.shortlist-quote q { display: block; margin-top: 8px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--bg-sunken); }
 
 /* All / English / Finnish switch: radio buttons drawn as one pill segmented control */
 .segmented { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; padding: 4px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-full); background: var(--bg-surface); }

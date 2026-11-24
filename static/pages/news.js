@@ -96,7 +96,7 @@ register({
       sourceList);
 
     main.append(
-      h("h1", null, "News"),
+      h("h1", null, "Forestry ", h("span", { class: "serif" }, "news")),
       h("p", { class: "muted news-intro" },
         "Forestry and forest-bioeconomy developments for Finland, with extra coverage of Joensuu and North Karelia. Curated for research, sustainable forest management, policy, markets and forest technology. ",
         h("a", { href: "#/jobs" }, "Browse matching jobs"), "."),

@@ -250,7 +250,7 @@ register({
       root.replaceChildren(
         h("header", { class: "home-heading" },
           h("div", null, h("p", { class: "home-eyebrow" }, "YOUR FORESTRY & BIOECONOMY DESK"),
-            h("h1", null, "For you"),
+            h("h1", null, "For ", h("span", { class: "serif" }, "you")),
             h("p", { class: "home-intro" }, "A focused view of opportunities, research and next steps—shaped around what you care about.")),
           h("a", { class: "btn secondary home-browse", href: "#/jobs" }, "Browse all jobs")),
         h("details", { class: "card home-preferences", open: !saved },

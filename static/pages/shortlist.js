@@ -39,9 +39,10 @@ register({
     f.skills = h("textarea", { rows: 2, placeholder: "Python, SQL, Excel, customer service" });
     if (cvs.length) { cvPicker.value = String(cvs[0].id); f.skills.value = skillsFromCv(cvs[0]).join(", "); }
 
-    main.append(h("h1", null, "Shortlist"),
-      h("p", { class: "muted" }, "Paste up to 20 job or internship ads. For each one you see what it says about Finnish, " +
-        "the exact sentence it's based on, and how well it fits your skills. Ads you can realistically apply to come first."),
+    main.append(h("div", { class: "page-head" }, h("div", null,
+        h("h1", null, "Shortlist ", h("span", { class: "serif" }, "a stack of ads")),
+        h("p", { class: "muted" }, "Paste up to 20 job or internship ads. For each one you see what it says about Finnish, " +
+          "the exact sentence it's based on, and how well it fits your skills. Ads you can realistically apply to come first."))),
       state.llm.mode === "live" ? "" : h("p", { class: "muted small" },
         "AI checking is off on this server, so the keyword rule is used: it can say “required” or “unclear”, but can't tell “an advantage” from “not needed”."),
       h("form", { class: "card grid", onsubmit: submit },
@@ -49,7 +50,7 @@ register({
         h("label", { class: "field" }, "Skills from my CV", cvPicker),
         h("label", { class: "field", style: "grid-column: 1 / -1" }, "My skills (separated by commas)", f.skills),
         h("p", { class: "muted small", style: "grid-column: 1 / -1" },
-          `Your Finnish: ${state.finnish_level} (change it on the Account page). Only the ads' text is sent to the AI service; your skills stay here.`),
+          `Your Finnish: ${state.finnish_level} (change it under Profile). Only the ads' text is sent to the AI service; your skills stay here.`),
         h("div", null, h("button", { type: "submit" }, "Check the ads"))),
       out);
 
@@ -71,29 +72,32 @@ register({
         h("p", null, "Some input was skipped:"), h("ul", null, result.errors.map(e => h("li", null, `${e.item}: ${e.message}`)))) : "";
       if (!result.rows.length) return out.replaceChildren(errors);
       const hide = h("input", { type: "checkbox", onchange: () => {
-        for (const tr of table.querySelectorAll("tbody tr")) tr.hidden = hide.checked && tr.dataset.level === "required";
+        for (const row of list.children) row.hidden = hide.checked && row.dataset.level === "required";
       } });
-      const table = h("table", null,
-        h("thead", null, h("tr", null, ["Rank", "Ad", "Finnish", "Evidence from the ad", "Your skills", ""].map(t => h("th", null, t)))),
-        h("tbody", null, result.rows.map((row, i) => {
-          const fin = row.finnish;
-          const [label, cls] = FINNISH[fin.level] || FINNISH.unclear;
-          return h("tr", { "data-level": fin.level },
-            h("td", null, h("strong", null, i + 1)),
-            h("td", null, row.url ? h("a", { href: row.url, target: "_blank", rel: "noopener" }, row.title) : row.title),
-            h("td", null, h("span", { class: cls }, label), h("div", { class: "muted small" }, METHOD[fin.method] || ""),
-              feedbackControls(fin, null)),
-            h("td", null, fin.evidence?.length ? h("q", null, fin.evidence[0]) : "",
-              h("div", { class: "small" }, fin.explanation_en || "")),
-            h("td", null, row.matched_skills.join(", ") || "–", h("div", { class: "muted small" }, `${row.skill_score}% of your skills`)),
-            h("td", null, h("button", { class: "link small", type: "button", onclick: () => {
-              try { sessionStorage.setItem(DRAFT_AD_KEY, JSON.stringify({ title: row.title, text: row.ad_text })); } catch (e) { /* storage blocked */ }
-              location.hash = "#/draft";
-            } }, "Draft an answer")));
-        })));
+      // Ranked rows: the rank, the ad, what it says about Finnish (with the sentence and "Was this right?"),
+      // and how many of your skills it mentions
+      const list = h("ol", { class: "job-list shortlist-list" }, result.rows.map((row, i) => {
+        const fin = row.finnish;
+        const [label, cls] = FINNISH[fin.level] || FINNISH.unclear;
+        return h("li", { class: "job-card", "data-level": fin.level },
+          h("span", { class: "rank", "aria-label": `Rank ${i + 1}` }, String(i + 1)),
+          h("div", { class: "job-main" },
+            h("h3", null, row.url ? h("a", { href: row.url, target: "_blank", rel: "noopener" }, row.title) : row.title),
+            h("p", { class: "job-tags" }, h("span", { class: cls }, label),
+              row.matched_skills.length ? h("span", { class: "tag strength" }, `✓ ${row.matched_skills.slice(0, 4).join(", ")}`) : "",
+              h("span", { class: "tag" }, `${row.skill_score}% of your skills`)),
+            fin.evidence?.length ? h("p", { class: "shortlist-quote" }, h("q", null, fin.evidence[0])) : "",
+            fin.explanation_en ? h("p", { class: "small muted" }, fin.explanation_en) : "",
+            h("div", { class: "small muted" }, METHOD[fin.method] || "", " ", feedbackControls(fin, null))),
+          h("div", { class: "job-actions" }, h("button", { class: "secondary small", type: "button", onclick: () => {
+            try { sessionStorage.setItem(DRAFT_AD_KEY, JSON.stringify({ title: row.title, text: row.ad_text })); } catch (e) { /* storage blocked */ }
+            location.hash = "#/draft";
+          } }, "Draft an answer")));
+      }));
       out.replaceChildren(errors,
-        h("p", { class: "row" }, h("label", { class: "check" }, hide, " Hide “Finnish required” ads")),
-        h("div", { class: "scroll" }, table),
+        h("div", { class: "row" }, h("h2", { class: "shortlist-title" }, `${result.rows.length} ad${result.rows.length === 1 ? "" : "s"}, ranked`),
+          h("label", { class: "check" }, hide, " Hide “Finnish required” ads")),
+        list,
         h("p", { class: "muted small" }, "Order: Finnish not needed, then an advantage, then unclear, then required" +
           (result.finnish_level === "fluent" ? " (ignored, because you said your Finnish is fluent)" : "") +
           "; within each group, ads that match more of your skills come first. Always read the ad itself before applying."));
