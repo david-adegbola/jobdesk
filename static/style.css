@@ -300,7 +300,7 @@ th > button.sort {
   min-height: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; background: none; border: 0;
 }
 th > button.sort:hover { background: none; color: var(--link); }
-th[aria-sort] > button.sort { color: var(--link); }
+th[aria-sort] > button.sort { color: var(--text-primary); text-decoration: underline; }   /* the link blue on the header grey is below 4.5:1 */
 
 /* ------------------------------------------------------------------ tags (the one rounded element) */
 .tag {
@@ -482,7 +482,6 @@ label.field.inline > select { min-height: 40px; }
 .draft-sentences > li { margin-bottom: 12px; padding: 6px 8px; }
 .draft-sentences > li.unsupported { background: var(--status-rejected-bg); color: var(--status-rejected-fg); }
 
-button.danger { background: var(--status-rejected-fg); color: #fff; }
 
 /* An element with the hidden attribute stays hidden even when a class gives it a display value */
 [hidden] { display: none !important; }

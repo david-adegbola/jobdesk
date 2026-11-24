@@ -157,7 +157,7 @@ register({
         "Job ads you shared stay visible to others, without your name. This can't be undone; download your data first if you want a copy."),
       h("label", { class: "field" }, "Your password, to confirm",
         h("input", { name: "delete_password", type: "password", autocomplete: "current-password", required: true })),
-      h("button", { type: "submit", class: "danger" }, "Delete my account"), deleteFeedback);
+      h("button", { type: "submit", class: "danger secondary" }, "Delete my account"), deleteFeedback);
     if (!state.user.is_admin || state.user.id !== 1) {
       main.append(h("section", { class: "card account-section" }, h("h2", null, "Delete my account"), deleteForm));
     }

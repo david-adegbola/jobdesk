@@ -48,7 +48,8 @@ register({
   id: "tracker", title: "Tracker",
   async render(main) {
     const state = await getState();
-    const board = h("div", { class: "kanban" });
+    // The board scrolls sideways, so it must be reachable with the keyboard (WCAG 2.1.1)
+    const board = h("div", { class: "kanban", tabindex: 0, role: "region", "aria-label": "Applications by status" });
     main.append(h("h1", null, "Tracker"),
       h("div", { class: "row" },
         h("a", { class: "btn secondary", href: "/api/calendar.ics", download: "jobdesk.ics" }, "Export deadlines and interviews (.ics)"),
