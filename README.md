@@ -157,7 +157,10 @@ evaluated or certified against WCAG 2.1 Level AA.
 - **Tracker:** Saved / Applied / Interview / Offer / Rejected, private to the signed-in member. Each card holds the date applied, CV,
   link sent, contact, notes and the next action. Overdue actions are red; "Applied" with no change
   for 5 days shows a `Call <contact>` reminder. Deadlines and interviews export as `.ics`.
-- **My CVs:** preview a fictional two-page CV, then create an editable draft from its structure;
+- **My CV:** your CVs on the left (the main one first, tailored copies marked), the chosen CV in a section editor in
+  the middle, and a rough live preview on the right ("CV as PDF" shows the real page). Switching CV, or making a new
+  one, asks before discarding unsaved changes. New CVs start from the example below.
+  Preview a fictional two-page CV, then create an editable draft from its structure;
   the sample is not saved to the account. Create multiple private Finnish or English CVs with
   profile, education, experience, skills, research/projects, certifications, languages and links.
   Edit, copy or delete a CV, then
@@ -176,7 +179,10 @@ evaluated or certified against WCAG 2.1 Level AA.
   one exists (imported role CVs come in Finnish/English pairs; drafts from What to study are
   rebuilt in that language). Without one, the text stays as written and only the PDF headings
   change, so translate it before saving.
-- **Account:** download your private data, sign out, or delete the account (type your email to
+- **Account** (Profile, from the avatar): your progress as colour blocks (jobs checked against your CV, applications
+  sent, Finnish level), a link to What to study, and the settings as rows: fields and Finnish, the "AI with your CV"
+  switch, data download, invitations (administrator), deleting the account and signing out.
+  Download your private data, sign out, or delete the account (type your email to
   confirm). There are no passwords: you sign in with a one-time link sent to your email
   (`JOBDESK_EMAIL_BACKEND`, see `mailer.py`). Administrators can create single-use, seven-day
   invitation codes; with `JOBDESK_OPEN_SIGNUP=0` only people with a code can create an account.
