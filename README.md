@@ -42,7 +42,13 @@ evaluated or certified against WCAG 2.1 Level AA.
   only if you turn on "AI drafting" under Account.
 - **Fields and Finnish level** (Account): choose your fields; Jobs, Match and What to study follow them. The
   Finnish level orders the Shortlist (fluent speakers aren't affected). Field profiles are JSON files in `fields/`.
-- **For you** (forestry members): a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
+- **Home** (everyone): a short brief written from your own data (nearest deadline, overdue next steps, jobs not yet
+  checked against your CV, your closest match), colour blocks for deadlines this week, applications in progress,
+  preparing documents and what to study, a bar to paste a job link (it opens the Jobs page's add form), the jobs that fit
+  your CV best, and the dates coming up. No AI and nothing stored: it reads the Jobs, CVs and Tracker data.
+- **Menu:** Home, Discover (Jobs, For you, News), My jobs (Shortlist), Applications (Tracker, Prepare, Draft an answer),
+  My CV; Profile (Account, What to study) opens from the avatar. On a phone the menu is a bottom tab bar.
+- **For you** (forestry members, under Discover): a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
 - **Jobs** has two views. **My jobs** holds the ads you saved or added, with a count per status.
   **Discover** holds the shared listings in your fields; **Save** moves one to My jobs.
   **Add a job:** paste a link and click **Read this link**. JobDesk reads the ad's schema.org

@@ -193,7 +193,7 @@ function deadlineEntry(item) {
 }
 
 register({
-  id: "home", fields: ["forestry"], title: "For you",
+  id: "foryou", fields: ["forestry"], title: "For you",
   async render(main) {
     const root = h("div");
     main.append(await gettingStarted(), root);

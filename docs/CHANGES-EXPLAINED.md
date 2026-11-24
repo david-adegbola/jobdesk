@@ -858,3 +858,37 @@ of them in one place.
   refuses (409) to overwrite edited documents unless the student confirms.
 - *What isn't verified?* A true fact used in a misleading way, and the quality of the Finnish. The page says to read
   and edit everything before sending.
+
+## Redesign: a new look, a section menu and a Home for everyone
+
+**What changed**
+- A new design system ("Tori × Muistikirja", designed in Figma first): bold colour blocks (cobalt, coral, butter,
+  lilac, forest, botanical) for things to notice, and calm paper surfaces for things to read and write. Fonts:
+  Bricolage Grotesque for headings, Instrument Sans for everything else, Instrument Serif Italic for one word of
+  emphasis. Light and dark mode.
+- The menu shows five sections instead of ten pages: Home, Discover, My jobs, Applications, My CV. Profile opens from
+  the avatar. A section with several pages shows them as tabs under the header. On a phone the menu is a bottom tab
+  bar with icons.
+- Home is new and is for everyone. The forestry "For you" desk moved to a tab under Discover.
+
+**How it works**
+1. `static/style.css` defines the tokens under the same names as the Figma variables (`--bg-canvas`,
+   `--block-coral`, `--status-applied-bg` ...). The previous design's names (`--layer-01`, `--interactive` ...) are kept
+   as aliases pointing at the new tokens, so pages not yet redesigned still get the new colours.
+2. `static/core.js` has a `SECTIONS` list mapping page ids to sections. The menu links to each section's first visible
+   page; `#subnav` lists the section's pages. Page ids and routes didn't change, except that the forestry desk's id is
+   now `foryou` and `home` is the new dashboard.
+3. `static/pages/dashboard.js` builds Home from `/api/jobs`, `/api/cvs`, `/api/applications` and `/api/auth/me`.
+   The brief is written by plain rules, not AI: the nearest deadline of a job you haven't applied to yet, an overdue
+   next step or a follow-up reminder, how many saved jobs haven't been checked against your CV, and your closest match.
+   "Picked for you" ranks jobs by the AI fit score when one exists and is current, otherwise by the keyword match.
+4. The paste bar sends the link to `#/jobs?add=<link>`, the same address the bookmarklet uses, so reading and saving
+   the ad stays in one place.
+
+**Interview questions**
+- *Why aliases instead of renaming every variable?* The look changes everywhere at once, and pages are redesigned
+  one at a time without breaking the ones still waiting.
+- *Why does a deadline stop counting once you've applied?* It no longer asks anything of you; the next step or the
+  interview date matters instead.
+- *Why no AI on Home?* The brief must be right every time and cost nothing to open; plain rules over your own data
+  do that.

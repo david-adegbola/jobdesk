@@ -146,7 +146,7 @@ const ICON = {
 };
 const SECTIONS = [
   { id: "home", title: "Home", pages: ["home"] },
-  { id: "discover", title: "Discover", pages: ["jobs", "news"] },
+  { id: "discover", title: "Discover", pages: ["jobs", "foryou", "news"] },
   { id: "myjobs", title: "My jobs", pages: ["shortlist"] },
   { id: "applications", title: "Applications", short: "Tracker", pages: ["tracker", "prepare", "draft"] },
   { id: "cv", title: "My CV", pages: ["cvs"] },
