@@ -54,17 +54,18 @@ function checksView(doc) {
 
 function documentView(doc, reload) {
   const L = doc.letter, out = h("div", { "aria-live": "polite" });
-  const field = (label, value, attrs = {}) => {
+  const heading = h("h2", null, `${LANGUAGE[doc.language]}`, doc.edited ? h("span", { class: "tag" }, " edited") : "");
+  const field = (label, value, { wide, ...attrs } = {}) => {
     const el = h(attrs.rows ? "textarea" : "input", { ...attrs, "aria-label": label });
     el.value = value || "";
-    return [h("label", { class: "field", style: attrs.rows ? "grid-column: 1 / -1" : "" }, label, el), el];
+    return [h("label", { class: "field", style: attrs.rows || wide ? "grid-column: 1 / -1" : "" }, label, el), el];
   };
-  const [dateF, date] = field("Date", L.date), [subjectF, subject] = field("Subject", L.subject);
+  const [dateF, date] = field("Date", L.date), [subjectF, subject] = field("Subject", L.subject, { wide: true });
   const [recF, recipient] = field("Recipient", L.recipient, { rows: 3 });
   const [greetF, greeting] = field("Greeting", L.greeting), [closeF, closing] = field("Closing", L.closing);
   const paragraphs = L.paragraphs.map((p, i) => field(`Paragraph ${i + 1}`, p, { rows: 4 }));
   const [toF, to] = field("To", doc.email.to, { type: "text", placeholder: "the address in the ad, if any" });
-  const [esF, esubject] = field("Email subject", doc.email.subject), [ebF, ebody] = field("Email", doc.email.body, { rows: 12 });
+  const [esF, esubject] = field("Email subject", doc.email.subject, { wide: true }), [ebF, ebody] = field("Email", doc.email.body, { rows: 12 });
 
   async function save() {
     try {
@@ -73,6 +74,7 @@ function documentView(doc, reload) {
                   closing: closing.value, paragraphs: paragraphs.map(([, el]) => el.value) },
         email: { to: to.value, subject: esubject.value, body: ebody.value } } });
       out.replaceChildren(message("Saved. Your edits are kept if you write the documents again for another language."));
+      if (!heading.querySelector(".tag")) heading.append(h("span", { class: "tag" }, " edited"));
       return true;
     } catch (err) { out.replaceChildren(message(err.message, true)); return false; }
   }
@@ -84,7 +86,7 @@ function documentView(doc, reload) {
     `?subject=${encodeURIComponent(esubject.value)}&body=${encodeURIComponent(ebody.value)}`;
 
   return h("section", { class: "card" },
-    h("h2", null, `${LANGUAGE[doc.language]}`, doc.edited ? h("span", { class: "tag" }, " edited") : ""),
+    heading,
     checksView(doc),
     h("h3", null, "Tailored CV"),
     doc.tailored_cv ? h("p", null, `“${doc.tailored_cv.title}”: the summary is written for this job and the skills it asks for come first. `,
