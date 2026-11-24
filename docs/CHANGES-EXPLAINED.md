@@ -892,3 +892,40 @@ of them in one place.
   interview date matters instead.
 - *Why no AI on Home?* The brief must be right every time and cost nothing to open; plain rules over your own data
   do that.
+
+## Redesign, continued: every page in the new layout
+
+**What changed**
+- **Jobs became two pages** built from one function (`renderJobs(main, query, mode)` in `static/pages/jobs.js`):
+  Discover → Jobs (shared ads, Save) and My jobs → Saved jobs (your jobs, status, Shortlist, Prepare, the add form).
+  The table became rows: a fit ring, the employer, place and deadline, and tags for type, matching CV words and the
+  Finnish requirement, with the sentence it's based on in a fold-out.
+- **Prepare** is a workspace: the documents and checks on the left, the letter edited as a page in the middle, a live
+  A4 preview on the right. Paragraphs written from CV facts are shaded lilac; a paragraph with an unsupported sentence
+  is shaded coral and says which sentence and what to do.
+- **My CV** lists your CVs (main first, tailored copies marked) beside a section editor and a live preview.
+- **Profile** shows progress blocks from your own jobs and tracker, and the settings as rows with fold-out forms and a
+  real switch for "AI with your CV".
+- **Tracker** cards show one next step each; **Draft an answer** has the question on the left and the answer on the
+  right; **What to study** shows "Study next" beside "Already in your CVs"; **Shortlist** results are ranked rows.
+
+**How it works**
+1. Only the front end changed. Every page calls the same APIs as before; no route, table or test changed.
+2. Old links keep working: `#/jobs?add=<link>` (the bookmarklet's address) forwards to `#/myjobs?add=<link>`.
+3. The live previews (letter, CV) are plain HTML redrawn on every keystroke. They are rough on purpose; the PDF still
+   comes from the LaTeX template, and each preview says so.
+4. The fit ring uses the AI fit score only while it is current (the ad and the CV haven't changed since); otherwise it
+   shows the keyword match, and its accessible label says which.
+5. Each page was checked in headless Firefox in an offline container with invented data: the main actions click
+   through, nothing scrolls sideways at phone width, and the pages were looked at in light, dark and phone views.
+
+**Interview questions**
+- *Why split the Jobs page instead of keeping its tab switch?* The menu already says Discover and My jobs. A second
+  switch with the same names inside one page made students ask which one they were in.
+- *Why does a deadline turn red only before you apply?* After applying, the deadline asks nothing of you, so warning
+  about it is noise.
+- *What did the browser checks catch?* A link that the hash router read as a page name, an old CSS rule that put CV
+  sections side by side, fields hidden under the sticky header (fixed with `scroll-padding-top`), and a status tag
+  printed as "[object HTMLSpanElement]" because `replaceChildren` doesn't flatten nested lists.
+- *What is still only in the Figma file?* Career goals, Finnish lessons, campus events and a "check all saved jobs"
+  button. Each needs new data or a new endpoint, so they are features, not styling.
