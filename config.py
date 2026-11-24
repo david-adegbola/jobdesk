@@ -14,6 +14,7 @@ JOBDESK_PREP_DIR          prep templates (default: <owner dir>/prep when it exis
 JOBDESK_CV_TEMPLATE_OWNER the name written in the shared LaTeX template's footer. Member PDFs replace
                           it with the member's own name; when unset, member PDFs are not built.
 JOBDESK_DEFAULT_FIELDS    fields for members who haven't chosen any (default forestry)
+JOBDESK_AI_DAILY_LIMIT    AI checks per member per day on the Shortlist page (default 200)
 JOBDESK_ENABLE_DUUNITORI  1 to read Duunitori search pages (default 0: its robots.txt disallows
                           generic crawlers, and the robots.txt check would skip it anyway).
 """
@@ -41,3 +42,5 @@ SOURCES_FILE = APP / "sources.json"         # job sources, their fields and robo
 # Fields for members who haven't chosen yet (comma-separated ids; the pilot asks everyone on first login)
 DEFAULT_FIELDS = [f.strip() for f in os.environ.get("JOBDESK_DEFAULT_FIELDS", "forestry").split(",") if f.strip()]
 ENABLE_DUUNITORI = os.environ.get("JOBDESK_ENABLE_DUUNITORI", "0") == "1"
+# Pilot cost guard: AI checks per member per day on the Shortlist page
+AI_DAILY_LIMIT = int(os.environ.get("JOBDESK_AI_DAILY_LIMIT", "200"))

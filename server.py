@@ -725,7 +725,7 @@ def api_update_account_ai(h, m):
 
 SHORTLIST_MAX_ADS = 20          # per request: each ad is one AI call in live mode
 SHORTLIST_MAX_URLS = 10         # links are fetched one by one, with the robots.txt check
-SHORTLIST_DAILY_LIMIT = 200     # ads per member per day in live mode: a cost guard for the pilot
+SHORTLIST_DAILY_LIMIT = config.AI_DAILY_LIMIT   # ads per member per day in live mode: a pilot cost guard
 SHORTLIST_USAGE = {}            # (user id, date) -> ads classified with the AI today
 SHORTLIST_LOCK = threading.Lock()
 
@@ -1445,6 +1445,36 @@ def prune_unrelated_jobs(apply=False):
     print(f"Deleted {db.delete_jobs(job['id'] for job in jobs)} jobs.")
 
 
+# ---------------------------------------------------------------- pilot administration (command line)
+
+def create_invitations(count, days):
+    """count single-use invitation codes valid for days days, for handing out to a pilot group."""
+    if not 1 <= count <= 500 or not 1 <= days <= 120:
+        raise ValueError("Create 1–500 codes, valid for 1–120 days.")
+    codes = []
+    for _ in range(count):
+        token, expires = auth.new_invitation(days)
+        db.create_invitation(SHARED_DATA_OWNER, token, expires.isoformat(timespec="seconds"))
+        codes.append(token)
+    return codes, expires
+
+
+def delete_member_accounts(apply=False):
+    """End of the pilot: every account except the administrator's, with everything personal in it.
+    Without apply it only counts them (a dry run). Returns the number of accounts."""
+    with db.connect() as conn:
+        ids = [row["id"] for row in conn.execute("SELECT id FROM users WHERE id != ?", (SHARED_DATA_OWNER,))]
+    if apply:
+        for user_id in ids:
+            db.delete_user(user_id)
+    return len(ids)
+
+
+def _option(name, default):
+    """The value after --name on the command line, or default."""
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv and sys.argv.index(name) + 1 < len(sys.argv) else default
+
+
 def main():
     db.init()
     if "--provision-admin" in sys.argv:
@@ -1467,6 +1497,20 @@ def main():
             print(error, file=sys.stderr)
             raise SystemExit(1)
         print(f"Administrator account ready for {user['email']}.")
+        return
+    if "--create-invitations" in sys.argv:
+        codes, expires = create_invitations(int(_option("--create-invitations", "1")), int(_option("--days", "7")))
+        print(f"{len(codes)} single-use invitation codes, valid until {expires:%Y-%m-%d %H:%M} UTC:")
+        print("\n".join(codes))
+        return
+    if "--delete-member-accounts" in sys.argv:
+        apply = "--apply" in sys.argv
+        if apply:
+            print(f"Backup saved to {db.backup('before-deleting-members')}")
+        n = delete_member_accounts(apply)
+        print(f"Deleted {n} member accounts. The backup above and the daily backups still contain their data: "
+              "delete them once you have checked the result (see docs/PILOT-DEPLOYMENT.md)." if apply else
+              f"{n} member accounts would be deleted. Run again with --apply to delete them.")
         return
     if "--prune-unrelated-jobs" in sys.argv:
         prune_unrelated_jobs(apply="--apply" in sys.argv)

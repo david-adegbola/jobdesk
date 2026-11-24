@@ -624,3 +624,25 @@ someone's account. `db.delete_user` runs in one transaction:
 **Interview question.** *Why keep shared ads after deletion; isn't that personal data?* A shared ad is the
 employer's public text. The member's name isn't stored with it, and the contact fields are always cleared when a
 member shares an ad. Deleting it would remove it from other students' trackers.
+
+---
+
+## Pilot P4: a pilot deployment
+
+- **`--create-invitations N --days D`** prints N single-use invitation codes, valid for D days (1–500 codes,
+  1–120 days). Previously there was one 7-day code per click.
+- **`--delete-member-accounts`** counts every account except the administrator's (a dry run). With **`--apply`** it
+  takes a backup, then deletes them all through `db.delete_user`. It then reminds the administrator that the backups
+  still hold the deleted data, because a retention promise is only kept once the backups are gone too.
+- **`JOBDESK_AI_DAILY_LIMIT`** (default 200) and **`JOBDESK_DEFAULT_FIELDS`** are now settings, not code.
+- **`docs/PILOT-DEPLOYMENT.md`** is the checklist: a separate server and database, the EU region recorded, the
+  settings, accounts and codes, what to do during the pilot, deletion at the end, and what must be ready before
+  students are invited.
+
+**Found while writing the checklist.** On every start, JobDesk imports the CVs in `JOBDESK_CV_REPO/roles/` into the
+administrator account. Pointed at the administrator's own CV repository, a pilot server would hold their CVs. The
+checklist says to use a copy that contains only the LaTeX template.
+
+**Interview question.** *Why a command for deleting everyone, rather than asking students to delete themselves?* A
+pilot has an end date, and the privacy notice promises that the data is gone by then. One dry-run-first command makes
+that promise checkable. Students can still delete their own account at any time.

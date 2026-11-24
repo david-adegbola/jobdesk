@@ -780,6 +780,30 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("administrator", error["error"])
 
+    # ------------------------------------------------------------ Pilot P4: administration commands
+
+    def test_bulk_invitations_work_once_each_and_respect_limits(self):
+        codes, expires = server.create_invitations(3, 30)
+        self.assertEqual(len(set(codes)), 3)
+        self.assertGreater(expires, datetime.now(timezone.utc) + timedelta(days=29))
+        status, _ = self.request("POST", "/api/auth/register", {"name": "Pilot Student", "email": "p1@example.test",
+                                 "password": "a-very-long-password", "invite": codes[0]}, headers={"Cookie": ""})
+        self.assertEqual(status, 200)
+        status, _ = self.request("POST", "/api/auth/register", {"name": "Second", "email": "p2@example.test",
+                                 "password": "a-very-long-password", "invite": codes[0]}, headers={"Cookie": ""})
+        self.assertEqual(status, 400)
+        for count, days in ((0, 7), (501, 7), (1, 0), (1, 121)):
+            with self.assertRaises(ValueError):
+                server.create_invitations(count, days)
+
+    def test_end_of_pilot_deletion_has_a_dry_run_and_keeps_the_administrator(self):
+        self.member_cookie()
+        self.assertEqual(server.delete_member_accounts(), 1)              # dry run: nothing deleted
+        self.assertIsNotNone(db.get_user_by_email("member@example.test"))
+        self.assertEqual(server.delete_member_accounts(apply=True), 1)
+        self.assertIsNone(db.get_user_by_email("member@example.test"))
+        self.assertIsNotNone(db.get_user(1))
+
     def test_facts_load_raises_a_catchable_error(self):
         with patch.object(facts, "FACTS_FILE", Path(self.temp_dir.name) / "facts.json"), \
                 patch("builtins.print"):

@@ -40,9 +40,9 @@ def new_session(user_id):
     return token, expires
 
 
-def new_invitation():
+def new_invitation(days=7):
     token = secrets.token_urlsafe(24)
-    expires = datetime.now(timezone.utc) + timedelta(days=7)
+    expires = datetime.now(timezone.utc) + timedelta(days=days)
     return token, expires
 
 
