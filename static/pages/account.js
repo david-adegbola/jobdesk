@@ -1,4 +1,4 @@
-import { api, getState, h, message, register } from "../core.js";
+import { api, getState, h, message, mountNav, register } from "../core.js";
 
 function dateLabel(value) {
   const date = new Date(value);
@@ -29,6 +29,7 @@ register({
       try {
         await api("/api/account/fields", { method: "POST", body: { fields, finnish_level: fieldsForm.elements.finnish_level.value } });
         await getState(true);
+        await mountNav();          // pages such as the forestry News desk follow the chosen fields
         fieldsFeedback.replaceChildren(message("Saved. Jobs, Match and What to study now use these fields."));
       } catch (error) { fieldsFeedback.replaceChildren(message(error.message, true)); }
     } },
@@ -143,6 +144,23 @@ register({
       h("h2", null, "Your data"),
       h("p", { class: "muted" }, "Download a copy of your CVs, applications, preferences and saved/read news state."),
       h("a", { class: "btn secondary", href: "/api/account/export", download: "jobdesk-account-data.json" }, "Download my data")));
+
+    const deleteFeedback = h("div", { "aria-live": "polite" });
+    const deleteForm = h("form", { class: "account-form", onsubmit: async event => {
+      event.preventDefault();
+      try {
+        await api("/api/account/delete", { method: "POST", body: { password: deleteForm.elements.delete_password.value } });
+        window.location.reload();
+      } catch (error) { deleteFeedback.replaceChildren(message(error.message, true)); }
+    } },
+      h("p", null, "Deletes your account, CVs, applications, settings, reading list and feedback, straight away. " +
+        "Job ads you shared stay visible to others, without your name. This can't be undone; download your data first if you want a copy."),
+      h("label", { class: "field" }, "Your password, to confirm",
+        h("input", { name: "delete_password", type: "password", autocomplete: "current-password", required: true })),
+      h("button", { type: "submit", class: "danger" }, "Delete my account"), deleteFeedback);
+    if (!state.user.is_admin || state.user.id !== 1) {
+      main.append(h("section", { class: "card account-section" }, h("h2", null, "Delete my account"), deleteForm));
+    }
 
     main.append(h("div", { class: "row" },
       h("button", { class: "secondary", onclick: async () => {

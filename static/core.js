@@ -1,4 +1,4 @@
-// Woodesk front end core: a small hash router and shared page helpers.
+// JobDesk front end core: a small hash router and shared page helpers.
 export async function api(path, options = {}) {
   const opts = { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } };
   if (opts.body && typeof opts.body !== "string") opts.body = JSON.stringify(opts.body);
@@ -56,7 +56,7 @@ export async function getState(refresh) {
 
 function renderLogin(main) {
   document.body.classList.add("login-state");
-  document.title = "Sign in · Woodesk";
+  document.title = "Sign in · JobDesk";
   const feedback = h("div", { "aria-live": "polite" });
   let signup = false;
   const card = h("section", { class: "auth-card" });
@@ -72,7 +72,7 @@ function renderLogin(main) {
         currentUser = result.user;
         state = null;
         document.body.classList.remove("login-state");
-        mountNav();
+        await mountNav();
         location.hash = "#/home";
         await show();
       } catch (error) { feedback.replaceChildren(message(error.message, true)); }
@@ -88,11 +88,11 @@ function renderLogin(main) {
           required: true, minlength: signup ? 12 : 1, maxlength: 256 })),
       h("button", { type: "submit" }, signup ? "Create account" : "Sign in"));
     card.replaceChildren(
-      h("p", { class: "eyebrow" }, "FORESTRY CAREERS PORTAL"),
-      h("h1", null, signup ? "Join Woodesk" : "Welcome back"),
+      h("p", { class: "eyebrow" }, "JOBS AND INTERNSHIPS FOR STUDENTS IN FINLAND"),
+      h("h1", null, signup ? "Join JobDesk" : "Welcome back"),
       h("p", { class: "muted" }, signup
         ? "Create your private account with the invitation code you received."
-        : "Sign in to see shared forestry opportunities and your private CVs and applications."),
+        : "Sign in to see job and internship ads in your fields, and your private CVs and applications."),
       feedback, form,
       h("button", { class: "secondary auth-switch", type: "button", onclick: () => {
         signup = !signup;
@@ -106,11 +106,17 @@ function renderLogin(main) {
   main.replaceChildren(card);
 }
 
-function mountNav() {
+// A page may name the fields it belongs to (page.fields, e.g. ["forestry"] for the forestry News desk).
+// It is then shown only to members who chose one of those fields; other pages are shown to everyone.
+let userFields = [];
+const visiblePages = () => pages.filter(page => !page.fields || page.fields.some(field => userFields.includes(field)));
+
+export async function mountNav() {
   const nav = document.getElementById("nav");
   nav.replaceChildren();
   if (!currentUser) return;
-  for (const page of pages) nav.append(h("a", { href: `#/${page.id}`, "data-id": page.id }, page.title));
+  userFields = (await getState()).user_fields || [];
+  for (const page of visiblePages()) nav.append(h("a", { href: `#/${page.id}`, "data-id": page.id }, page.title));
 }
 
 async function show(focusMain = false) {
@@ -121,14 +127,15 @@ async function show(focusMain = false) {
     return;
   }
   const id = (location.hash.match(/^#\/([\w-]+)/) || [])[1] || "home";
-  const page = pages.find(candidate => candidate.id === id) || pages[0];
+  const shown = visiblePages();
+  const page = shown.find(candidate => candidate.id === id) || shown[0];
   if (!page) return;
   for (const link of document.querySelectorAll("#nav a")) {
     if (link.dataset.id === page.id) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
   main.replaceChildren();
-  document.title = `${page.title} · Woodesk`;
+  document.title = `${page.title} · JobDesk`;
   try { await page.render(main, location.hash.split("?")[1] || ""); }
   catch (error) { main.append(message(error.message, true)); }
   if (focusMain) main.focus();
@@ -138,7 +145,7 @@ export async function start() {
   try {
     currentUser = (await api("/api/auth/me")).user;
     document.body.classList.toggle("login-state", !currentUser);
-    if (currentUser) mountNav();
+    if (currentUser) await mountNav();
   } catch (error) {
     renderLogin(document.getElementById("page"));
     document.getElementById("page").prepend(message(error.message, true));

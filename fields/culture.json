@@ -1,0 +1,51 @@
+{
+  "id": "culture",
+  "order": 6,
+  "label_en": "Culture, design and games",
+  "label_fi": "Kulttuuri, muotoilu ja pelit",
+  "category": "Culture",
+  "_comment": "Metropolia's Culture field: games, 3D and XR, visual and UX design, media production, fashion, music and performing arts. Avoid bare 'art' (inside 'part', 'start'), 'kulttuuri' ('työkulttuuri' is in many ads) and bare 'media' ('social media' is in business ads).",
+  "search_terms": ["pelialan", "graafinen suunnittelija", "muotoilu", "mediatuotanto", "game", "designer"],
+  "jobly": {"slugs": [], "title_words": []},
+  "relevance": {
+    "words": ["pelinkehit", "pelisuunnittel", "pelialan", "pelistudio", "game design", "game develop", "game artist",
+              "game studio", "level design", "3d artist", "3d-artisti", "3d-mallinn", "3d model", "concept artist",
+              "animaat", "animator", "xr design", "xr developer", "virtual reality", "augmented reality",
+              "virtuaalitodellis", "graafinen suunnittelij", "graphic design", "visual design", "visuaalinen suunnittelij",
+              "ux design", "ui design", "ux/ui", "käyttöliittymäsuunnittel", "service design", "palvelumuotoil",
+              "muotoilij", "muotisuunnittel", "fashion design", "fashion business", "vaatesuunnittel", "valokuvaaj",
+              "photographer", "videotuotan", "video production", "videokuvaaj", "videographer", "mediatuotan",
+              "media production", "sisällöntuottaj", "content creator", "copywriter", "äänisuunnittel", "sound design",
+              "musiikki", "musician", "teatteri", "theatre", "lavastaj", "tapahtumatuotan", "event production",
+              "kuvittaj", "illustrator", "taiteilij"],
+    "core_words": ["pelinkehit", "pelisuunnittel", "game design", "game develop", "game artist", "3d artist",
+                   "graafinen suunnittelij", "graphic design", "ux design", "palvelumuotoil", "fashion design",
+                   "muotisuunnittel", "valokuvaaj", "photographer", "videotuotan", "video production", "mediatuotan",
+                   "animaat", "xr design", "illustrator", "kuvittaj"],
+    "whole_words": [],
+    "ignore_patterns": []
+  },
+  "skills": [
+    {"id": "unity", "en": "Unity", "fi": "Unity", "group": "Games & XR", "pattern": "\\bunity\\b", "hint": "Free for students and small projects."},
+    {"id": "unreal", "en": "Unreal Engine", "fi": "Unreal Engine", "group": "Games & XR", "pattern": "\\bunreal", "hint": ""},
+    {"id": "3d", "en": "3D modelling (Blender, Maya, 3ds Max)", "fi": "3D-mallinnus (Blender, Maya, 3ds Max)", "group": "Games & XR", "pattern": "blender|\\bmaya\\b|3ds max|zbrush|3d-mallinn|3d model", "hint": "Blender is free."},
+    {"id": "xr", "en": "XR (VR / AR)", "fi": "XR (VR / AR)", "group": "Games & XR", "pattern": "\\bxr\\b|\\bvr\\b|\\bar\\b|virtual reality|augmented reality|virtuaalitodellis|lisätty todellisuus", "hint": ""},
+    {"id": "adobe", "en": "Adobe Creative Cloud (Photoshop, Illustrator, InDesign)", "fi": "Adobe Creative Cloud (Photoshop, Illustrator, InDesign)", "group": "Design", "pattern": "adobe|photoshop|illustrator|indesign|after effects", "hint": ""},
+    {"id": "figma", "en": "Figma / UX design", "fi": "Figma / käyttöliittymäsuunnittelu", "group": "Design", "pattern": "figma|\\bux\\b|\\bui\\b|käyttöliittym|user experience|käyttäjäkokemu", "hint": "Figma has a free plan."},
+    {"id": "video", "en": "Video editing (Premiere, DaVinci Resolve)", "fi": "Videoeditointi (Premiere, DaVinci Resolve)", "group": "Media", "pattern": "premiere|davinci|final cut|videoeditoin|video edit|editoin", "hint": "DaVinci Resolve is free."},
+    {"id": "photography", "en": "Photography", "fi": "Valokuvaus", "group": "Media", "pattern": "valokuva|photograph", "hint": ""},
+    {"id": "social_content", "en": "Social media content", "fi": "Some-sisällöt", "group": "Media", "pattern": "sosiaalinen media|\\bsome\\b|social media|tiktok|instagram", "hint": ""},
+    {"id": "fashion", "en": "Fashion and textiles", "fi": "Muoti ja tekstiilit", "group": "Design", "pattern": "muoti|fashion|tekstiil|textile|vaate", "hint": ""},
+    {"id": "sustainability", "en": "Sustainability", "fi": "Vastuullisuus", "group": "Design", "pattern": "vastuullisuu|kestävä|sustainab|kiertotalou|circular", "hint": ""},
+    {"id": "portfolio", "en": "Portfolio", "fi": "Portfolio", "group": "Design", "pattern": "portfolio", "hint": "Most design and games ads ask for a link to your work."},
+    {"id": "english", "en": "English", "fi": "Englanti", "group": "Languages", "pattern": "englan|\\benglish\\b", "hint": ""},
+    {"id": "swedish", "en": "Swedish", "fi": "Ruotsi", "group": "Languages", "pattern": "ruotsi|swedish|svenska", "hint": ""}
+  ],
+  "role_types": [
+    {"id": "culture_games", "en": "Games and XR", "fi": "Pelit ja XR", "pattern": "peli|game|level design|\\bxr\\b|virtual|3d|animaat|animator"},
+    {"id": "culture_design", "en": "Visual, UX and service design", "fi": "Visuaalinen, UX- ja palvelumuotoilu", "pattern": "graafi|graphic|visual|visuaali|\\bux\\b|\\bui\\b|käyttöliittym|palvelumuotoil|service design|muotoilij|kuvittaj|illustrat"},
+    {"id": "culture_media", "en": "Media and content production", "fi": "Media ja sisällöntuotanto", "pattern": "media|video|valokuva|photo|sisällö|content|copywriter|ääni|sound"},
+    {"id": "culture_fashion", "en": "Fashion", "fi": "Muoti", "pattern": "muoti|fashion|vaate|tekstiil|textile"},
+    {"id": "culture_events", "en": "Music, theatre and events", "fi": "Musiikki, teatteri ja tapahtumat", "pattern": "musiik|music|teatteri|theatre|tapahtum|event"}
+  ]
+}

@@ -575,3 +575,52 @@ logic in `core/`. To stop the two copies drifting apart:
 **Interview question.** *Why is the daily limit in memory and not in the database?* For a pilot with a few dozen
 students it is enough, and it needs no new table. If the pilot grows, the count should move to the database so a
 restart doesn't reset it.
+
+---
+
+## Pilot P3: what students need in a pilot
+
+### Metropolia's fields
+
+Metropolia names four fields: **Business, Culture, Health Care and Social Services, and Technology**
+([source](https://www.metropolia.fi/en/academics/bachelors-degrees), checked 24 November 2026).
+- **Culture is new** (`fields/culture.json`): games, 3D and XR, visual and UX design, media production, fashion,
+  music and events.
+- **Programme names were added to the existing profiles:** robotics, electronics, construction site management →
+  engineering; biomedical laboratory science, physiotherapy, gerontology → health; logistics → business.
+- **Words avoided in Culture,** because they appear in ordinary ads: bare "art" (inside "part", "start"),
+  "kulttuuri" ("työkulttuuri" = work culture) and bare "media" ("social media"). Tests check these.
+
+### First-login setup and a field-aware menu
+
+- A **"Get started in three steps"** card (choose fields and Finnish level → add a CV → try the Shortlist) appears
+  at the top of the start page until the first two steps are done (`static/getting-started.js`).
+- A page can now say which fields it belongs to: `register({ id: "news", fields: ["forestry"], … })`. The menu
+  shows it only to members who chose that field. The forestry "For you" page and News desk are hidden for
+  everyone else, whose start page becomes Jobs. Saving fields on Account rebuilds the menu.
+- **Neutral name:** "Woodesk" became "JobDesk", and the sign-in screen no longer says "forestry careers portal".
+
+### "Was this right?"
+
+Every Finnish result, on Jobs and on Shortlist, has **Yes / No**. On No, the student picks what the ad really says.
+`POST /api/finnish/feedback` stores the level shown, the vote, the correction, the method (AI or keyword rule) and
+the quoted sentence, which is public ad text. The administrator's `GET /api/finnish/feedback/summary` gives the share
+of "right" answers per method. That is the pilot's accuracy measurement on real ads chosen by real students. The
+values are checked against fixed lists, so nothing else can be stored.
+
+### Delete my account
+
+`POST /api/account/delete` asks for the password again, so an open, forgotten session can't be used to delete
+someone's account. `db.delete_user` runs in one transaction:
+- **deleted:** CVs, applications, prep answers, sessions, news reading state, feedback and the account;
+- **kept:** job ads the member shared with others, moved to the administrator account. They are public ads that
+  other students may be tracking.
+- The administrator account (id 1) owns the shared listings, so it can't be deleted.
+
+**A CSS bug found by clicking through in a browser:** JobDesk's `label.field { display: grid }` overrode the
+`hidden` attribute, so "hidden" inputs were still visible. The fix is one rule, `[hidden] { display: none
+!important; }`. The unit tests couldn't catch this; only a real browser could.
+
+**Interview question.** *Why keep shared ads after deletion; isn't that personal data?* A shared ad is the
+employer's public text. The member's name isn't stored with it, and the contact fields are always cleared when a
+member shares an ad. Deleting it would remove it from other students' trackers.

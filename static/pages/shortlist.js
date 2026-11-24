@@ -1,16 +1,8 @@
 import { api, h, register, message, getState } from "../core.js";
+import { FINNISH, METHOD, feedbackControls } from "../finnish.js";
 
 // Hands one ad to the Draft page (sessionStorage, this tab only).
 export const DRAFT_AD_KEY = "jobdesk:draft-ad";
-
-// The words carry the meaning; the colour only repeats it.
-const FINNISH = {
-  required: ["Finnish required", "tag bad"],
-  preferred: ["Finnish an advantage", "tag warn"],
-  not_needed: ["Finnish not needed", "tag new"],
-  unclear: ["Finnish unclear", "tag"],
-};
-const METHOD = { llm: "AI; the quote was checked against the ad", baseline_v1: "keyword rule", mock: "mock output" };
 
 // Skills from a CV's Skills field: "GIS: QGIS and map reading" -> ["QGIS", "map reading"].
 // "Want to learn" rows are skipped: wanting a skill is not having it.
@@ -31,11 +23,11 @@ register({
     const source = h("select", { "aria-label": "Where the ads come from", onchange: showSource },
       h("option", { value: "paste" }, "Paste ads"), h("option", { value: "csv" }, "Upload a CSV"),
       h("option", { value: "urls" }, "Paste links"));
-    const pasteBox = h("label", { class: "field" }, "Ads (separate ads with a line containing only ---)",
+    const pasteBox = h("label", { class: "field", style: "grid-column: 1 / -1" }, "Ads (separate ads with a line containing only ---)",
       f.ads = h("textarea", { rows: 12, placeholder: "Summer trainee, data analysis\nWe expect good SQL skills. Finnish is an advantage.\n---\nNext ad…" }));
-    const csvBox = h("label", { class: "field", hidden: true }, "CSV file (column ad_text; title and url optional)",
+    const csvBox = h("label", { class: "field", style: "grid-column: 1 / -1", hidden: true }, "CSV file (column ad_text; title and url optional)",
       f.csv = h("input", { type: "file", accept: ".csv,text/csv" }));
-    const urlBox = h("label", { class: "field", hidden: true }, "Links to job ads, one per line (at most 10; sites that don't allow automatic reading are skipped)",
+    const urlBox = h("label", { class: "field", style: "grid-column: 1 / -1", hidden: true }, "Links to job ads, one per line (at most 10; sites that don't allow automatic reading are skipped)",
       f.urls = h("textarea", { rows: 5, placeholder: "https://…" }));
     function showSource() {
       pasteBox.hidden = source.value !== "paste";
@@ -89,7 +81,8 @@ register({
           return h("tr", { "data-level": fin.level },
             h("td", null, h("strong", null, i + 1)),
             h("td", null, row.url ? h("a", { href: row.url, target: "_blank", rel: "noopener" }, row.title) : row.title),
-            h("td", null, h("span", { class: cls }, label), h("div", { class: "muted small" }, METHOD[fin.method] || "")),
+            h("td", null, h("span", { class: cls }, label), h("div", { class: "muted small" }, METHOD[fin.method] || ""),
+              feedbackControls(fin, null)),
             h("td", null, fin.evidence?.length ? h("q", null, fin.evidence[0]) : "",
               h("div", { class: "small" }, fin.explanation_en || "")),
             h("td", null, row.matched_skills.join(", ") || "–", h("div", { class: "muted small" }, `${row.skill_score}% of your skills`)),

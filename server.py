@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Woodesk forestry careers portal.
+"""JobDesk: job and internship search for students in Finland (originally the JobDesk forestry portal).
 
     python3 server.py            # opens http://localhost:8765
     python3 server.py --no-browser
@@ -358,14 +358,14 @@ def api_cv_example_pdf(h, m):
         pdf = cv_latex.build_pdf(cv_latex.example_cv())
     except FileNotFoundError:
         return h.error(
-            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+            503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
         )
     except cv_latex.PdfBuildError as error:
         return h.error(422, str(error))
     return (
         pdf,
         "application/pdf",
-        {"Content-Disposition": 'inline; filename="Woodesk-CV-example.pdf"'},
+        {"Content-Disposition": 'inline; filename="JobDesk-CV-example.pdf"'},
     )
 
 
@@ -382,7 +382,7 @@ def api_build_user_cv(h, m):
             pdf = _read_imported_cv_pdf(source_path)
         except FileNotFoundError:
             return h.error(
-                503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+                503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
             )
         except cv_latex.PdfBuildError as error:
             return h.error(422, str(error))
@@ -399,7 +399,7 @@ def api_build_user_cv(h, m):
         pdf = cv_latex.build_pdf(cv)
     except FileNotFoundError:
         return h.error(
-            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+            503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
         )
     except cv_latex.PdfBuildError as error:
         return h.error(422, str(error))
@@ -443,7 +443,7 @@ def api_original_cv_file(h, m):
         content = _read_imported_cv_pdf(source_path) if is_pdf else file.read_bytes()
     except FileNotFoundError:
         return h.error(
-            503, "Formatted PDF building is not available on this server. Install the Woodesk LaTeX packages and try again.",
+            503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
         )
     except cv_latex.PdfBuildError as error:
         return h.error(422, str(error))
@@ -798,6 +798,63 @@ def api_shortlist(h, m):
     rows = [{**row, "ad_text": text_of[row["id"]]} for row in rows]     # for "Draft an answer" on each row
     return {"rows": rows, "errors": errors, "method": "llm" if settings.live else "baseline_v1",
             "finnish_level": level}
+
+
+# ---------------------------------------------------------------- "Was this right?" (pilot accuracy)
+
+@route("POST", "/api/finnish/feedback")
+def api_finnish_feedback(h, m):
+    """A student's verdict on one Finnish result: right, or wrong with the level the ad really states."""
+    body = h.json()
+    if not isinstance(body, dict):
+        return h.error(400, BODY_ERROR)
+    level, vote, correct = body.get("level_shown"), body.get("vote"), body.get("correct_level", "")
+    method, evidence, job_id = body.get("method"), body.get("evidence", ""), body.get("job_id")
+    if level not in db.FINNISH_LEVELS or vote not in ("right", "wrong") or \
+            (correct and correct not in db.FINNISH_LEVELS) or method not in ("llm", "baseline_v1", "mock"):
+        return h.error(400, "Choose right or wrong (and, if wrong, what the ad really says).")
+    if not isinstance(evidence, str) or len(evidence) > 2000 or \
+            (job_id is not None and (not isinstance(job_id, int) or isinstance(job_id, bool))):
+        return h.error(400, "Invalid feedback.")
+    db.save_finnish_feedback(h.user["id"], {
+        "job_id": job_id, "method": method, "prompt_version": finnish.PROMPT_VERSION if method == "llm" else "",
+        "level_shown": level, "vote": vote, "correct_level": correct if vote == "wrong" else "",
+        "evidence": evidence})
+    return {"ok": True}
+
+
+@route("GET", "/api/finnish/feedback/summary")
+def api_finnish_feedback_summary(h, m):
+    """Administrator: how often students said each kind of result was right, for the pilot report."""
+    if not h.user["is_admin"]:
+        return h.error(403, "Administrator access is required.")
+    rows = db.finnish_feedback_summary()
+    by_method = {}
+    for row in rows:
+        counts = by_method.setdefault(row["method"], {"right": 0, "wrong": 0})
+        counts[row["vote"]] += row["n"]
+    accuracy = {method: {**c, "share_right": c["right"] / (c["right"] + c["wrong"])} for method, c in by_method.items()}
+    return {"rows": rows, "by_method": accuracy}
+
+
+# ---------------------------------------------------------------- delete account
+
+@route("POST", "/api/account/delete")
+def api_account_delete(h, m):
+    """Delete the signed-in account and everything personal in it (see db.delete_user). The password is
+    asked again so a forgotten open session can't be used to delete someone's account."""
+    body = h.json()
+    password = body.get("password") if isinstance(body, dict) else None
+    user = db.get_user(h.user["id"])
+    if not isinstance(password, str) or not auth.verify_password(password, user["password_hash"]):
+        return h.error(400, "Your password is incorrect.")
+    try:
+        db.delete_user(user["id"])
+    except ValueError as error:
+        return h.error(400, str(error))
+    h.auth_cookie = auth.cookie("", max_age=0, secure=config.SECURE_COOKIE)
+    h.user = None
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- grounded application answers
@@ -1265,7 +1322,7 @@ def api_classify_status(h, m):
 # ---------------------------------------------------------------- HTTP plumbing
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Woodesk"
+    server_version = "JobDesk"
 
     def log_message(self, fmt, *args):     # quiet: only errors
         if args and str(args[1]).startswith(("4", "5")):
@@ -1428,7 +1485,7 @@ def main():
         print("Warning:", warning)
     server = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
     url = f"http://localhost:{config.PORT}"
-    print(f"Woodesk running at {url} (CV repository: {config.CV_REPO}). Press Ctrl+C to stop.")
+    print(f"JobDesk running at {url} (CV repository: {config.CV_REPO}). Press Ctrl+C to stop.")
     if "--no-browser" not in sys.argv:
         threading.Timer(0.5, webbrowser.open, [url]).start()
     try:

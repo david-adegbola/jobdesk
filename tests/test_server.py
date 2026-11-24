@@ -394,7 +394,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(headers["Content-Type"], "application/pdf")
         self.assertEqual(
             headers["Content-Disposition"],
-            'inline; filename="Woodesk-CV-example.pdf"',
+            'inline; filename="JobDesk-CV-example.pdf"',
         )
         build.assert_called_once_with(example)
         self.assertEqual(db.list_cvs(1), [])
@@ -729,6 +729,56 @@ class JobApiTests(unittest.TestCase):
             status, error = self.request("POST", "/api/shortlist", {"ads_text": self.ADS, "skills": []})
             self.assertEqual(status, 429)
             self.assertIn("daily", error["error"])
+
+    # ------------------------------------------------------------ Pilot P3: feedback and account deletion
+
+    def test_finnish_feedback_is_validated_stored_and_summarised(self):
+        member = self.member_cookie()
+        good = {"level_shown": "required", "vote": "wrong", "correct_level": "preferred", "method": "llm",
+                "evidence": "Suomen kielen taito katsotaan eduksi."}
+        status, _ = self.request("POST", "/api/finnish/feedback", good, headers=member)
+        self.assertEqual(status, 200)
+        status, _ = self.request("POST", "/api/finnish/feedback",
+                                 {"level_shown": "unclear", "vote": "right", "method": "baseline_v1"}, headers=member)
+        self.assertEqual(status, 200)
+        for bad in ([], {**good, "vote": "maybe"}, {**good, "level_shown": "x"}, {**good, "method": "guess"},
+                    {**good, "correct_level": "fluent"}, {**good, "job_id": True}, {**good, "evidence": "x" * 2001}):
+            status, _ = self.request("POST", "/api/finnish/feedback", bad, headers=member)
+            self.assertEqual(status, 400, bad)
+        status, _ = self.request("GET", "/api/finnish/feedback/summary", headers=member)
+        self.assertEqual(status, 403)
+        status, summary = self.request("GET", "/api/finnish/feedback/summary")
+        self.assertEqual(summary["by_method"]["llm"], {"right": 0, "wrong": 1, "share_right": 0.0})
+        self.assertEqual(summary["by_method"]["baseline_v1"]["share_right"], 1.0)
+
+    def test_deleting_an_account_removes_personal_data_and_keeps_shared_ads(self):
+        member = self.member_cookie()
+        member_id = db.get_user_by_email("member@example.test")["id"]
+        cv_id = self.member_cv(member)
+        status, created = self.request("POST", "/api/jobs", {"title": "Metsäharjoittelija"}, headers=member)
+        db.set_status(created["id"], "Saved", user_id=member_id)
+        self.request("POST", "/api/finnish/feedback", {"level_shown": "unclear", "vote": "right",
+                                                       "method": "baseline_v1"}, headers=member)
+        status, error = self.request("POST", "/api/account/delete", {"password": "wrong-password"}, headers=member)
+        self.assertEqual(status, 400)
+        status, _, headers = self.request("POST", "/api/account/delete", {"password": "a-very-long-password"},
+                                          headers=member, include_headers=True)
+        self.assertEqual(status, 200)
+        self.assertIn("Max-Age=0", headers["Set-Cookie"])
+        self.assertIsNone(db.get_user(member_id))
+        self.assertIsNone(db.get_cv(cv_id, member_id))
+        self.assertEqual(db.list_applications(member_id), [])
+        with db.connect() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM finnish_feedback").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM sessions WHERE user_id=?", (member_id,)).fetchone()[0], 0)
+        self.assertEqual(db.get_job(created["id"])["user_id"], 1)       # the shared ad stays, owned by the admin
+        status, _ = self.request("GET", "/api/jobs", headers=member)
+        self.assertEqual(status, 401)
+
+    def test_the_administrator_account_cannot_be_deleted(self):
+        status, error = self.request("POST", "/api/account/delete", {"password": "administrator-password"})
+        self.assertEqual(status, 400)
+        self.assertIn("administrator", error["error"])
 
     def test_facts_load_raises_a_catchable_error(self):
         with patch.object(facts, "FACTS_FILE", Path(self.temp_dir.name) / "facts.json"), \

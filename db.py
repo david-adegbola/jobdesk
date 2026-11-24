@@ -133,6 +133,18 @@ CREATE TABLE IF NOT EXISTS finnish_levels (
   created_at TEXT NOT NULL,
   PRIMARY KEY (job_id, prompt_version)
 );
+CREATE TABLE IF NOT EXISTS finnish_feedback (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  job_id INTEGER,
+  method TEXT NOT NULL,
+  prompt_version TEXT NOT NULL DEFAULT '',
+  level_shown TEXT NOT NULL,
+  vote TEXT NOT NULL,
+  correct_level TEXT NOT NULL DEFAULT '',
+  evidence TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS news_items (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
@@ -371,6 +383,49 @@ def save_finnish_level(job_id, text_hash, result):
                       result["method"], result.get("model") or "", int(bool(result.get("verified", True))),
                       json.dumps(result.get("rejected_evidence") or [], ensure_ascii=False),
                       datetime.now(timezone.utc).isoformat(timespec="seconds")))
+
+
+FINNISH_LEVELS = ("required", "preferred", "not_needed", "unclear")
+
+
+def save_finnish_feedback(user_id, feedback):
+    """One "Was this right?" answer. Stores the level shown, the vote, the student's correction and the
+    quoted sentence (public ad text), so the pilot can measure accuracy on real ads."""
+    with connect() as conn:
+        conn.execute("""INSERT INTO finnish_feedback (user_id, created_at, job_id, method, prompt_version,
+                        level_shown, vote, correct_level, evidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                     (user_id, now(), feedback.get("job_id"), feedback["method"], feedback.get("prompt_version", ""),
+                      feedback["level_shown"], feedback["vote"], feedback.get("correct_level", ""),
+                      feedback.get("evidence", "")))
+
+
+def finnish_feedback_summary():
+    """Counts per method and level shown: how often students said the result was right or wrong."""
+    with connect() as conn:
+        rows = conn.execute("""SELECT method, level_shown, vote, COUNT(*) AS n FROM finnish_feedback
+                               GROUP BY method, level_shown, vote ORDER BY method, level_shown, vote""").fetchall()
+    return [dict(row) for row in rows]
+
+
+def delete_user(user_id):
+    """Delete an account and everything personal in it, in one transaction.
+
+    Deleted: CVs, applications, prep answers, sessions, news reading state, feedback, the account.
+    Kept: job listings the member shared with others (public ads, moved to the administrator account so they
+    don't disappear for everyone else). The administrator account (id 1) owns shared data and can't be deleted."""
+    if user_id == 1:
+        raise ValueError("The administrator account owns the shared listings and can't be deleted.")
+    with connect() as conn:
+        for sql in ("DELETE FROM applications WHERE user_id=?",
+                    "DELETE FROM prep_answers WHERE user_id=?",
+                    "DELETE FROM checks WHERE user_id=?",
+                    "DELETE FROM news_source_state WHERE user_id=?",
+                    "DELETE FROM invitations WHERE created_by=?",
+                    "UPDATE invitations SET used_by=NULL WHERE used_by=?",
+                    "UPDATE news_items SET user_id=1 WHERE user_id=?",
+                    "UPDATE jobs SET user_id=1 WHERE user_id=?",
+                    "DELETE FROM users WHERE id=?"):       # cascades: sessions, cvs, cv_imports, news state, feedback
+            conn.execute(sql, (user_id,))
 
 
 def update_user_preferences(user_id, preferences):

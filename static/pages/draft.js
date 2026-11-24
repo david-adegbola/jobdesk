@@ -31,7 +31,7 @@ register({
     const adSource = h("select", { onchange: () => { jobField.hidden = adSource.value !== "job"; pasteField.hidden = adSource.value !== "paste"; } },
       h("option", { value: "job" }, "A job from the Jobs list"), h("option", { value: "paste" }, "Paste the ad"));
     const jobField = h("label", { class: "field" }, "Job", f.job = h("select", null, jobs.map(j => h("option", { value: j.id }, j.title))));
-    const pasteField = h("label", { class: "field", hidden: true }, "The ad", f.ad = h("textarea", { rows: 6 }));
+    const pasteField = h("label", { class: "field", style: "grid-column: 1 / -1", hidden: true }, "The ad", f.ad = h("textarea", { rows: 6 }));
     if (handed || !jobs.length) {
       adSource.value = "paste"; jobField.hidden = true; pasteField.hidden = false;
       f.ad.value = handed ? handed.text : "";

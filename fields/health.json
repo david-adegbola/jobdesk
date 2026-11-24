@@ -5,43 +5,228 @@
   "label_fi": "Sosiaali- ja terveysala",
   "category": "Health",
   "_comment": "Bilingual terms. Never use bare 'hoitaja': it is inside 'metsänhoitaja' (forester). Most health jobs in Finland need a Valvira licence and Finnish; the skills list says so.",
-  "search_terms": ["sairaanhoitaja", "lähihoitaja", "hoiva", "sosiaaliohjaaja", "nurse"],
+  "search_terms": [
+    "sairaanhoitaja",
+    "lähihoitaja",
+    "hoiva",
+    "sosiaaliohjaaja",
+    "nurse"
+  ],
   "jobly": {
-    "slugs": ["sairaanhoitaja", "lahihoitaja"],
-    "title_words": ["sairaanhoitaj", "lähihoitaj", "hoitaj", "hoiva", "nurse", "sjuksköterska", "närvårdare"]
+    "slugs": [
+      "sairaanhoitaja",
+      "lahihoitaja"
+    ],
+    "title_words": [
+      "sairaanhoitaj",
+      "lähihoitaj",
+      "hoitaj",
+      "hoiva",
+      "nurse",
+      "sjuksköterska",
+      "närvårdare"
+    ]
   },
   "relevance": {
-    "words": ["sairaanhoitaj", "lähihoitaj", "terveydenhoitaj", "kätilö", "fysioterapeut", "toimintaterapeut",
-              "hammashoitaj", "suuhygienist", "bioanalyytik", "laboratoriohoitaj", "lääkäri", "farmaseut", "proviisori",
-              "ensihoitaj", "hoiva-avustaj", "hoitoapulai", "kotihoido", "kotihoito", "vanhustyö", "ikäihmis",
-              "sosiaaliohjaaj", "sosiaalityöntekij", "sosionomi", "terveyskeskus", "sairaala", "nurse", "nursing",
-              "caregiver", "care assistant", "elderly care", "physiotherap", "doctor", "physician", "midwife",
-              "healthcare", "health care", "social worker", "sjuksköterska", "närvårdare", "läkare", "hälsovård"],
-    "core_words": ["sairaanhoitaj", "lähihoitaj", "terveydenhoitaj", "kätilö", "fysioterapeut", "lääkäri",
-                   "sosiaaliohjaaj", "sosiaalityöntekij", "hoiva-avustaj", "kotihoito", "nurse", "nursing",
-                   "caregiver", "sjuksköterska", "närvårdare"],
+    "words": [
+      "sairaanhoitaj",
+      "lähihoitaj",
+      "terveydenhoitaj",
+      "kätilö",
+      "fysioterapeut",
+      "toimintaterapeut",
+      "hammashoitaj",
+      "suuhygienist",
+      "bioanalyytik",
+      "laboratoriohoitaj",
+      "lääkäri",
+      "farmaseut",
+      "proviisori",
+      "ensihoitaj",
+      "hoiva-avustaj",
+      "hoitoapulai",
+      "kotihoido",
+      "kotihoito",
+      "vanhustyö",
+      "ikäihmis",
+      "sosiaaliohjaaj",
+      "sosiaalityöntekij",
+      "sosionomi",
+      "terveyskeskus",
+      "sairaala",
+      "nurse",
+      "nursing",
+      "caregiver",
+      "care assistant",
+      "elderly care",
+      "physiotherap",
+      "doctor",
+      "physician",
+      "midwife",
+      "healthcare",
+      "health care",
+      "social worker",
+      "sjuksköterska",
+      "närvårdare",
+      "läkare",
+      "hälsovård",
+      "gerontolog",
+      "geronom",
+      "fysioterapia",
+      "occupational therap",
+      "paramedic",
+      "public health nurs",
+      "biomedical laborator",
+      "laboratory scien"
+    ],
+    "core_words": [
+      "sairaanhoitaj",
+      "lähihoitaj",
+      "terveydenhoitaj",
+      "kätilö",
+      "fysioterapeut",
+      "lääkäri",
+      "sosiaaliohjaaj",
+      "sosiaalityöntekij",
+      "hoiva-avustaj",
+      "kotihoito",
+      "nurse",
+      "nursing",
+      "caregiver",
+      "sjuksköterska",
+      "närvårdare"
+    ],
     "whole_words": [],
     "ignore_patterns": []
   },
   "skills": [
-    {"id": "valvira", "en": "Valvira licence (laillistus)", "fi": "Valviran laillistus", "group": "Licences", "pattern": "valvira|laillistet|laillistus|ammattioikeu|licensed nurse|registered nurse|professional licen", "hint": "Qualifications from outside the EU/EEA usually need Valvira's assessment first."},
-    {"id": "medication", "en": "Medication permit (LOVe)", "fi": "Lääkeluvat (LOVe)", "group": "Licences", "pattern": "lääkelupa|lääkeluvalli|lääkehoidon osaamin|\\blove\\b|medication permit|medication administration", "hint": "LOVe is an online medication course used by most employers."},
-    {"id": "first_aid", "en": "First aid card (EA1)", "fi": "Ensiapukortti (EA1)", "group": "Cards & licences", "pattern": "\\bea ?1\\b|ensiapukortti|ensiapukoulutus|first aid", "hint": "A two-day EA1 course."},
-    {"id": "elderly", "en": "Elderly care", "fi": "Vanhustyö", "group": "Care", "pattern": "vanhustyö|ikäihmis|ikääntyn|elderly|older people|vanhus", "hint": ""},
-    {"id": "home_care", "en": "Home care", "fi": "Kotihoito", "group": "Care", "pattern": "kotihoi|home care|home-care", "hint": ""},
-    {"id": "mental_health", "en": "Mental health and substance abuse work", "fi": "Mielenterveys- ja päihdetyö", "group": "Care", "pattern": "mielenterve|päihde|psykiatr|mental health|psychiatr", "hint": ""},
-    {"id": "child_care", "en": "Child and family work", "fi": "Lapsi- ja perhetyö", "group": "Care", "pattern": "lastensuojel|perhetyö|varhaiskasvat|child welfare|family work", "hint": ""},
-    {"id": "patient_systems", "en": "Patient information systems", "fi": "Potilastietojärjestelmät", "group": "Tools", "pattern": "potilastietojärjestelm|apotti|lifecare|pegasos|effica|patient record|electronic health record", "hint": ""},
-    {"id": "driving_licence", "en": "B driving licence", "fi": "B-ajokortti", "group": "Cards & licences", "pattern": "\\bb-(?:ajo)?kort|ajokortti|driving licen[cs]e", "hint": "Home care often needs a car."},
-    {"id": "finnish", "en": "Fluent Finnish", "fi": "Sujuva suomi", "group": "Languages", "pattern": "sujuva\\w* suome|hyvä\\w* suomen kiel|fluent finnish|suomen kielen taito", "hint": "The YKI test documents your level."},
-    {"id": "swedish", "en": "Swedish", "fi": "Ruotsi", "group": "Languages", "pattern": "ruotsi|swedish|svenska", "hint": ""},
-    {"id": "english", "en": "English", "fi": "Englanti", "group": "Languages", "pattern": "englan|\\benglish\\b", "hint": ""}
+    {
+      "id": "valvira",
+      "en": "Valvira licence (laillistus)",
+      "fi": "Valviran laillistus",
+      "group": "Licences",
+      "pattern": "valvira|laillistet|laillistus|ammattioikeu|licensed nurse|registered nurse|professional licen",
+      "hint": "Qualifications from outside the EU/EEA usually need Valvira's assessment first."
+    },
+    {
+      "id": "medication",
+      "en": "Medication permit (LOVe)",
+      "fi": "Lääkeluvat (LOVe)",
+      "group": "Licences",
+      "pattern": "lääkelupa|lääkeluvalli|lääkehoidon osaamin|\\blove\\b|medication permit|medication administration",
+      "hint": "LOVe is an online medication course used by most employers."
+    },
+    {
+      "id": "first_aid",
+      "en": "First aid card (EA1)",
+      "fi": "Ensiapukortti (EA1)",
+      "group": "Cards & licences",
+      "pattern": "\\bea ?1\\b|ensiapukortti|ensiapukoulutus|first aid",
+      "hint": "A two-day EA1 course."
+    },
+    {
+      "id": "elderly",
+      "en": "Elderly care",
+      "fi": "Vanhustyö",
+      "group": "Care",
+      "pattern": "vanhustyö|ikäihmis|ikääntyn|elderly|older people|vanhus",
+      "hint": ""
+    },
+    {
+      "id": "home_care",
+      "en": "Home care",
+      "fi": "Kotihoito",
+      "group": "Care",
+      "pattern": "kotihoi|home care|home-care",
+      "hint": ""
+    },
+    {
+      "id": "mental_health",
+      "en": "Mental health and substance abuse work",
+      "fi": "Mielenterveys- ja päihdetyö",
+      "group": "Care",
+      "pattern": "mielenterve|päihde|psykiatr|mental health|psychiatr",
+      "hint": ""
+    },
+    {
+      "id": "child_care",
+      "en": "Child and family work",
+      "fi": "Lapsi- ja perhetyö",
+      "group": "Care",
+      "pattern": "lastensuojel|perhetyö|varhaiskasvat|child welfare|family work",
+      "hint": ""
+    },
+    {
+      "id": "patient_systems",
+      "en": "Patient information systems",
+      "fi": "Potilastietojärjestelmät",
+      "group": "Tools",
+      "pattern": "potilastietojärjestelm|apotti|lifecare|pegasos|effica|patient record|electronic health record",
+      "hint": ""
+    },
+    {
+      "id": "driving_licence",
+      "en": "B driving licence",
+      "fi": "B-ajokortti",
+      "group": "Cards & licences",
+      "pattern": "\\bb-(?:ajo)?kort|ajokortti|driving licen[cs]e",
+      "hint": "Home care often needs a car."
+    },
+    {
+      "id": "finnish",
+      "en": "Fluent Finnish",
+      "fi": "Sujuva suomi",
+      "group": "Languages",
+      "pattern": "sujuva\\w* suome|hyvä\\w* suomen kiel|fluent finnish|suomen kielen taito",
+      "hint": "The YKI test documents your level."
+    },
+    {
+      "id": "swedish",
+      "en": "Swedish",
+      "fi": "Ruotsi",
+      "group": "Languages",
+      "pattern": "ruotsi|swedish|svenska",
+      "hint": ""
+    },
+    {
+      "id": "english",
+      "en": "English",
+      "fi": "Englanti",
+      "group": "Languages",
+      "pattern": "englan|\\benglish\\b",
+      "hint": ""
+    }
   ],
   "role_types": [
-    {"id": "health_nursing", "en": "Nursing", "fi": "Sairaanhoito", "pattern": "sairaanhoitaj|terveydenhoitaj|kätilö|ensihoitaj|nurse|midwife|sjuksköterska"},
-    {"id": "health_practical", "en": "Practical nursing and care work", "fi": "Lähihoito ja hoivatyö", "pattern": "lähihoitaj|hoiva|hoitoapulai|kotihoi|caregiver|care assistant|närvårdare"},
-    {"id": "health_therapy", "en": "Therapy and rehabilitation", "fi": "Terapia ja kuntoutus", "pattern": "terapeut|kuntoutu|therap|rehabilit"},
-    {"id": "health_social", "en": "Social work", "fi": "Sosiaalityö", "pattern": "sosiaali|sosionomi|social work"},
-    {"id": "health_medicine", "en": "Medicine, pharmacy and laboratory", "fi": "Lääketiede, farmasia ja laboratorio", "pattern": "lääkäri|farmaseut|proviisori|laboratori|bioanalyyt|doctor|physician|pharmac"}
+    {
+      "id": "health_nursing",
+      "en": "Nursing",
+      "fi": "Sairaanhoito",
+      "pattern": "sairaanhoitaj|terveydenhoitaj|kätilö|ensihoitaj|nurse|midwife|sjuksköterska"
+    },
+    {
+      "id": "health_practical",
+      "en": "Practical nursing and care work",
+      "fi": "Lähihoito ja hoivatyö",
+      "pattern": "lähihoitaj|hoiva|hoitoapulai|kotihoi|caregiver|care assistant|närvårdare"
+    },
+    {
+      "id": "health_therapy",
+      "en": "Therapy and rehabilitation",
+      "fi": "Terapia ja kuntoutus",
+      "pattern": "terapeut|kuntoutu|therap|rehabilit"
+    },
+    {
+      "id": "health_social",
+      "en": "Social work",
+      "fi": "Sosiaalityö",
+      "pattern": "sosiaali|sosionomi|social work"
+    },
+    {
+      "id": "health_medicine",
+      "en": "Medicine, pharmacy and laboratory",
+      "fi": "Lääketiede, farmasia ja laboratorio",
+      "pattern": "lääkäri|farmaseut|proviisori|laboratori|bioanalyyt|doctor|physician|pharmac"
+    }
   ]
 }

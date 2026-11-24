@@ -481,3 +481,8 @@ label.field.inline > select { min-height: 40px; }
 /* Draft page: checked sentences. The word UNSUPPORTED carries the meaning; the colour repeats it. */
 .draft-sentences > li { margin-bottom: 12px; padding: 6px 8px; }
 .draft-sentences > li.unsupported { background: var(--status-rejected-bg); color: var(--status-rejected-fg); }
+
+button.danger { background: var(--status-rejected-fg); color: #fff; }
+
+/* An element with the hidden attribute stays hidden even when a class gives it a display value */
+[hidden] { display: none !important; }

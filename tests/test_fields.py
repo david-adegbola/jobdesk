@@ -19,7 +19,7 @@ def fields_of(title, description="", source="Community"):
 
 class ProfileTests(unittest.TestCase):
     def test_every_profile_loads_in_order(self):
-        self.assertEqual(list(PROFILES), ["forestry", "it", "engineering", "health", "business"])
+        self.assertEqual(list(PROFILES), ["forestry", "it", "engineering", "health", "business", "culture"])
         for profile in PROFILES.values():
             self.assertTrue(profile["skills"] and profile["role_types"] and profile["search_terms"], profile["id"])
 
@@ -46,11 +46,25 @@ class ProfileTests(unittest.TestCase):
         for title, expected in cases.items():
             self.assertEqual(fields_of(title), expected, title)
 
+    def test_metropolia_programme_areas_are_recognised(self):
+        cases = {
+            "Game Designer": "culture", "3D Artist, mobile games": "culture", "Graafinen suunnittelija": "culture",
+            "UX Designer": "culture", "Robotics Engineer": "engineering", "Elektroniikkasuunnittelija": "engineering",
+            "Vastaava työnjohtaja": "engineering", "Bioanalyytikko": "health", "Physiotherapist": "health",
+            "Sosionomi, lastensuojelu": "health", "Logistics Coordinator": "business", "Kirjanpitäjä": "business",
+        }
+        for title, field in cases.items():
+            self.assertIn(field, fields_of(title), title)
+
+    def test_culture_avoids_common_words(self):
+        self.assertNotIn("culture", fields_of("Part-time cashier", "Start in May. We value our work culture."))
+        self.assertNotIn("culture", fields_of("Myyjä", "Meillä on hyvä työkulttuuri ja sosiaalisen median näkyvyys."))
+
     def test_known_word_collisions_stay_apart(self):
         self.assertNotIn("health", fields_of("Metsänhoitaja"))           # "hoitaja" inside a forestry job
         self.assertNotIn("business", fields_of("Metsätalousinsinööri"))  # "talous" inside a forestry job
         self.assertNotIn("business", fields_of("Puunhankintaesimies"))   # "hankinta" inside a forestry job
-        self.assertEqual(fields_of("Logistiikkakoordinaattori"), [])     # "gis" inside "logistiikka"
+        self.assertNotIn("forestry", fields_of("Logistiikkakoordinaattori"))   # "gis" inside "logistiikka"
         self.assertNotIn("it", fields_of("Kirjanpitäjä", "Let it be known that we use Excel."))
 
     def test_broad_portals_need_a_title_word_or_a_core_word_in_the_ad(self):

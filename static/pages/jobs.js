@@ -1,5 +1,7 @@
 import { api, h, register, store, message, getState } from "../core.js";
 import { sourceAttrs, translateSwitch } from "../translate.js";
+import { FINNISH, METHOD, feedbackControls } from "../finnish.js";
+import { gettingStarted } from "../getting-started.js";
 
 function places(text) {
   const p = (text || "").split(", ").filter(Boolean);
@@ -8,22 +10,14 @@ function places(text) {
 
 const daysText = d => d == null ? "" : d < 0 ? "closed" : d === 0 ? "today" : `${d} d`;
 
-// How much Finnish the ad asks for. The words carry the meaning; the colour only repeats it.
-const FINNISH = {
-  required: ["Finnish required", "tag bad"],
-  preferred: ["Finnish an advantage", "tag warn"],
-  not_needed: ["Finnish not needed", "tag new"],
-  unclear: ["Finnish unclear", "tag"],
-};
-const FINNISH_METHOD = { llm: "AI; the quote was checked against the ad", baseline_v1: "keyword rule", mock: "mock output" };
-
 function finnishCell(j) {
   const f = j.finnish || { level: "unclear", evidence: [] };
   const [label, cls] = FINNISH[f.level] || FINNISH.unclear;
   const quote = (f.evidence || [])[0];
   return h("td", null, h("span", { class: cls }, label),
     quote ? h("div", { class: "small" }, h("q", sourceAttrs(j), quote.length > 160 ? quote.slice(0, 157) + "…" : quote)) : "",
-    h("div", { class: "muted small", title: f.explanation_en || "" }, FINNISH_METHOD[f.method] || ""));
+    h("div", { class: "muted small", title: f.explanation_en || "" }, METHOD[f.method] || ""),
+    feedbackControls(f, j.id));
 }
 
 // Sortable columns -> header text. Sort is a list of levels, most important first: [{key, dir: 1 | -1}]
@@ -116,9 +110,9 @@ register({
     const classifyStatus = h("span", { class: "muted small", role: "status" });
     const classifyBtn = state.user.is_admin && state.llm.mode === "live"
       ? h("button", { class: "secondary", onclick: startClassify }, "Check Finnish requirements (AI)") : null;
-    const fieldNames = state.fields.filter(f => state.user_fields.includes(f.id)).map(f => f.label_en.toLowerCase());
+    const fieldNames = state.fields.filter(f => state.user_fields.includes(f.id)).map(f => f.label_en);
     const listArea = h("div");
-    main.append(h("h1", null, "Jobs"),
+    main.append(await gettingStarted(), h("h1", null, "Jobs"),
       h("p", { class: "muted" }, `Shared Finland-wide job and internship ads in your fields (${fieldNames.join(", ")}; change them on the Account page). ` +
         "Applications and CV matches are private to your account."),
       state.user.is_admin ? h("p", { class: "muted small" }, "Administrator view: jobs tagged “Only you” (industrial, construction, warehouse and IT) come from your own searches and are never shown to members.") : "",

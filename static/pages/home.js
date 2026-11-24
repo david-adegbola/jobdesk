@@ -1,4 +1,5 @@
 import { api, h, register, message } from "../core.js";
+import { gettingStarted } from "../getting-started.js";
 import { sourceAttrs, translateWithin } from "../translate.js";
 const AUDIENCES = [
   ["student", "Bachelor's / master's student"],
@@ -192,10 +193,10 @@ function deadlineEntry(item) {
 }
 
 register({
-  id: "home", title: "For you",
+  id: "home", fields: ["forestry"], title: "For you",
   async render(main) {
     const root = h("div");
-    main.append(root);
+    main.append(await gettingStarted(), root);
     const storedProfile = await api("/api/account/profile");
     let { profile, saved } = readProfile(storedProfile.preferences);
 

@@ -13,6 +13,7 @@ JOBDESK_OWNER_DIR         the administrator's private folder (default: owner/ in
 JOBDESK_PREP_DIR          prep templates (default: <owner dir>/prep when it exists, else prep/ in this repo)
 JOBDESK_CV_TEMPLATE_OWNER the name written in the shared LaTeX template's footer. Member PDFs replace
                           it with the member's own name; when unset, member PDFs are not built.
+JOBDESK_DEFAULT_FIELDS    fields for members who haven't chosen any (default forestry)
 JOBDESK_ENABLE_DUUNITORI  1 to read Duunitori search pages (default 0: its robots.txt disallows
                           generic crawlers, and the robots.txt check would skip it anyway).
 """
@@ -37,5 +38,6 @@ PREP_DIR = Path(os.environ.get("JOBDESK_PREP_DIR")
 CV_TEMPLATE_OWNER = os.environ.get("JOBDESK_CV_TEMPLATE_OWNER", "").strip()
 FIELDS_DIR = APP / "fields"                 # field profiles (forestry, IT, ...): JSON, see core/fields.py
 SOURCES_FILE = APP / "sources.json"         # job sources, their fields and robots.txt/terms notes
-DEFAULT_FIELDS = ["forestry"]               # for members who haven't chosen fields yet
+# Fields for members who haven't chosen yet (comma-separated ids; the pilot asks everyone on first login)
+DEFAULT_FIELDS = [f.strip() for f in os.environ.get("JOBDESK_DEFAULT_FIELDS", "forestry").split(",") if f.strip()]
 ENABLE_DUUNITORI = os.environ.get("JOBDESK_ENABLE_DUUNITORI", "0") == "1"
