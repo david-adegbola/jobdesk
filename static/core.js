@@ -147,7 +147,7 @@ const ICON = {
 const SECTIONS = [
   { id: "home", title: "Home", pages: ["home"] },
   { id: "discover", title: "Discover", pages: ["jobs", "foryou", "news"] },
-  { id: "myjobs", title: "My jobs", pages: ["shortlist"] },
+  { id: "myjobs", title: "My jobs", pages: ["myjobs", "shortlist"] },
   { id: "applications", title: "Applications", short: "Tracker", pages: ["tracker", "prepare", "draft"] },
   { id: "cv", title: "My CV", pages: ["cvs"] },
   { id: "profile", title: "Profile", pages: ["account", "study"], avatar: true },
@@ -184,7 +184,7 @@ export async function mountNav() {
     if (section.short) label.dataset.short = section.short;
     nav.append(h("a", { href: `#/${first.id}`, "data-section": section.id }, icon(section.id), label));
   }
-  if (visiblePages().some(p => p.id === "jobs")) actions.append(h("a", { class: "btn accent", href: "#/jobs" }, "+ Add a job"));
+  if (visiblePages().some(p => p.id === "myjobs")) actions.append(h("a", { class: "btn accent", href: "#/myjobs" }, "+ Add a job"));
   const profileFirst = sectionPages(SECTIONS.find(s => s.avatar))[0];
   if (profileFirst) actions.append(h("a", { class: "avatar", href: `#/${profileFirst.id}`, "data-section": "profile",
     "aria-label": `Profile and settings (${currentUser.name || currentUser.email || "you"})` }, initials(currentUser)));

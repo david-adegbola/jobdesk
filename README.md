@@ -49,9 +49,14 @@ evaluated or certified against WCAG 2.1 Level AA.
 - **Menu:** Home, Discover (Jobs, For you, News), My jobs (Shortlist), Applications (Tracker, Prepare, Draft an answer),
   My CV; Profile (Account, What to study) opens from the avatar. On a phone the menu is a bottom tab bar.
 - **For you** (forestry members, under Discover): a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
-- **Jobs** has two views. **My jobs** holds the ads you saved or added, with a count per status.
-  **Discover** holds the shared listings in your fields; **Save** moves one to My jobs.
-  **Add a job:** paste a link and click **Read this link**. JobDesk reads the ad's schema.org
+- **Jobs** comes in two pages built from the same code. **Discover → Jobs** lists the shared ads in your fields;
+  **Save** moves one to your jobs. **My jobs → Saved jobs** holds the ads you saved or added, with a count per
+  status, a status menu, **Shortlist** (the fit check, shown under the job) and **Prepare**. Each job is a row with
+  a ring (your AI fit score when there's a current one, otherwise the keyword match with your CV), the employer,
+  place and deadline, and tags for the type, the matching CV words and the Finnish requirement; "Why …?" opens the
+  sentence the Finnish tag is based on. Filters, "Sort by" chips (Shift-click adds a level) and the type order work
+  as before. Old `#/jobs?add=` links forward to `#/myjobs?add=`.
+  **Add a job** (Saved jobs): paste a link and click **Read this link**. JobDesk reads the ad's schema.org
   `JobPosting` data (title, employer, place, posting and closing dates, description), which most job
   sites publish for search engines; without it, only the page title and text are read. You check
   the details before saving. If the page can't be read (robots.txt disallows it, it needs a sign-in,

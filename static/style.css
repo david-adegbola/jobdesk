@@ -413,6 +413,61 @@ fieldset.segmented { padding: 4px; border: 1.5px solid var(--border-strong); bor
   .dash-quick { padding-left: 14px; }
 }
 
+/* ------------------------------------------------------------------ page heading (title left, status right) */
+.page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px 32px; flex-wrap: wrap; margin-bottom: 20px; }
+.page-head h1 { margin-bottom: 8px; }
+.page-head p { margin: 0; max-width: 70ch; }
+.page-head-side { display: flex; gap: 12px; align-items: center; }
+.empty-state { padding: 40px 24px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); }
+.empty-state p { margin: 0 0 6px; color: var(--text-secondary); }
+.empty-state .empty-title { font-family: var(--font-serif); font-style: italic; font-size: 1.75rem; color: var(--text-primary); }
+
+/* ------------------------------------------------------------------ jobs: filters and rows (Discover → Jobs, My jobs → Saved jobs) */
+.add-job-bar { display: flex; gap: 12px; align-items: center; padding: 6px 6px 6px 16px; margin: 4px 0 12px;
+  border: 1.5px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg-canvas); }
+.add-job-bar:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.add-job-bar input { border: 0; padding: 0; background: transparent; font-size: 1.0625rem; }
+.add-job-bar input:focus-visible { outline: none; }
+.add-job-bar button, .dash-quick button { flex: none; white-space: nowrap; }
+.job-summary { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 4px; }
+.job-filters .row { align-items: end; gap: 12px 16px; }
+.job-filters label.field { min-width: 160px; }
+.job-filters .match-filter { min-width: 200px; }
+.job-filters .match-filter input { min-height: 44px; }
+.job-filters label.check { min-height: 44px; }
+.chip-row { margin: 10px 0; gap: 8px; }
+.chip-label { margin-right: 4px; font-size: .8125rem; font-weight: 600; color: var(--text-secondary); }
+.job-count { margin: 18px 0 0; padding-bottom: 12px; border-bottom: 1.5px solid var(--border-strong); }
+.job-list { display: grid; }
+.job-card {
+  display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 8px 24px; align-items: center;
+  padding: 22px 0; border-bottom: 1.5px solid var(--border-strong);
+}
+.job-card.is-rejected > :not(.job-actions) { opacity: .6; }
+.job-main { min-width: 0; }
+.job-main h3 { margin: 0 0 4px; font-size: 1.1875rem; overflow-wrap: anywhere; }
+.job-main h3 a { color: var(--text-primary); text-decoration: none; }
+.job-main h3 a:hover { text-decoration: underline; }
+.job-main p { margin: 0; }
+.job-meta { overflow-wrap: anywhere; }
+.job-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px !important; }
+.job-tags .tag { margin: 0; }
+.job-finnish { margin-top: 8px; }
+.job-finnish > summary { cursor: pointer; color: var(--link); font-weight: 500; }
+.job-finnish p { margin: 6px 0 0; }
+.job-finnish q { display: block; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--bg-sunken); }
+.job-source { margin-top: 6px !important; }
+.job-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; max-width: 340px; }
+.job-actions select { min-width: 150px; }
+.job-fit { grid-column: 1 / -1; padding: 16px 20px; border-radius: var(--radius-lg); background: var(--bg-sunken); }
+@media (max-width: 760px) {
+  .job-card { grid-template-columns: 56px minmax(0, 1fr); gap: 12px 14px; }
+  .job-card .fit-ring { width: 56px; height: 56px; }
+  .job-card .fit-ring > span { width: 42px; height: 42px; font-size: 1.0625rem; }
+  .job-actions { grid-column: 1 / -1; justify-content: flex-start; max-width: none; }
+  .job-filters label.field { min-width: calc(50% - 8px); flex: 1 1 calc(50% - 8px); }
+}
+
 /* ------------------------------------------------------------------ layout */
 .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 16px 0; }
 .grid { display: grid; gap: 16px 24px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }

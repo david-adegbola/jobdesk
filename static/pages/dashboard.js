@@ -38,7 +38,7 @@ function brief(data) {
   const followUp = applications.find(a => a.follow_up || a.overdue);
   if (followUp) lines.push([`${followUp.title}: ${followUp.overdue ? `“${followUp.next_action || "next step"}” is overdue` : followUp.follow_up}`, "#/tracker", "Open the tracker"]);
   const unchecked = mine.filter(j => (j.status === "Saved" || j.status === "Shortlisted") && !j.fit).length;
-  if (unchecked && lines.length < 3) lines.push([`${unchecked} saved job${unchecked === 1 ? " isn't" : "s aren't"} checked against your CV yet.`, "#/shortlist", "Check fit"]);
+  if (unchecked && lines.length < 3) lines.push([`${unchecked} saved job${unchecked === 1 ? " isn't" : "s aren't"} checked against your CV yet.`, "#/myjobs", "Check fit"]);
   if (picks[0] && lines.length < 3) lines.push([`Your closest match right now fits ${score(picks[0])}%: ${picks[0].title}.`, null, null]);
   if (!lines.length) lines.push(["Nothing urgent today. Paste a job link below to add the next one.", null, null]);
   return lines.slice(0, 3);
@@ -138,7 +138,7 @@ register({
     const link = h("input", { type: "url", required: true, placeholder: "Paste a job link: JobDesk reads the ad for you", "aria-label": "Link to a job ad" });
     const quick = h("form", { class: "dash-quick", onsubmit: e => {
       e.preventDefault();
-      location.hash = `#/jobs?add=${encodeURIComponent(link.value.trim())}`;
+      location.hash = `#/myjobs?add=${encodeURIComponent(link.value.trim())}`;
     } }, link, h("button", { type: "submit" }, "Add job"));
 
     const reload = () => { main.replaceChildren(); this.render(main); };

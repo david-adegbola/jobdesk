@@ -122,7 +122,7 @@ register({
         "Every sentence is checked against your CV; read and edit everything before you send it."),
       profileCard(data, () => getState(true)), area);
     if (!data.jobs.length) {
-      area.append(h("p", { class: "card" }, "No jobs to prepare for yet. Save or shortlist one on the ", h("a", { href: "#/jobs" }, "Jobs"), " page."));
+      area.append(h("p", { class: "card" }, "No jobs to prepare for yet. Save one from ", h("a", { href: "#/jobs" }, "Discover"), " or add one under ", h("a", { href: "#/myjobs" }, "My jobs"), "."));
       return;
     }
     if (!data.jobs.some(j => j.id === jobId)) jobId = data.jobs[0].id;
