@@ -55,6 +55,15 @@ evaluated or certified against WCAG 2.1 Level AA.
   it. The **Save to JobDesk** bookmarklet opens this form from any job page, with the text you
   selected copied into the description. Jobs you add are private unless you share them.
   `core/jobpage.py` does the reading; reading links is limited to 60 per member per hour.
+- **Shortlist a job** (My jobs): moves it to *Shortlisted* and compares it with your CV in the
+  background. The result shows a rating (strong fit, possible fit, a stretch, weak fit), strengths
+  (each with the ad's sentence and the CV fact behind it), gaps, and recommendations. Requirements
+  the CV doesn't show (licences, cards, fluent Finnish, years of experience) are always gaps.
+  With "AI with your CV" on (Account) and live mode, Claude does the comparison; otherwise it is a
+  word comparison on the server, which never rates a job "strong". Results are stored per ad, CV
+  and method, so the same comparison never runs twice; editing the CV or the ad marks it out of
+  date. *Not a fit* is a status, so you can set it aside. Statuses: Saved, Shortlisted, Applied,
+  Interview, Offer, Rejected, Not a fit.
 - **Listings:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry, internship
   (`harjoittelija`) and summer-job (`kesatyo`) category pages, waiting 10 s between
   requests as Jobly's robots.txt asks. The source list follows the 2025 forestry internship

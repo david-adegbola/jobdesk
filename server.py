@@ -43,8 +43,9 @@ import news     # noqa: E402
 import skills   # noqa: E402
 import language  # noqa: E402
 import mailer   # noqa: E402
+import tasks    # noqa: E402
 from core import fields as core_fields  # noqa: E402
-from core import batch, draft, finnish, jobpage, llm, rank  # noqa: E402
+from core import batch, draft, finnish, fit, jobpage, llm, rank  # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -323,6 +324,8 @@ def api_account_export(h, m):
         "preferences": json.loads(user["preferences_json"] or "{}"),
         "cvs": db.list_cvs(h.user["id"]),
         "applications": [safe_application(item) for item in forestry_applications(h.user)],
+        "fit_evaluations": [{"job_id": f["job_id"], "cv_id": f["cv_id"], "created_at": f["created_at"], **f["result"]}
+                            for f in db.list_fits(h.user["id"])],
         "news_reading_list": [
             {"id": item["id"], "title": item["title"], "url": item["url"],
              "is_read": bool(item["is_read"]), "is_saved": bool(item["is_saved"])}
@@ -554,6 +557,8 @@ def api_jobs(h, m):
     fields = user_fields(h.user)
     jobs = [job for job in db.list_jobs(h.user["id"]) if can_see(job, h.user, fields=fields)]
     stored = db.finnish_levels(finnish.PROMPT_VERSION)
+    fits = db.latest_fits(h.user["id"])
+    cv_hashes = {cv["id"]: fit.content_hash(cv["content"]) for cv in db.list_cvs(h.user["id"])} if fits else {}
     safe_jobs = []
     for job in jobs:
         safe = {key: value for key, value in job.items()
@@ -565,6 +570,10 @@ def api_jobs(h, m):
             safe["category"] = scraper.PROFILES[matched[0]]["category"]
         safe["languages"] = language.detect(job.get("title"), job.get("ad_text"))
         safe["finnish"] = finnish_for(job, stored)
+        f = fits.get(job["id"])
+        safe["fit"] = {"suitability": f["suitability"], "method": f["method"],
+                       "stale": f["ad_hash"] != fit.content_hash(finnish_text(job)) or
+                                f["cv_hash"] != cv_hashes.get(f["cv_id"])} if f else None
         safe_jobs.append(enrich(safe, roles))
     return {"jobs": safe_jobs, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
 
@@ -960,7 +969,7 @@ def api_draft(h, m):
     settings = llm_settings()
     if settings.live and user_preferences(h.user).get("llm_opt_in") is not True:
         return h.error(403, "AI drafting sends facts from your CV to an AI service, so it is off until you turn it "
-                            "on under Account → AI drafting.")
+                            "on under Account → AI with your CV.")
     try:
         result = draft.draft_answer(ad_text, question, cv["content"], word_limit, language, settings)
     except ValueError as error:
@@ -968,6 +977,117 @@ def api_draft(h, m):
     except llm.LLMError as error:
         return h.error(502, f"The AI service couldn't draft an answer: {error}")
     return result
+
+
+# ---------------------------------------------------------------- fit evaluation (Shortlist a job)
+
+FIT_TASK = "fit"
+
+
+def _cv_for_job(user, job, cv_id=None):
+    """The CV to evaluate a job against: the one asked for, else the one chosen for this application, else the
+    best-matching CV, else the most recently edited one. None when the member has no CV yet."""
+    if cv_id is not None:
+        return db.get_cv(cv_id, user["id"])
+    roles = cv_roles(user["id"])
+    chosen = enrich(job, roles).get("use_cv_id")
+    cv = db.get_cv(chosen, user["id"]) if chosen else None
+    if cv:
+        return cv
+    cvs = db.list_cvs(user["id"])
+    return cvs[0] if cvs else None
+
+
+def _fit_plan(user, job, cv):
+    """How this job would be evaluated now, and the cache key that identifies that evaluation.
+    The AI is used only in live mode AND when the member opted in to sending CV facts; otherwise the rules."""
+    settings = llm_settings()
+    use_ai = settings.live and user_preferences(user).get("llm_opt_in") is True
+    ad_text = finnish_text(job)
+    method = "llm" if use_ai else "rules"
+    return {"settings": settings, "use_ai": use_ai, "ad_text": ad_text, "method": method,
+            "key": fit.cache_key(ad_text, cv["content"], method),
+            "ad_hash": fit.content_hash(ad_text), "cv_hash": fit.content_hash(cv["content"])}
+
+
+def _run_fit_task(user_id, payload):
+    """Worker: evaluate one job against one CV and store the result (skipped if it is already stored)."""
+    user = db.get_user(user_id)
+    job = db.get_job(payload["job_id"], user_id)
+    cv = db.get_cv(payload["cv_id"], user_id)
+    if not user or not job or not cv:
+        raise tasks.TaskError("The job or the CV no longer exists.")
+    plan = _fit_plan(user, job, cv)
+    if db.cached_fit(user_id, job["id"], plan["key"]):
+        return
+    try:
+        result = fit.evaluate(plan["ad_text"], cv["content"], plan["settings"], use_ai=plan["use_ai"])
+    except ValueError as error:
+        raise tasks.TaskError(str(error)) from error
+    except llm.LLMError as error:
+        raise tasks.TaskError("The AI service couldn't evaluate this job. Try again later.") from error
+    db.save_fit(user_id, job["id"], cv["id"], plan["key"], plan["ad_hash"], plan["cv_hash"], result)
+
+
+tasks.register(FIT_TASK, _run_fit_task)
+
+
+def _fit_view(user, job, stored):
+    """An evaluation for the page, with whether the ad or the CV has changed since it was made."""
+    if not stored:
+        return None
+    cv = db.get_cv(stored["cv_id"], user["id"])
+    stale = (not cv or stored["ad_hash"] != fit.content_hash(finnish_text(job))
+             or stored["cv_hash"] != fit.content_hash(cv["content"]))
+    return {**stored["result"], "cv_id": stored["cv_id"], "cv_title": cv["title"] if cv else "",
+            "created_at": stored["created_at"], "stale": stale}
+
+
+@route("POST", r"/api/jobs/(\d+)/evaluate")
+def api_evaluate_job(h, m):
+    """Evaluate how well a job fits one of the member's CVs. {"shortlist": true} also moves the job to Shortlisted.
+    A stored evaluation for the same ad, CV and method is returned at once; otherwise the work is queued
+    and the page asks GET /api/jobs/<id>/fit until it is done."""
+    body = h.json()
+    body = body if isinstance(body, dict) else {}
+    cv_id = body.get("cv_id")
+    if cv_id is not None and (not isinstance(cv_id, int) or isinstance(cv_id, bool)):
+        return h.error(400, "Choose one of your CVs.")
+    job = db.get_job(int(m.group(1)), h.user["id"])
+    if not job or not can_see(job, h.user):
+        return h.error(404, "No such job.")
+    if body.get("shortlist") is True:
+        current = next((j.get("status") for j in db.list_jobs(h.user["id"]) if j["id"] == job["id"]), "") or ""
+        if current in ("", "Saved", "Not a fit"):
+            db.set_status(job["id"], "Shortlisted", {}, h.user["id"])
+    cv = _cv_for_job(h.user, job, cv_id)
+    if not cv:
+        if cv_id is not None:
+            return h.error(404, "CV not found.")
+        return {"needs_cv": True, "message": "Add a CV under My CVs, and this job can be compared with it."}
+    plan = _fit_plan(h.user, job, cv)
+    if len(plan["ad_text"]) < 40:
+        return {"needs_text": True, "message": "This job has too little text to compare with your CV. "
+                                               "Use “read full ad”, or add the description."}
+    stored = db.cached_fit(h.user["id"], job["id"], plan["key"])
+    if stored:
+        return {"evaluation": _fit_view(h.user, job, stored)}
+    if plan["use_ai"] and not _take_ai_quota(h.user["id"], 1):
+        return h.error(429, f"You've used today's {SHORTLIST_DAILY_LIMIT} AI checks. Try again tomorrow.")
+    task_id, _ = tasks.submit(h.user["id"], FIT_TASK, f"{job['id']}:{plan['key']}", {"job_id": job["id"], "cv_id": cv["id"]})
+    return {"task": db.get_task(task_id, h.user["id"])}
+
+
+@route("GET", r"/api/jobs/(\d+)/fit")
+def api_job_fit(h, m):
+    job = db.get_job(int(m.group(1)), h.user["id"])
+    if not job or not can_see(job, h.user):
+        return h.error(404, "No such job.")
+    stored = db.latest_fit(h.user["id"], job["id"])
+    task = db.latest_task(h.user["id"], FIT_TASK, f"{job['id']}:")
+    if task and stored and task["status"] == "done":
+        task = None
+    return {"evaluation": _fit_view(h.user, job, stored), "task": task}
 
 
 # ---------------------------------------------------------------- tracker
@@ -1586,6 +1706,11 @@ def main():
         warning = f"{error} The owner tools (prompt, prep, insights) answer 503 until it is fixed."
     if warning:
         print("Warning:", warning)
+    requeued = db.requeue_interrupted_tasks()
+    if requeued:
+        print(f"Queued {requeued} background task(s) again that a restart interrupted.")
+    db.delete_old_tasks()
+    tasks.start_worker()
     server = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
     url = f"http://localhost:{config.PORT}"
     print(f"JobDesk running at {url} (CV repository: {config.CV_REPO}). Press Ctrl+C to stop.")

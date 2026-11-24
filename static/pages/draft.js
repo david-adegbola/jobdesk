@@ -22,7 +22,7 @@ register({
     }
     if (state.llm.mode === "live" && !state.llm_opt_in) {
       main.append(h("p", { class: "msg", role: "note" }, "AI drafting is off for your account, because it sends facts from your CV " +
-        "to an AI service. Turn it on under ", h("a", { href: "#/account" }, "Account → AI drafting"), " to use it."));
+        "to an AI service. Turn it on under ", h("a", { href: "#/account" }, "Account → AI with your CV"), " to use it."));
     } else if (state.llm.mode !== "live") {
       main.append(h("p", { class: "muted small" }, "This server runs in mock mode: the “draft” copies facts from your CV and is labelled as mock output."));
     }

@@ -11,9 +11,9 @@ from config import DATA_DIR
 
 DB_FILE = DATA_DIR / "jobdesk.db"
 
-STATUSES = ["Saved", "Applied", "Interview", "Offer", "Rejected"]
-# How far along the funnel a status is (Rejected keeps the furthest stage reached before it)
-STAGE = {"Saved": 1, "Applied": 2, "Interview": 3, "Offer": 4}
+STATUSES = ["Saved", "Shortlisted", "Applied", "Interview", "Offer", "Rejected", "Not a fit"]
+# How far along the funnel a status is (Rejected and Not a fit keep the furthest stage reached before them)
+STAGE = {"Saved": 1, "Shortlisted": 1, "Applied": 2, "Interview": 3, "Offer": 4}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -133,6 +133,34 @@ CREATE TABLE IF NOT EXISTS finnish_levels (
   created_at TEXT NOT NULL,
   PRIMARY KEY (job_id, prompt_version)
 );
+CREATE TABLE IF NOT EXISTS fit_evaluations (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  cv_id INTEGER NOT NULL REFERENCES cvs(id) ON DELETE CASCADE,
+  cache_key TEXT NOT NULL,
+  ad_hash TEXT NOT NULL,
+  cv_hash TEXT NOT NULL,
+  method TEXT NOT NULL,
+  suitability TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (user_id, job_id, cache_key)
+);
+CREATE INDEX IF NOT EXISTS fit_user_job ON fit_evaluations (user_id, job_id, id);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  error TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS tasks_queue ON tasks (status, id);
 CREATE TABLE IF NOT EXISTS login_links (
   token_hash TEXT PRIMARY KEY,
   email TEXT NOT NULL,
@@ -459,6 +487,8 @@ def delete_user(user_id):
                     "DELETE FROM invitations WHERE created_by=?",
                     "UPDATE invitations SET used_by=NULL WHERE used_by=?",
                     "UPDATE news_items SET user_id=1 WHERE user_id=?",
+                    "DELETE FROM tasks WHERE user_id=?",
+                    "DELETE FROM fit_evaluations WHERE user_id=?",
                     "DELETE FROM jobs WHERE user_id=? AND private=1",       # their own collected jobs go too
                     "UPDATE jobs SET user_id=1 WHERE user_id=?",              # shared ads stay for others
                     "DELETE FROM users WHERE id=?"):       # cascades: sessions, cvs, cv_imports, news state, feedback
@@ -1016,3 +1046,113 @@ def funnel(user_id=1):
                                FROM applications WHERE user_id=? GROUP BY role ORDER BY role""",
                             (user_id,)).fetchall()
         return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------- fit evaluations (cached per job, CV and version)
+
+def save_fit(user_id, job_id, cv_id, cache_key, ad_hash, cv_hash, result):
+    with connect() as conn:
+        conn.execute("""INSERT OR REPLACE INTO fit_evaluations (user_id, job_id, cv_id, cache_key, ad_hash, cv_hash,
+                          method, suitability, result_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                     (user_id, job_id, cv_id, cache_key, ad_hash, cv_hash, result["method"], result["suitability"],
+                      json.dumps(result, ensure_ascii=False), now()))
+
+
+def _fit_row(row):
+    if not row:
+        return None
+    item = dict(row)
+    item["result"] = json.loads(item.pop("result_json"))
+    return item
+
+
+def cached_fit(user_id, job_id, cache_key):
+    with connect() as conn:
+        return _fit_row(conn.execute("SELECT * FROM fit_evaluations WHERE user_id=? AND job_id=? AND cache_key=?",
+                                     (user_id, job_id, cache_key)).fetchone())
+
+
+def latest_fit(user_id, job_id):
+    with connect() as conn:
+        return _fit_row(conn.execute("""SELECT * FROM fit_evaluations WHERE user_id=? AND job_id=?
+                                        ORDER BY id DESC LIMIT 1""", (user_id, job_id)).fetchone())
+
+
+def latest_fits(user_id):
+    """job id -> the newest evaluation's summary, for the Jobs list."""
+    with connect() as conn:
+        rows = conn.execute("""SELECT f.job_id, f.cv_id, f.suitability, f.method, f.ad_hash, f.cv_hash
+                               FROM fit_evaluations f
+                               WHERE f.user_id=? AND f.id = (SELECT MAX(id) FROM fit_evaluations
+                                                             WHERE user_id=f.user_id AND job_id=f.job_id)""",
+                            (user_id,)).fetchall()
+        return {r["job_id"]: dict(r) for r in rows}
+
+
+def list_fits(user_id):
+    with connect() as conn:
+        return [_fit_row(r) for r in conn.execute(
+            "SELECT * FROM fit_evaluations WHERE user_id=? ORDER BY id", (user_id,)).fetchall()]
+
+
+# ---------------------------------------------------------------- background tasks (a small queue in SQLite)
+
+def enqueue_task(user_id, kind, key, payload):
+    """Queue a task, unless the same one (same user, kind and key) is already waiting or running.
+    Returns (task id, True if newly queued)."""
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("""SELECT id FROM tasks WHERE user_id=? AND kind=? AND key=? AND status IN ('queued','running')""",
+                           (user_id, kind, key)).fetchone()
+        if row:
+            return row["id"], False
+        task_id = conn.execute("""INSERT INTO tasks (user_id, kind, key, payload_json, created_at)
+                                  VALUES (?,?,?,?,?)""",
+                               (user_id, kind, key, json.dumps(payload), now())).lastrowid
+        return task_id, True
+
+
+def claim_task():
+    """The oldest queued task, marked running in the same transaction so two workers never take the same one."""
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM tasks WHERE status='queued' ORDER BY id LIMIT 1").fetchone()
+        if not row:
+            return None
+        conn.execute("UPDATE tasks SET status='running', started_at=? WHERE id=?", (now(), row["id"]))
+        task = dict(row)
+        task["payload"] = json.loads(task.pop("payload_json"))
+        return task
+
+
+def finish_task(task_id, error=""):
+    with connect() as conn:
+        conn.execute("UPDATE tasks SET status=?, error=?, finished_at=? WHERE id=?",
+                     ("failed" if error else "done", error[:300], now(), task_id))
+
+
+def get_task(task_id, user_id):
+    with connect() as conn:
+        row = conn.execute("SELECT id, kind, key, status, error, created_at, finished_at FROM tasks WHERE id=? AND user_id=?",
+                           (task_id, user_id)).fetchone()
+        return dict(row) if row else None
+
+
+def latest_task(user_id, kind, key_prefix):
+    with connect() as conn:
+        row = conn.execute("""SELECT id, kind, key, status, error, created_at, finished_at FROM tasks
+                              WHERE user_id=? AND kind=? AND key LIKE ? ORDER BY id DESC LIMIT 1""",
+                           (user_id, kind, key_prefix + "%")).fetchone()
+        return dict(row) if row else None
+
+
+def requeue_interrupted_tasks():
+    """At start-up: tasks left 'running' by a stopped server go back in the queue."""
+    with connect() as conn:
+        return conn.execute("UPDATE tasks SET status='queued', started_at=NULL WHERE status='running'").rowcount
+
+
+def delete_old_tasks(days=30):
+    with connect() as conn:
+        conn.execute("DELETE FROM tasks WHERE status IN ('done','failed') AND finished_at<?",
+                     ((datetime.now() - timedelta(days=days)).isoformat(timespec="seconds"),))

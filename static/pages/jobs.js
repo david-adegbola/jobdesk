@@ -2,6 +2,7 @@ import { api, h, register, store, message, getState } from "../core.js";
 import { sourceAttrs, translateSwitch } from "../translate.js";
 import { FINNISH, METHOD, feedbackControls } from "../finnish.js";
 import { gettingStarted } from "../getting-started.js";
+import { fitBadge, fitPanel, evaluate } from "../fit.js";
 
 function places(text) {
   const p = (text || "").split(", ").filter(Boolean);
@@ -242,6 +243,7 @@ register({
 
     // skip: leave one filter out (the Type chips count jobs that pass every other filter)
     const isMine = j => Boolean(j.private || j.status);
+    const openFit = new Set(), fitNotes = {};      // jobs whose fit panel is open; messages for them
     function passes(j, skip) {
       const d = j.days_left;
       return ((tab === "mine") === isMine(j)) && (tab !== "mine" || !filters.status || (filters.status === "none" ? !j.status : j.status === filters.status)) &&
@@ -368,7 +370,22 @@ register({
             onclick: e => clickSort(key, e.shiftKey) }, t, s ? ` ${arrow(s)}${view.sort.length > 1 ? i + 1 : ""}` : ""));
       };
 
-      const rows = shown.map(j => h("tr", null,
+      const fitCell = j => {
+        if (tab !== "mine") return "";
+        const toggle = label => h("button", { class: "link small", "aria-expanded": openFit.has(j.id) ? "true" : "false",
+          "data-focus": `fit:${j.id}`, onclick: () => { openFit.has(j.id) ? openFit.delete(j.id) : openFit.add(j.id); update(`fit:${j.id}`); } }, label);
+        if (j.fit) return h("div", null, fitBadge(j.fit), " ", toggle(openFit.has(j.id) ? "Hide" : "Why?"));
+        if (!j.status || j.status === "Saved") return h("div", null, h("button", { class: "secondary small", "data-focus": `fit:${j.id}`,
+          title: "Move to Shortlisted and compare this job with your CV",
+          onclick: async e => {
+            e.target.disabled = true;
+            try { const r = await evaluate(j.id, true); fitNotes[j.id] = r.message || ""; }
+            catch (err) { fitNotes[j.id] = err.message; }
+            openFit.add(j.id); load(`fit:${j.id}`);
+          } }, "Shortlist"));
+        return h("div", null, toggle(openFit.has(j.id) ? "Hide fit" : "Check fit"));
+      };
+      const rows = shown.flatMap(j => [h("tr", null,
         h("td", null, j.is_new ? h("div", null, h("span", { class: "tag new" }, "NEW")) : "",
           j.url ? h("a", { href: j.url, target: "_blank", rel: "noopener", ...sourceAttrs(j) }, j.title)
             : h("span", sourceAttrs(j), j.title),
@@ -401,7 +418,9 @@ register({
           h("select", { class: "status", "data-status": j.status || "", "data-focus": `status:${j.id}`, "aria-label": `Status for ${j.title}`, onchange: async e => {
             await api(`/api/jobs/${j.id}/status`, { method: "POST", body: { status: e.target.value } });
           load(`status:${j.id}`);
-          } }, h("option", { value: "" }, "—"), state.statuses.map(s => h("option", { value: s, selected: j.status === s }, s))))));
+          } }, h("option", { value: "" }, "—"), state.statuses.map(s => h("option", { value: s, selected: j.status === s }, s))), fitCell(j))),
+        tab === "mine" && openFit.has(j.id) ? h("tr", { class: "fit-row" }, h("td", { colspan: 9 },
+          fitPanel(j.id, () => load(`fit:${j.id}`), fitNotes[j.id]))) : null].filter(Boolean));
 
       tableArea.replaceChildren(
         h("p", { class: "muted small" }, `${shown.length} of ${jobs.length} jobs. ` +

@@ -839,6 +839,134 @@ class JobApiTests(unittest.TestCase):
         status, admin = self.request("GET", "/api/jobs")
         self.assertFalse(admin["jobs"][0]["status"])     # the status is the member's own
 
+    FIT_AD = ("We are looking for a data analyst trainee. Experience with Python and SQL is required. "
+              "Knowledge of Power BI is an advantage. English is the working language.")
+    FIT_CV = {"full_name": "Forest Student", "email": "member@example.test", "skills": "Python, SQL, Excel",
+              "experience": "2025: Research assistant — University; analysed survey data with Python"}
+
+    def fit_setup(self, cv=True):
+        """A member with a private job (and a CV); the queue runs only when the test says so."""
+        for patcher in (patch.object(server.tasks, "start_worker"),):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        cookie = self.member_cookie()
+        member = db.get_user_by_email("member@example.test")
+        cv_id = db.save_cv(member["id"], "My CV", "en", self.FIT_CV) if cv else None
+        status, job = self.request("POST", "/api/jobs", {"title": "Data analyst trainee", "ad_text": self.FIT_AD,
+                                                         "url": "https://jobs.example.fi/analyst"}, headers=cookie)
+        return cookie, member, cv_id, job["id"]
+
+    def test_shortlisting_queues_one_evaluation_and_then_reuses_it(self):
+        cookie, member, cv_id, job_id = self.fit_setup()
+        status, queued = self.request("POST", f"/api/jobs/{job_id}/evaluate", {"shortlist": True}, headers=cookie)
+        self.assertEqual((status, queued["task"]["status"]), (200, "queued"))
+        status, again = self.request("POST", f"/api/jobs/{job_id}/evaluate", {"shortlist": True}, headers=cookie)
+        self.assertEqual(again["task"]["id"], queued["task"]["id"])          # the same task, not a second one
+        status, waiting = self.request("GET", f"/api/jobs/{job_id}/fit", headers=cookie)
+        self.assertEqual((waiting["evaluation"], waiting["task"]["status"]), (None, "queued"))
+        server.tasks.run_pending()
+        status, done = self.request("GET", f"/api/jobs/{job_id}/fit", headers=cookie)
+        evaluation = done["evaluation"]
+        self.assertIsNone(done["task"])
+        self.assertEqual((evaluation["method"], evaluation["cv_id"], evaluation["stale"]), ("rules", cv_id, False))
+        self.assertIn("Power BI", " ".join(g["requirement"] for g in evaluation["gaps"]))
+        status, jobs = self.request("GET", "/api/jobs", headers=cookie)
+        row = jobs["jobs"][0]
+        self.assertEqual((row["status"], row["fit"]["suitability"], row["fit"]["stale"]),
+                         ("Shortlisted", evaluation["suitability"], False))
+        # Asking again: the stored evaluation comes back at once, nothing is queued
+        status, cached = self.request("POST", f"/api/jobs/{job_id}/evaluate", {}, headers=cookie)
+        self.assertEqual(cached["evaluation"]["created_at"], evaluation["created_at"])
+        with db.connect() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 1)
+        # Editing the CV makes the evaluation out of date; comparing again queues a new one
+        db.save_cv(member["id"], "My CV", "en", {**self.FIT_CV, "skills": "Python, SQL, Power BI"}, cv_id)
+        status, jobs = self.request("GET", "/api/jobs", headers=cookie)
+        self.assertTrue(jobs["jobs"][0]["fit"]["stale"])
+        status, requeued = self.request("POST", f"/api/jobs/{job_id}/evaluate", {}, headers=cookie)
+        self.assertIn("task", requeued)
+        server.tasks.run_pending()
+        status, done = self.request("GET", f"/api/jobs/{job_id}/fit", headers=cookie)
+        self.assertFalse(done["evaluation"]["stale"])
+        self.assertNotIn("Power BI", " ".join(g["requirement"] for g in done["evaluation"]["gaps"]))
+        # It is in the member's data export, and goes with the account
+        status, export = self.request("GET", "/api/account/export", headers=cookie)
+        self.assertEqual(len(export["fit_evaluations"]), 2)
+        status, _ = self.request("POST", "/api/account/delete", {"confirm_email": "member@example.test"}, headers=cookie)
+        with db.connect() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM fit_evaluations").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0], 0)
+
+    def test_shortlist_without_a_cv_or_ad_text_explains_what_is_missing(self):
+        cookie, member, _, job_id = self.fit_setup(cv=False)
+        status, result = self.request("POST", f"/api/jobs/{job_id}/evaluate", {"shortlist": True}, headers=cookie)
+        self.assertTrue(result["needs_cv"])
+        status, jobs = self.request("GET", "/api/jobs", headers=cookie)
+        self.assertEqual(jobs["jobs"][0]["status"], "Shortlisted")
+        db.save_cv(member["id"], "My CV", "en", self.FIT_CV)
+        status, bare = self.request("POST", "/api/jobs", {"title": "Mystery job"}, headers=cookie)
+        status, result = self.request("POST", f"/api/jobs/{bare['id']}/evaluate", {}, headers=cookie)
+        self.assertTrue(result["needs_text"])
+        status, result = self.request("POST", f"/api/jobs/{job_id}/evaluate", {"cv_id": 9999}, headers=cookie)
+        self.assertEqual(status, 404)
+        status, result = self.request("POST", f"/api/jobs/{job_id}/evaluate", {"cv_id": True}, headers=cookie)
+        self.assertEqual(status, 400)
+        other = self.sign_in_by_link("other@example.test", "Other Student")
+        status, _ = self.request("POST", f"/api/jobs/{job_id}/evaluate", {}, headers=other)
+        self.assertEqual(status, 404)
+        status, _ = self.request("GET", f"/api/jobs/{job_id}/fit", headers=other)
+        self.assertEqual(status, 404)
+
+    def test_a_later_status_is_kept_and_a_failed_task_says_why(self):
+        cookie, member, cv_id, job_id = self.fit_setup()
+        self.request("POST", f"/api/jobs/{job_id}/status", {"status": "Applied"}, headers=cookie)
+        status, queued = self.request("POST", f"/api/jobs/{job_id}/evaluate", {"shortlist": True}, headers=cookie)
+        status, jobs = self.request("GET", "/api/jobs", headers=cookie)
+        self.assertEqual(jobs["jobs"][0]["status"], "Applied")
+        db.delete_cv(cv_id, member["id"])
+        server.tasks.run_pending()
+        status, result = self.request("GET", f"/api/jobs/{job_id}/fit", headers=cookie)
+        self.assertEqual(result["task"]["status"], "failed")
+        self.assertIn("no longer exists", result["task"]["error"])
+
+    def test_ai_comparison_needs_the_members_opt_in(self):
+        cookie, member, cv_id, job_id = self.fit_setup()
+        live = server.llm.Settings(mode="live", api_key="test-key")
+        sent = []
+
+        def fake(system, user, schema, settings, max_tokens=0):
+            sent.append(user)
+            return {"data": {"suitability": "possible", "summary": "s", "strengths": [], "gaps": [],
+                             "recommendations": ["r"]}, "model": "m"}
+        with patch.object(server, "llm_settings", return_value=live), patch.object(server.llm, "call_json", side_effect=fake), \
+                patch.dict(server.SHORTLIST_USAGE, clear=True):
+            self.request("POST", f"/api/jobs/{job_id}/evaluate", {}, headers=cookie)
+            server.tasks.run_pending()
+            status, result = self.request("GET", f"/api/jobs/{job_id}/fit", headers=cookie)
+            self.assertEqual((result["evaluation"]["method"], sent), ("rules", []))
+            status, _ = self.request("POST", "/api/account/ai", {"llm_opt_in": True}, headers=cookie)
+            self.assertEqual(status, 200)
+            self.request("POST", f"/api/jobs/{job_id}/evaluate", {}, headers=cookie)
+            server.tasks.run_pending()
+            status, result = self.request("GET", f"/api/jobs/{job_id}/fit", headers=cookie)
+            self.assertEqual(result["evaluation"]["method"], "llm")
+            self.assertEqual(len(sent), 1)
+            self.assertNotIn("member@example.test", sent[0])
+            self.assertNotIn("Forest Student", sent[0])
+            self.assertEqual(sum(server.SHORTLIST_USAGE.values()), 1)
+
+    def test_tasks_interrupted_by_a_restart_run_again(self):
+        member = db.get_user(1)
+        task_id, new = db.enqueue_task(1, "noop", "k", {})
+        self.assertEqual(db.enqueue_task(1, "noop", "k", {}), (task_id, False))
+        self.assertEqual(db.claim_task()["id"], task_id)
+        self.assertIsNone(db.claim_task())
+        self.assertEqual(db.requeue_interrupted_tasks(), 1)
+        ran = []
+        with patch.dict(server.tasks.HANDLERS, {"noop": lambda user_id, payload: ran.append(user_id)}):
+            server.tasks.run_pending()
+        self.assertEqual((ran, db.get_task(task_id, 1)["status"]), ([member["id"]], "done"))
+
     def test_shortlist_live_mode_uses_the_ai_and_has_a_daily_limit(self):
         def fake(text, settings, call=None):
             return {"level": "not_needed", "evidence": [], "explanation_en": "x", "method": "llm", "model": "m",

@@ -757,3 +757,53 @@ of them in one place.
   Removing only known tracking parameters can miss a duplicate now and then, but it never merges two different jobs.
 - *What stops the preview being used to make the server attack other sites?* Public addresses only, robots.txt, one
   page per request, and 60 links per student per hour.
+
+## Platform C: Shortlist a job, and see how it fits your CV
+
+**What changed**
+- On **My jobs**, a **Shortlist** button moves a job to the new *Shortlisted* status and compares the ad with the
+  student's CV. A panel under the row shows:
+  - a rating: strong fit, possible fit, a stretch, or weak fit;
+  - strengths, each with the sentence from the ad and the CV fact behind it;
+  - gaps, with advice;
+  - recommendations for the application.
+- New statuses: *Shortlisted* and *Not a fit* (the panel has a "Mark as not a fit" button). The Tracker shows both
+  as columns.
+- The comparison runs in a **background queue**, not inside the web request, and is **stored**. The same ad with the
+  same CV is never compared twice. When the student edits the CV, or the ad text changes, the result is marked "out
+  of date" and can be run again.
+- The Account setting "AI drafting" is now **"AI with your CV"**, because it also covers this comparison.
+
+**How it works, step by step**
+1. `POST /api/jobs/<id>/evaluate` (with `shortlist: true` from the button) checks the student can see the job. It
+   moves Saved, unset or Not a fit to Shortlisted, and leaves later statuses such as Applied alone.
+2. It picks the CV: the one asked for, the one chosen for this application, the best keyword match, or the newest.
+3. It decides the method. The AI is used only when the server is in live mode **and** the student turned on "AI with
+   your CV". Otherwise, rules on the server compare words. Rules mode is also what mock mode uses.
+4. `fit.cache_key` hashes the ad text, the CV content, the method and the prompt version. If an evaluation with that
+   key is stored, it is returned at once. Otherwise a task is queued, and an identical task that is already waiting is
+   reused instead of being queued again.
+5. The worker (`tasks.py`, one thread) takes the oldest queued task. `db.claim_task` marks it running in the same
+   transaction that picks it. Then the worker calls `core/fit.evaluate` and stores the result. If the server stops
+   mid-task, the task is queued again at the next start.
+6. The page asks `GET /api/jobs/<id>/fit` every 1.5 seconds until the task is done or failed. A failure shows a short,
+   safe reason, such as "the CV no longer exists", never the CV or the API's raw error.
+7. `core/fit.check` applies the same rules to the AI's answer and to the rules' answer:
+   - a strength must cite CV fact ids that exist;
+   - it must not claim something the ad requires that the CV lacks;
+   - every quote must be in the ad word for word, or it is removed (the panel says how many were removed);
+   - requirements found by `core/blockers` are always gaps, and they stop a rating of "strong".
+8. The rules give at most "possible fit". Shared words can't show that someone is a strong candidate.
+
+**Interview questions**
+- *Why a queue in SQLite instead of Celery or Redis?* The volume is small (a pilot), and the app already runs on
+  SQLite with the standard library. A table plus one worker thread is enough, and it survives restarts. The claim
+  is atomic, so a second worker can be added later. Celery would need a broker and another service to run and
+  secure.
+- *How do you avoid paying for the same evaluation twice?* The cache key is a hash of everything the answer depends
+  on: the ad, the CV, the method and the prompt version. Duplicate requests reuse a waiting task. Changing the prompt
+  changes the version, so old answers aren't mixed with new ones.
+- *Why not let the AI rate freely?* The rating is advice students act on. Code checks every claim it can: fact ids,
+  quotes and hard requirements. Requirements the CV doesn't show come from rules the model can't overrule.
+- *What leaves the server?* Only with the student's opt-in, and only in live mode: the ad and the CV facts. Never the
+  name, email, phone, location or links. The tests check that the name and email aren't in what is sent.
