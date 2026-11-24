@@ -37,7 +37,8 @@ evaluated or certified against WCAG 2.1 Level AA.
 - **Shortlist:** paste up to 20 ads (or a CSV, or up to 10 links). For each ad you get the Finnish level, the exact
   quoted sentence it rests on, and the skills from your CV it mentions; ads you can realistically apply to come first.
   Each result has "Was this right?" for measuring accuracy. AI in live mode, a keyword rule in mock mode.
-- **Draft an answer:** an answer to an application question, built only from facts in your CV. Every sentence is
+- **Draft an answer** (Applications): the question on the left; on the right the draft on lilac, the share of
+  sentences from your CV, a word counter, a "make it yours" tip and Copy. An answer to an application question, built only from facts in your CV. Every sentence is
   checked against the facts it cites; unsupported sentences are marked and kept out of the answer box. The AI is used
   only if you turn on "AI drafting" under Account.
 - **Fields and Finnish level** (Account): choose your fields; Jobs, Match and What to study follow them. The
@@ -154,7 +155,9 @@ evaluated or certified against WCAG 2.1 Level AA.
   "Start a CV for this role" opens an unsaved draft based on your closest CV, with the role as target
   and the skills still to learn on a "Want to learn" row (never as skills already held). It uses
   keyword matching, not AI; jobs with the full ad saved give better counts than title-only listings.
-- **Tracker:** Saved / Applied / Interview / Offer / Rejected, private to the signed-in member. Each card holds the date applied, CV,
+- **Tracker** (Applications): a board with one column per status (Rejected is titled "Not this time"). Each card
+  shows the employer, a small fit ring and one next step: your own, a follow-up reminder, or what usually comes next
+  (prepare documents, practise answers). Private to the signed-in member. Each card holds the date applied, CV,
   link sent, contact, notes and the next action. Overdue actions are red; "Applied" with no change
   for 5 days shows a `Call <contact>` reminder. Deadlines and interviews export as `.ics`.
 - **My CV:** your CVs on the left (the main one first, tailored copies marked), the chosen CV in a section editor in

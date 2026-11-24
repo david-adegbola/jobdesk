@@ -771,6 +771,27 @@ tr.fit-row > td { background: var(--bg-sunken); padding: 8px 16px 16px; }
 .fit ul { margin: 0; padding-left: 20px; }
 .fit li { margin: 4px 0; }
 
+/* ------------------------------------------------------------------ Tracker cards and Draft an answer */
+.app-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.fit-ring.mini { width: 38px; height: 38px; flex: none; }
+.fit-ring.mini > span { width: 28px; height: 28px; font-size: .8125rem; }
+.app-card .next.quiet { color: var(--text-secondary); }
+.column[data-status="Offer"] .empty { font-family: var(--font-serif); font-style: italic; font-size: 1.125rem; color: var(--text-primary); }
+.draft-layout { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 28px; align-items: start; }
+.draft-form { display: grid; gap: 16px; position: sticky; top: 96px; }
+.draft-form .msg, .draft-form p { margin: 0; }
+.answer-workspace { display: grid; gap: 14px; padding: 32px 36px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
+.answer-workspace > .empty-state { border: 0; }
+.answer-workspace .overline, .answer-workspace p { margin: 0; }
+.answer-question { margin: 0; font-size: 1.75rem; }
+.answer-draft { display: grid; gap: 10px; padding: 16px 18px; border-radius: var(--radius-md); background: var(--highlight-ai); }
+.answer-draft > .tag { justify-self: start; margin: 0; background: var(--bg-surface); }
+.answer-text { border: 0; padding: 0; background: transparent; font-size: 1.125rem; line-height: 1.6; min-height: 120px; resize: none; overflow: hidden; }
+.answer-text:focus-visible { outline-offset: 6px; }
+.answer-tip { display: grid; gap: 4px; padding-top: 14px; border-top: 1.5px solid var(--border-strong); }
+.answer-workspace details summary { cursor: pointer; color: var(--link); }
+@media (max-width: 960px) { .draft-layout { grid-template-columns: 1fr; } .draft-form { position: static; } .answer-workspace { padding: 20px 18px; } }
+
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ------------------------------------------------------------------ My CV: versions | section editor | preview */
