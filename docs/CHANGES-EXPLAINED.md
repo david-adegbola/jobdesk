@@ -807,3 +807,54 @@ of them in one place.
   quotes and hard requirements. Requirements the CV doesn't show come from rules the model can't overrule.
 - *What leaves the server?* Only with the student's opt-in, and only in live mode: the ad and the CV facts. Never the
   name, email, phone, location or links. The tests check that the name and email aren't in what is sent.
+
+## Platform D: Prepare: a tailored CV, a cover letter and an email
+
+**What changed**
+- A **Prepare** page. The student picks one of their jobs and gets, in English, Finnish or both:
+  - a **tailored CV**: a copy of their main CV with a summary written for this job, and the skills the ad mentions
+    moved first (nothing added or removed). It is a normal CV in My CVs, so it can be edited and downloaded as a PDF.
+  - a **cover letter**, following the layout and content rules in the CV repository's `CV-RULES.md` (section 9).
+  - an **application email**: the short note sent after applying.
+- A **master profile**: which CV is the main one, plus practical details (available from, hours, where they can work,
+  work permit, licences and cards). The letter's practical paragraph may use only these.
+- **Exports:** the letter as PDF or text, the tailored CV as PDF, and the email by Copy or "Open in email" (a `mailto:`
+  link with the subject and body filled in). PDF names follow the CV repository's convention: full name, document
+  type, job title, ASCII with hyphens.
+
+**How it works, step by step**
+1. `POST /api/prepare/<job>` checks the job, the languages, the recipient details (an email address must look like
+   one) and that the ad has text. The CV used is remembered as the main CV, so the tailored CVs made later never
+   replace it.
+2. A cache key hashes everything the documents depend on: ad, CV, profile, recipient, language, Finnish level, method
+   and prompt version. Languages whose documents are already up to date are skipped. If the student edited the
+   documents, the server answers 409 and the page asks before replacing them. The rest goes to the background queue
+   from Phase C.
+3. `core/documents.prepare` turns the CV into numbered facts (never the name, email, phone, location or links) and adds
+   the practical details as facts `prof-1`, `prof-2` and so on. In AI mode the model writes, in a fixed JSON shape:
+   the CV summary, and the letter's "why", "experience", "learning" and "practical" paragraphs. Every sentence lists
+   its fact ids. In mock mode, or without the opt-in, facts are copied in and labelled.
+4. Every sentence goes through `core/verify`, the same check as "Draft an answer": cited ids exist, its words and
+   numbers come from those facts, and it claims nothing the ad requires that the CV lacks. Failing sentences stay in,
+   marked UNSUPPORTED, so nothing is silently lost.
+5. The fixed parts come from templates in both languages, not from the AI: the opener ("I'm applying for the ...
+   position at ..."), the subject, the greeting, the honest Finnish line chosen from the student's Finnish level,
+   "my CV is attached", the closing and the email's first line. The email reuses the letter's supported sentences,
+   so it never says anything new.
+6. `style_warnings` flags the "AI tells" from CV-RULES.md section 5: buzzwords, em dashes, "not only ... but also".
+7. The letter PDF reuses the CV repository's `cv-style.sty` (same font and colours as the CVs) and compiles twice
+   like the CVs. The repository's `cover-letter.sty` has its owner's name and contacts written into it, so JobDesk
+   defines the same layout itself with the student's details. If that file is ever changed to take the name as a
+   parameter, JobDesk could load it directly.
+
+**Interview questions**
+- *Why split the letter between templates and AI?* The parts that must always be right (who it's to, the subject, the
+  honest Finnish line, the contacts) don't need creativity, so code writes them. The AI writes only the paragraphs
+  that depend on the student's facts, and each sentence is checked against those facts.
+- *How do you stop the tailored CV from becoming the "main" CV?* Tailored CVs are recorded in `documents.tailored_cv_id`
+  and left out when choosing the main CV. The main CV is also stored in the profile the first time documents are
+  written. A test caught this: without it, the second request rewrote everything from the tailored copy.
+- *Why keep edits instead of regenerating?* The student's own words are worth more than a new draft. The server
+  refuses (409) to overwrite edited documents unless the student confirms.
+- *What isn't verified?* A true fact used in a misleading way, and the quality of the Finnish. The page says to read
+  and edit everything before sending.

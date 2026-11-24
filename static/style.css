@@ -160,7 +160,7 @@ button.secondary, .btn.secondary { background: transparent; color: var(--link); 
 button.secondary:hover, .btn.secondary:hover { background: var(--interactive-hover); color: var(--text-on-color); }
 button.danger.secondary { color: var(--error); border-color: var(--error); }
 button.danger.secondary:hover { background: var(--error); color: var(--white); }
-button.small { min-height: 32px; padding: 0 16px; font-size: .875rem; }
+button.small, .btn.small { min-height: 32px; padding: 0 16px; font-size: .875rem; }
 button:disabled { background: var(--layer-02); color: var(--text-helper); border-color: transparent; cursor: not-allowed; }
 button.link {
   min-height: 0; padding: 0; background: none; border: 0; color: var(--link); font-size: inherit;

@@ -148,6 +148,23 @@ CREATE TABLE IF NOT EXISTS fit_evaluations (
   UNIQUE (user_id, job_id, cache_key)
 );
 CREATE INDEX IF NOT EXISTS fit_user_job ON fit_evaluations (user_id, job_id, id);
+CREATE TABLE IF NOT EXISTS documents (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  language TEXT NOT NULL,
+  source_cv_id INTEGER REFERENCES cvs(id) ON DELETE SET NULL,
+  tailored_cv_id INTEGER REFERENCES cvs(id) ON DELETE SET NULL,
+  cache_key TEXT NOT NULL,
+  letter_json TEXT NOT NULL,
+  email_json TEXT NOT NULL,
+  checks_json TEXT NOT NULL,
+  method TEXT NOT NULL,
+  edited INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (user_id, job_id, language)
+);
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -488,6 +505,7 @@ def delete_user(user_id):
                     "UPDATE invitations SET used_by=NULL WHERE used_by=?",
                     "UPDATE news_items SET user_id=1 WHERE user_id=?",
                     "DELETE FROM tasks WHERE user_id=?",
+                    "DELETE FROM documents WHERE user_id=?",
                     "DELETE FROM fit_evaluations WHERE user_id=?",
                     "DELETE FROM jobs WHERE user_id=? AND private=1",       # their own collected jobs go too
                     "UPDATE jobs SET user_id=1 WHERE user_id=?",              # shared ads stay for others
@@ -1156,3 +1174,68 @@ def delete_old_tasks(days=30):
     with connect() as conn:
         conn.execute("DELETE FROM tasks WHERE status IN ('done','failed') AND finished_at<?",
                      ((datetime.now() - timedelta(days=days)).isoformat(timespec="seconds"),))
+
+
+# ---------------------------------------------------------------- application documents (letter + email per language)
+
+def _document_row(row):
+    if not row:
+        return None
+    item = dict(row)
+    for key in ("letter", "email", "checks"):
+        item[key] = json.loads(item.pop(f"{key}_json"))
+    item["edited"] = bool(item["edited"])
+    return item
+
+
+def save_documents(user_id, job_id, language, source_cv_id, tailored_cv_id, cache_key, letter, email, checks, method):
+    """Store (or replace) the documents for one job and language."""
+    with connect() as conn:
+        conn.execute("""INSERT INTO documents (user_id, job_id, language, source_cv_id, tailored_cv_id, cache_key,
+                          letter_json, email_json, checks_json, method, edited, created_at, updated_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?)
+                        ON CONFLICT (user_id, job_id, language) DO UPDATE SET
+                          source_cv_id=excluded.source_cv_id, tailored_cv_id=excluded.tailored_cv_id,
+                          cache_key=excluded.cache_key, letter_json=excluded.letter_json, email_json=excluded.email_json,
+                          checks_json=excluded.checks_json, method=excluded.method, edited=0, updated_at=excluded.updated_at""",
+                     (user_id, job_id, language, source_cv_id, tailored_cv_id, cache_key,
+                      json.dumps(letter, ensure_ascii=False), json.dumps(email, ensure_ascii=False),
+                      json.dumps(checks, ensure_ascii=False), method, now(), now()))
+
+
+def get_documents(user_id, job_id, language=None):
+    with connect() as conn:
+        if language:
+            return _document_row(conn.execute("SELECT * FROM documents WHERE user_id=? AND job_id=? AND language=?",
+                                              (user_id, job_id, language)).fetchone())
+        return [_document_row(r) for r in conn.execute(
+            "SELECT * FROM documents WHERE user_id=? AND job_id=? ORDER BY language", (user_id, job_id)).fetchall()]
+
+
+def get_document(document_id, user_id):
+    with connect() as conn:
+        return _document_row(conn.execute("SELECT * FROM documents WHERE id=? AND user_id=?",
+                                          (document_id, user_id)).fetchone())
+
+
+def update_document(document_id, user_id, letter, email):
+    with connect() as conn:
+        result = conn.execute("""UPDATE documents SET letter_json=?, email_json=?, edited=1, updated_at=?
+                                 WHERE id=? AND user_id=?""",
+                              (json.dumps(letter, ensure_ascii=False), json.dumps(email, ensure_ascii=False), now(),
+                               document_id, user_id))
+        if not result.rowcount:
+            raise KeyError(document_id)
+
+
+def list_all_documents(user_id):
+    with connect() as conn:
+        return [_document_row(r) for r in conn.execute("SELECT * FROM documents WHERE user_id=? ORDER BY id",
+                                                       (user_id,)).fetchall()]
+
+
+def tailored_cv_ids(user_id):
+    """CVs JobDesk wrote for one job (they are never the member's main CV)."""
+    with connect() as conn:
+        return {r[0] for r in conn.execute("SELECT tailored_cv_id FROM documents WHERE user_id=? AND tailored_cv_id IS NOT NULL",
+                                           (user_id,))}

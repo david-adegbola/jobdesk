@@ -45,7 +45,7 @@ import language  # noqa: E402
 import mailer   # noqa: E402
 import tasks    # noqa: E402
 from core import fields as core_fields  # noqa: E402
-from core import batch, draft, finnish, fit, jobpage, llm, rank  # noqa: E402
+from core import batch, documents, draft, finnish, fit, jobpage, llm, rank  # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -326,6 +326,9 @@ def api_account_export(h, m):
         "applications": [safe_application(item) for item in forestry_applications(h.user)],
         "fit_evaluations": [{"job_id": f["job_id"], "cv_id": f["cv_id"], "created_at": f["created_at"], **f["result"]}
                             for f in db.list_fits(h.user["id"])],
+        "application_documents": [{"job_id": d["job_id"], "language": d["language"], "letter": d["letter"],
+                                   "email": d["email"], "updated_at": d["updated_at"]}
+                                  for d in db.list_all_documents(h.user["id"])],
         "news_reading_list": [
             {"id": item["id"], "title": item["title"], "url": item["url"],
              "is_read": bool(item["is_read"]), "is_saved": bool(item["is_saved"])}
@@ -414,7 +417,9 @@ def api_build_user_cv(h, m):
         )
     except cv_latex.PdfBuildError as error:
         return h.error(422, str(error))
-    filename = cv_latex.safe_filename(cv["title"])
+    content = cv.get("content") or {}
+    filename = cv_latex.download_name(content.get("full_name"), "CV", content.get("target_role") or cv["title"],
+                                      cv["language"].upper())
     return (
         pdf, "application/pdf",
         {"Content-Disposition": f'inline; filename="{filename}"'},
@@ -1088,6 +1093,270 @@ def api_job_fit(h, m):
     if task and stored and task["status"] == "done":
         task = None
     return {"evaluation": _fit_view(h.user, job, stored), "task": task}
+
+
+# ---------------------------------------------------------------- Prepare: tailored CV, cover letter, email
+
+DOCS_TASK = "documents"
+TEXT_LIMIT = 200          # one-line fields
+LETTER_TEXT_LIMIT = 6000  # a paragraph, the address, the email body
+
+
+def _master_cv(user, preferences=None):
+    """The member's main CV (chosen on the Prepare page), else their most recently edited CV."""
+    preferences = preferences if preferences is not None else user_preferences(user)
+    chosen = preferences.get("master_cv_id")
+    cv = db.get_cv(chosen, user["id"]) if isinstance(chosen, int) else None
+    if cv:
+        return cv
+    tailored = db.tailored_cv_ids(user["id"])
+    cvs = [cv for cv in db.list_cvs(user["id"]) if cv["id"] not in tailored]
+    return cvs[0] if cvs else None
+
+
+def _my_jobs(user):
+    fields = user_fields(user)
+    return [job for job in db.list_jobs(user["id"])
+            if (job.get("private") or job.get("status")) and can_see(job, user, fields=fields)]
+
+
+@route("GET", "/api/prepare")
+def api_prepare(h, m):
+    preferences = user_preferences(h.user)
+    master = _master_cv(h.user, preferences)
+    order = {status: i for i, status in enumerate(["Shortlisted", "Saved", "Applied", "Interview", "Offer"])}
+    jobs = sorted(_my_jobs(h.user), key=lambda j: (order.get(j.get("status") or "Saved", 9), -j["id"]))
+    return {
+        "jobs": [{"id": j["id"], "title": j["title"], "company": j.get("company") or "", "status": j.get("status") or ""}
+                 for j in jobs if (j.get("status") or "") not in ("Rejected", "Not a fit")],
+        "cvs": [{"id": cv["id"], "title": cv["title"], "language": cv["language"]} for cv in db.list_cvs(h.user["id"])
+                if cv["id"] not in db.tailored_cv_ids(h.user["id"])],
+        "master_cv_id": master["id"] if master else None,
+        "profile": {key: (preferences.get("profile") or {}).get(key, "") for key in documents.PROFILE_FIELDS},
+        "profile_labels": {key: labels[0] for key, labels in documents.PROFILE_FIELDS.items()},
+        "finnish_level": preferences.get("finnish_level") or "none",
+    }
+
+
+@route("POST", "/api/prepare/profile")
+def api_prepare_profile(h, m):
+    """The master profile: which CV is the main one, and practical details letters may use."""
+    body = h.json()
+    if not isinstance(body, dict) or not isinstance(body.get("profile", {}), dict):
+        return h.error(400, BODY_ERROR)
+    profile = body.get("profile", {})
+    if any(key not in documents.PROFILE_FIELDS or not isinstance(value, str) or len(value) > TEXT_LIMIT
+           for key, value in profile.items()):
+        return h.error(400, f"Practical details must be text of up to {TEXT_LIMIT} characters.")
+    cv_id = body.get("master_cv_id")
+    if cv_id is not None and (not isinstance(cv_id, int) or isinstance(cv_id, bool) or not db.get_cv(cv_id, h.user["id"])):
+        return h.error(400, "Choose one of your own CVs.")
+    preferences = user_preferences(h.user)
+    preferences["profile"] = {key: " ".join(value.split()) for key, value in profile.items() if value.strip()}
+    if cv_id is not None:
+        preferences["master_cv_id"] = cv_id
+    db.update_user_preferences(h.user["id"], preferences)
+    return {"ok": True}
+
+
+def _documents_plan(user, job, cv, recipient, language):
+    settings = llm_settings()
+    preferences = user_preferences(user)
+    use_ai = settings.live and preferences.get("llm_opt_in") is True
+    method = "llm" if use_ai else ("mock" if not settings.live else "copy")
+    profile = preferences.get("profile") or {}
+    level = preferences.get("finnish_level") or "none"
+    key = fit.content_hash(json.dumps([finnish_text(job), job.get("company"), job.get("location"), cv["content"], profile,
+                                       recipient, language, level, method, documents.PROMPT_VERSION], sort_keys=True))
+    return {"settings": settings, "use_ai": use_ai, "method": method, "profile": profile, "level": level, "key": key}
+
+
+def _run_documents_task(user_id, payload):
+    user = db.get_user(user_id)
+    job = db.get_job(payload["job_id"], user_id)
+    cv = db.get_cv(payload["cv_id"], user_id)
+    if not user or not job or not cv:
+        raise tasks.TaskError("The job or the CV no longer exists.")
+    for language in payload["languages"]:
+        plan = _documents_plan(user, job, cv, payload["recipient"], language)
+        existing = db.get_documents(user_id, job["id"], language)
+        if existing and existing["cache_key"] == plan["key"] and not existing["edited"]:
+            continue
+        if existing and existing["edited"] and not payload.get("replace_edited"):
+            continue
+        try:
+            result = documents.prepare(job, cv["content"], plan["profile"], payload["recipient"], language,
+                                       plan["level"], plan["settings"], use_ai=plan["use_ai"])
+        except ValueError as error:
+            raise tasks.TaskError(str(error)) from error
+        except llm.LLMError as error:
+            raise tasks.TaskError("The AI service couldn't write the documents. Try again later.") from error
+        tailored_id = existing["tailored_cv_id"] if existing else None
+        if language == cv["language"]:     # the tailored CV is made in the CV's own language
+            title = f"{job['title']}" + (f" ({job['company']})" if job.get("company") else "")
+            title = title[:120]
+            if tailored_id and db.get_cv(tailored_id, user_id):
+                db.save_cv(user_id, title, language, result["cv_content"], tailored_id)
+            else:
+                tailored_id = db.save_cv(user_id, title, language, result["cv_content"])
+        db.save_documents(user_id, job["id"], language, cv["id"], tailored_id, plan["key"], result["letter"],
+                          result["email"], {**result["checks"], "notice": result["notice"], "model": result["model"]},
+                          result["method"])
+
+
+tasks.register(DOCS_TASK, _run_documents_task)
+
+
+def _document_view(user, doc):
+    tailored = db.get_cv(doc["tailored_cv_id"], user["id"]) if doc.get("tailored_cv_id") else None
+    return {"id": doc["id"], "language": doc["language"], "letter": doc["letter"], "email": doc["email"],
+            "checks": doc["checks"], "method": doc["method"], "edited": doc["edited"], "updated_at": doc["updated_at"],
+            "tailored_cv": {"id": tailored["id"], "title": tailored["title"]} if tailored else None,
+            "letter_file": cv_latex.download_name(doc["letter"].get("name"), "Cover Letter", doc["letter"].get("job_title"),
+                                                  doc["language"].upper())}
+
+
+def _clean_recipient(value):
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or any(k not in {"name", "title", "address", "email"} for k in value) or \
+            not all(isinstance(v, str) for v in value.values()):
+        raise ValueError("The recipient details must be text.")
+    out = {k: v.strip() for k, v in value.items() if v.strip()}
+    if any(len(v) > (LETTER_TEXT_LIMIT if k == "address" else TEXT_LIMIT) for k, v in out.items()):
+        raise ValueError("A recipient detail is too long.")
+    for address in [a.strip() for a in out.get("email", "").split(",") if a.strip()]:
+        if not EMAIL_RE.fullmatch(address):
+            raise ValueError("Write the recipient's email address as name@example.fi (several: separate with commas).")
+    return out
+
+
+@route("GET", r"/api/prepare/(\d+)")
+def api_prepare_job(h, m):
+    job = db.get_job(int(m.group(1)), h.user["id"])
+    if not job or not can_see(job, h.user):
+        return h.error(404, "No such job.")
+    task = db.latest_task(h.user["id"], DOCS_TASK, f"{job['id']}:")
+    docs = [_document_view(h.user, d) for d in db.get_documents(h.user["id"], job["id"])]
+    status = next((j.get("status") for j in db.list_jobs(h.user["id"]) if j["id"] == job["id"]), "") or ""
+    return {"job": {"id": job["id"], "title": job["title"], "company": job.get("company") or "",
+                    "location": job.get("location") or "", "url": job.get("url") or "", "status": status,
+                    "has_text": len(finnish_text(job)) >= 40},
+            "documents": docs, "task": task if task and task["status"] != "done" else None}
+
+
+@route("POST", r"/api/prepare/(\d+)")
+def api_prepare_documents(h, m):
+    """Write the tailored CV, cover letter and email for a job, in the background (one task for all languages).
+    Documents the member edited are kept unless replace_edited is true."""
+    body = h.json()
+    if not isinstance(body, dict):
+        return h.error(400, BODY_ERROR)
+    job = db.get_job(int(m.group(1)), h.user["id"])
+    if not job or not can_see(job, h.user):
+        return h.error(404, "No such job.")
+    languages = body.get("languages", ["en"])
+    if not isinstance(languages, list) or not languages or any(l not in documents.LANGUAGES for l in languages):
+        return h.error(400, "Choose English, Finnish or both.")
+    languages = list(dict.fromkeys(languages))
+    cv_id = body.get("cv_id")
+    if cv_id is not None and (not isinstance(cv_id, int) or isinstance(cv_id, bool)):
+        return h.error(400, "Choose one of your CVs.")
+    preferences = user_preferences(h.user)
+    cv = db.get_cv(cv_id, h.user["id"]) if cv_id is not None else _master_cv(h.user, preferences)
+    if not cv:
+        return h.error(400, "Add a CV under My CVs first.")
+    if not isinstance(preferences.get("master_cv_id"), int):      # remember it, so later tailored CVs never replace it
+        db.update_user_preferences(h.user["id"], {**preferences, "master_cv_id": cv["id"]})
+    try:
+        recipient = _clean_recipient(body.get("recipient"))
+    except ValueError as error:
+        return h.error(400, str(error))
+    if len(finnish_text(job)) < 40:
+        return h.error(400, "This job has too little text to write for. Add the ad's description on the Jobs page.")
+    replace = body.get("replace_edited") is True
+    todo = []
+    for language in languages:
+        plan = _documents_plan(h.user, job, cv, recipient, language)
+        existing = db.get_documents(h.user["id"], job["id"], language)
+        if existing and existing["edited"] and not replace:
+            return h.error(409, "You've edited these documents. Writing them again replaces your edits: confirm to go on.")
+        if not (existing and existing["cache_key"] == plan["key"]):
+            todo.append(language)
+    if not todo:
+        return {"documents": [_document_view(h.user, d) for d in db.get_documents(h.user["id"], job["id"])]}
+    if _documents_plan(h.user, job, cv, recipient, todo[0])["use_ai"] and not _take_ai_quota(h.user["id"], len(todo)):
+        return h.error(429, f"You've used today's {SHORTLIST_DAILY_LIMIT} AI checks. Try again tomorrow.")
+    key = fit.content_hash(json.dumps([cv["id"], todo, recipient, replace], sort_keys=True))
+    task_id, _ = tasks.submit(h.user["id"], DOCS_TASK, f"{job['id']}:{key}",
+                              {"job_id": job["id"], "cv_id": cv["id"], "languages": todo, "recipient": recipient,
+                               "replace_edited": replace})
+    return {"task": db.get_task(task_id, h.user["id"])}
+
+
+def _clean_text(value, limit):
+    if not isinstance(value, str) or len(value) > limit:
+        raise ValueError(f"Each part must be text of up to {limit} characters.")
+    return value.strip()
+
+
+@route("POST", r"/api/documents/(\d+)")
+def api_update_document(h, m):
+    """Save the member's edits to a letter and email."""
+    doc = db.get_document(int(m.group(1)), h.user["id"])
+    if not doc:
+        return h.error(404, "Document not found.")
+    body = h.json()
+    if not isinstance(body, dict) or not isinstance(body.get("letter"), dict) or not isinstance(body.get("email"), dict):
+        return h.error(400, BODY_ERROR)
+    try:
+        letter = dict(doc["letter"])
+        for key in ("job_title", "date", "subject", "greeting", "closing"):
+            if key in body["letter"]:
+                letter[key] = _clean_text(body["letter"][key], TEXT_LIMIT)
+        if "recipient" in body["letter"]:
+            letter["recipient"] = _clean_text(body["letter"]["recipient"], LETTER_TEXT_LIMIT)
+        if "paragraphs" in body["letter"]:
+            paragraphs = body["letter"]["paragraphs"]
+            if not isinstance(paragraphs, list) or len(paragraphs) > 10:
+                raise ValueError("Give the letter as up to 10 paragraphs.")
+            letter["paragraphs"] = [p for p in (_clean_text(x, LETTER_TEXT_LIMIT) for x in paragraphs) if p]
+        email = {"to": _clean_text(body["email"].get("to", ""), TEXT_LIMIT),
+                 "subject": _clean_text(body["email"].get("subject", ""), TEXT_LIMIT),
+                 "body": _clean_text(body["email"].get("body", ""), LETTER_TEXT_LIMIT)}
+        _clean_recipient({"email": email["to"]})
+    except ValueError as error:
+        return h.error(400, str(error))
+    db.update_document(doc["id"], h.user["id"], letter, email)
+    return _document_view(h.user, db.get_document(doc["id"], h.user["id"]))
+
+
+def letter_text(letter):
+    head = [letter.get("name", ""), letter.get("job_title", ""), letter.get("location", ""), letter.get("phone", ""),
+            letter.get("email", "")]
+    parts = ["\n".join(x for x in head if x), letter.get("date", ""), letter.get("recipient", ""),
+             letter.get("subject", ""), letter.get("greeting", ""), *letter.get("paragraphs", []),
+             "\n".join(x for x in (letter.get("closing", ""), "", letter.get("name", ""), letter.get("phone", ""),
+                                   letter.get("email", "")) if x is not None)]
+    return "\n\n".join(p for p in parts if p).strip() + "\n"
+
+
+@route("GET", r"/api/documents/(\d+)/letter\.(pdf|txt)")
+def api_document_letter(h, m):
+    doc = db.get_document(int(m.group(1)), h.user["id"])
+    if not doc:
+        return h.error(404, "Document not found.")
+    name = _document_view(h.user, doc)["letter_file"]
+    if m.group(2) == "txt":
+        return (letter_text(doc["letter"]).encode("utf-8"), "text/plain; charset=utf-8",
+                {"Content-Disposition": f'attachment; filename="{name[:-4]}.txt"'})
+    try:
+        pdf = cv_latex.build_letter_pdf(doc["letter"])
+    except FileNotFoundError:
+        return h.error(503, "PDF building isn't available on this server. Download the text version instead.")
+    except (ValueError, cv_latex.PdfBuildError) as error:
+        return h.error(422, str(error))
+    return pdf, "application/pdf", {"Content-Disposition": f'inline; filename="{name}"'}
 
 
 # ---------------------------------------------------------------- tracker

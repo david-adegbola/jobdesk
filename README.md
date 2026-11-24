@@ -64,6 +64,19 @@ evaluated or certified against WCAG 2.1 Level AA.
   and method, so the same comparison never runs twice; editing the CV or the ad marks it out of
   date. *Not a fit* is a status, so you can set it aside. Statuses: Saved, Shortlisted, Applied,
   Interview, Offer, Rejected, Not a fit.
+- **Prepare** (menu): for one of your jobs, a tailored CV, a cover letter and an application email,
+  in English, Finnish or both. Set your **master profile** once: the main CV, and practical details
+  (start date, hours, places, work permit, licences) that the letter may use. The tailored CV is a
+  copy of the main CV with a summary written for the job and the ad's skills first. The letter
+  follows the CV repository's rules (CV-RULES.md sections 4-6 and 9): header, date, recipient,
+  subject "Application: <job>, <company> <city>", greeting by first name, five short paragraphs
+  ending with an honest Finnish line, closing and contacts. The email is the short "I just applied"
+  note. Every written sentence cites CV facts and is checked like **Draft an answer**; buzzwords and
+  em dashes are flagged. Edits are kept unless you confirm replacing them. Downloads: letter PDF
+  (LaTeX, with the shared `cv-style.sty`; named like `Aino-Makela-Cover-Letter-Data-Analyst-EN.pdf`),
+  letter text, the CV PDF, and the email via Copy or "Open in email". The writing runs in the
+  background queue. AI writes the text only in live mode with "AI with your CV" on; otherwise CV
+  facts are copied in for you to rewrite.
 - **Listings:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry, internship
   (`harjoittelija`) and summer-job (`kesatyo`) category pages, waiting 10 s between
   requests as Jobly's robots.txt asks. The source list follows the 2025 forestry internship

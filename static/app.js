@@ -2,6 +2,7 @@
 import { start } from "./core.js";
 import "./pages/home.js";
 import "./pages/jobs.js";
+import "./pages/prepare.js";
 import "./pages/shortlist.js";
 import "./pages/draft.js";
 import "./pages/news.js";

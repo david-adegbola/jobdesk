@@ -403,7 +403,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(pdf, b"%PDF-built CV")
         self.assertEqual(headers["Content-Type"], "application/pdf")
-        self.assertEqual(headers["Content-Disposition"], 'inline; filename="Forestry-CV.pdf"')
+        self.assertEqual(headers["Content-Disposition"], 'inline; filename="Admin-CV-Forestry-CV-EN.pdf"')
         build.assert_called_once()
 
         invite = "formatted-cv-private-invitation"
@@ -966,6 +966,95 @@ class JobApiTests(unittest.TestCase):
         with patch.dict(server.tasks.HANDLERS, {"noop": lambda user_id, payload: ran.append(user_id)}):
             server.tasks.run_pending()
         self.assertEqual((ran, db.get_task(task_id, 1)["status"]), ([member["id"]], "done"))
+
+    def prepare_setup(self):
+        cookie, member, cv_id, job_id = self.fit_setup()
+        db.save_cv(member["id"], "My CV", "en", {**self.FIT_CV, "phone": "+358 40 1"}, cv_id)
+        return cookie, member, cv_id, job_id
+
+    def test_master_profile_is_saved_and_checked(self):
+        cookie, member, cv_id, job_id = self.prepare_setup()
+        status, data = self.request("GET", "/api/prepare", headers=cookie)
+        self.assertEqual((data["master_cv_id"], [j["id"] for j in data["jobs"]]), (cv_id, [job_id]))
+        status, _ = self.request("POST", "/api/prepare/profile", {"master_cv_id": cv_id,
+                                 "profile": {"available_from": " January  2027 ", "hours": ""}}, headers=cookie)
+        self.assertEqual(status, 200)
+        status, data = self.request("GET", "/api/prepare", headers=cookie)
+        self.assertEqual((data["profile"]["available_from"], data["profile"]["hours"]), ("January 2027", ""))
+        for bad in ({"profile": {"salary": "x"}}, {"profile": {"hours": "x" * 201}}, {"master_cv_id": 999},
+                    {"profile": "x"}):
+            status, _ = self.request("POST", "/api/prepare/profile", bad, headers=cookie)
+            self.assertEqual(status, 400, bad)
+
+    def test_preparing_writes_cv_letter_and_email_once_and_keeps_edits(self):
+        cookie, member, cv_id, job_id = self.prepare_setup()
+        body = {"languages": ["en", "fi"], "recipient": {"name": "Miisa Virtanen", "email": "jobs@example.fi"}}
+        status, queued = self.request("POST", f"/api/prepare/{job_id}", body, headers=cookie)
+        self.assertEqual((status, queued["task"]["status"]), (200, "queued"), queued)
+        server.tasks.run_pending()
+        status, data = self.request("GET", f"/api/prepare/{job_id}", headers=cookie)
+        docs = {d["language"]: d for d in data["documents"]}
+        self.assertEqual(sorted(docs), ["en", "fi"])
+        en = docs["en"]
+        self.assertEqual(en["letter"]["greeting"], "Hi Miisa,")
+        self.assertEqual(en["email"]["to"], "jobs@example.fi")
+        self.assertEqual(en["letter_file"], "Forest-Student-Cover-Letter-Data-analyst-trainee-EN.pdf")
+        self.assertIsNotNone(en["tailored_cv"])
+        self.assertIsNone(docs["fi"]["tailored_cv"])          # the CV is English: one tailored CV, in English
+        status, cvs = self.request("GET", "/api/cvs", headers=cookie)
+        self.assertEqual(len(cvs["cvs"]), 2)
+        # The same request again: nothing to do, nothing queued
+        status, again = self.request("POST", f"/api/prepare/{job_id}", body, headers=cookie)
+        self.assertIn("documents", again)
+        # Edits are saved and protected
+        letter = {**en["letter"], "paragraphs": ["My own first paragraph."]}
+        status, saved = self.request("POST", f"/api/documents/{en['id']}", {"letter": letter, "email": en["email"]},
+                                     headers=cookie)
+        self.assertEqual((status, saved["edited"], saved["letter"]["paragraphs"]), (200, True, ["My own first paragraph."]))
+        status, text = self.request("GET", f"/api/documents/{en['id']}/letter.txt", headers=cookie)
+        self.assertIn("My own first paragraph.", text.decode())
+        self.assertTrue(text.decode().startswith("Forest Student\nData analyst trainee"))
+        status, error = self.request("POST", f"/api/prepare/{job_id}", {**body, "recipient": {}}, headers=cookie)
+        self.assertEqual(status, 409)
+        status, queued = self.request("POST", f"/api/prepare/{job_id}", {**body, "recipient": {}, "replace_edited": True},
+                                      headers=cookie)
+        server.tasks.run_pending()
+        status, data = self.request("GET", f"/api/prepare/{job_id}", headers=cookie)
+        en = next(d for d in data["documents"] if d["language"] == "en")
+        self.assertEqual((en["edited"], en["letter"]["greeting"]), (False, "Hello,"))
+        status, cvs = self.request("GET", "/api/cvs", headers=cookie)
+        self.assertEqual(len(cvs["cvs"]), 2)                  # the tailored CV was updated, not copied again
+        # Export and account deletion cover the documents
+        status, export = self.request("GET", "/api/account/export", headers=cookie)
+        self.assertEqual(len(export["application_documents"]), 2)
+        self.request("POST", "/api/account/delete", {"confirm_email": "member@example.test"}, headers=cookie)
+        with db.connect() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0], 0)
+
+    def test_prepare_validates_input_and_ownership(self):
+        cookie, member, cv_id, job_id = self.prepare_setup()
+        for bad in ({"languages": []}, {"languages": ["sv"]}, {"recipient": {"email": "not an address"}},
+                    {"recipient": {"phone": "1"}}, {"cv_id": "1"}):
+            status, _ = self.request("POST", f"/api/prepare/{job_id}", bad, headers=cookie)
+            self.assertEqual(status, 400, bad)
+        status, bare = self.request("POST", "/api/jobs", {"title": "Mystery job"}, headers=cookie)
+        status, error = self.request("POST", f"/api/prepare/{bare['id']}", {}, headers=cookie)
+        self.assertEqual(status, 400)
+        self.request("POST", f"/api/prepare/{job_id}", {}, headers=cookie)
+        server.tasks.run_pending()
+        status, data = self.request("GET", f"/api/prepare/{job_id}", headers=cookie)
+        doc_id = data["documents"][0]["id"]
+        other = self.sign_in_by_link("other@example.test", "Other Student")
+        for method, path in (("GET", f"/api/prepare/{job_id}"), ("GET", f"/api/documents/{doc_id}/letter.txt"),
+                             ("POST", f"/api/documents/{doc_id}")):
+            status, _ = self.request(method, path, {"letter": {}, "email": {}} if method == "POST" else None, headers=other)
+            self.assertEqual(status, 404, path)
+        status, _ = self.request("POST", f"/api/documents/{doc_id}",
+                                 {"letter": {"paragraphs": ["x" * 7000]}, "email": {}}, headers=cookie)
+        self.assertEqual(status, 400)
+        with patch.object(server.cv_latex, "build_letter_pdf", side_effect=FileNotFoundError):
+            status, error = self.request("GET", f"/api/documents/{doc_id}/letter.pdf", headers=cookie)
+        self.assertEqual(status, 503)
 
     def test_shortlist_live_mode_uses_the_ai_and_has_a_daily_limit(self):
         def fake(text, settings, call=None):

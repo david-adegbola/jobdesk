@@ -362,19 +362,19 @@ def render_tex(cv, style_source):
     return source, style
 
 
-def build_pdf(cv, repo=None, pdflatex=None):
+def _style_source(repo=None):
     root = Path(repo or config.CV_REPO).resolve()
-    style_path = root / "shared" / "cv-style.sty"
     try:
-        style_source = style_path.read_text(encoding="utf-8")
+        return (root / "shared" / "cv-style.sty").read_text(encoding="utf-8")
     except OSError as error:
         raise FileNotFoundError("The shared CV LaTeX template is unavailable.") from error
 
+
+def _compile(tex, style, pdflatex=None, what="CV"):
+    """Run pdflatex twice (page counts come from the previous run) in a temporary folder; the PDF bytes."""
     executable = pdflatex or shutil.which("pdflatex")
     if not executable:
         raise FileNotFoundError("pdflatex is not installed.")
-    tex, style = render_tex(cv, style_source)
-
     with tempfile.TemporaryDirectory(prefix="jobdesk-cv-") as directory:
         workdir = Path(directory)
         tex_path = workdir / "jobdesk-cv.tex"
@@ -396,14 +396,14 @@ def build_pdf(cv, repo=None, pdflatex=None):
                     check=False,
                 )
             except subprocess.TimeoutExpired as error:
-                raise PdfBuildError("CV compilation timed out. Shorten the CV and try again.") from error
+                raise PdfBuildError(f"{what} compilation timed out. Shorten it and try again.") from error
             except FileNotFoundError as error:
                 raise FileNotFoundError("pdflatex is not installed.") from error
             except OSError as error:
                 raise PdfBuildError("The LaTeX compiler could not be started.") from error
             if result.returncode:
                 raise PdfBuildError(
-                    "CV compilation failed. The server may be missing a required LaTeX package."
+                    f"{what} compilation failed. The server may be missing a required LaTeX package."
                 )
         pdf_path = workdir / "jobdesk-cv.pdf"
         try:
@@ -413,6 +413,104 @@ def build_pdf(cv, repo=None, pdflatex=None):
         if not pdf.startswith(b"%PDF-"):
             raise PdfBuildError("LaTeX produced an invalid PDF.")
         return pdf
+
+
+def build_pdf(cv, repo=None, pdflatex=None):
+    style_source = _style_source(repo)
+    if not (pdflatex or shutil.which("pdflatex")):
+        raise FileNotFoundError("pdflatex is not installed.")
+    tex, style = render_tex(cv, style_source)
+    return _compile(tex, style, pdflatex)
+
+
+# Cover letters. The layout follows the CV repository's shared/cover-letter.sty (CV-RULES.md section 9): name and
+# job title left, location, phone and email right, a rule; date; recipient; bold subject; greeting; paragraphs;
+# closing, space to sign, name and contacts. That file has its owner's name and contacts written in, so it can't be
+# loaded for anyone else: the same layout is defined here with the member's own details. Same font and colours as
+# the CVs, because cv-style.sty is loaded first.
+LETTER_MACROS = r"""
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.8em}
+\AtBeginDocument{\frenchspacing}
+\newcommand{\letterhead}[3]{%
+  \noindent
+  \begin{minipage}[c]{0.55\textwidth}
+    {\Huge\bfseries #1}\\[0.4em]
+    {\Large #2}
+  \end{minipage}\hfill
+  \begin{minipage}[c]{0.4\textwidth}\raggedleft
+    #3
+  \end{minipage}
+  \par\vspace{1em}\hrule\vspace{1.5em}}
+"""
+
+
+LINE_BREAK = "\\\\"        # LaTeX's \\ (new line)
+
+
+def _lines(value):
+    return LINE_BREAK.join(escape_latex(line) for line in _rows(value))
+
+
+def render_letter_tex(letter, style_source):
+    language = letter.get("language")
+    if language not in {"en", "fi"}:
+        raise ValueError("Choose Finnish or English for this letter.")
+    name = (letter.get("name") or "").strip()
+    if not name:
+        raise ValueError("Add your name before building this letter.")
+    email = (letter.get("email") or "").strip()
+    rendered_email = escape_latex(email)
+    if EMAIL_LINK_PATTERN.fullmatch(email):
+        rendered_email = rf"\href{{mailto:{email}}}{{{rendered_email}}}"
+    contacts = LINE_BREAK.join(x for x in (escape_latex(letter.get("location") or ""), escape_latex(letter.get("phone") or ""),
+                                      rendered_email) if x)
+    signature = LINE_BREAK.join(x for x in (escape_latex(name), escape_latex(letter.get("phone") or ""), rendered_email) if x)
+    paragraphs = [escape_latex(p.strip()) for p in letter.get("paragraphs") or [] if isinstance(p, str) and p.strip()]
+    source = "\n".join((
+        r"\documentclass[a4paper,11pt]{article}",
+        r"\usepackage{cv-style}",
+        r"\cvlang{fi}" if language == "fi" else "",
+        rf"\newcommand{{\jobdeskCVFooterName}}{{{escape_latex(name)}}}",
+        LETTER_MACROS,
+        r"\begin{document}",
+        rf"\letterhead{{{escape_latex(name)}}}{{{escape_latex(letter.get('job_title') or '')}}}{{{contacts}}}",
+        escape_latex(letter.get("date") or "") + r"\par",
+        (_lines(letter.get("recipient") or "") + r"\par") if _rows(letter.get("recipient") or "") else "",
+        rf"\textbf{{{escape_latex(letter.get('subject') or '')}}}\par",
+        escape_latex(letter.get("greeting") or ""),
+        "",
+        "\n\n".join(paragraphs),
+        "",
+        escape_latex(letter.get("closing") or "") + r"\\[2.2em]",
+        signature + r"\par",
+        r"\end{document}",
+        "",
+    ))
+    template_owner = config.CV_TEMPLATE_OWNER
+    if not template_owner:
+        raise PdfBuildError(
+            "Member PDFs are switched off on this server: JOBDESK_CV_TEMPLATE_OWNER is not set.")
+    if template_owner not in style_source:
+        raise PdfBuildError("The shared CV template is missing its expected footer name.")
+    return source, style_source.replace(template_owner, r"\jobdeskCVFooterName")
+
+
+def build_letter_pdf(letter, repo=None, pdflatex=None):
+    style_source = _style_source(repo)
+    if not (pdflatex or shutil.which("pdflatex")):
+        raise FileNotFoundError("pdflatex is not installed.")
+    tex, style = render_letter_tex(letter, style_source)
+    return _compile(tex, style, pdflatex, what="Letter")
+
+
+def download_name(*parts, extension="pdf"):
+    """File names HR systems handle well (CV-RULES.md section 9): full name, document type, job title;
+    ASCII, words joined by hyphens, no spaces. e.g. Alex-Example-Cover-Letter-Data-Analyst-Trainee.pdf"""
+    import unicodedata
+    text = unicodedata.normalize("NFKD", " ".join(p for p in parts if p)).encode("ascii", "ignore").decode()
+    words = re.findall(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*", text)
+    return ("-".join(words)[:120] or "document") + "." + extension
 
 
 def build_original_pdf(source, pdflatex=None):

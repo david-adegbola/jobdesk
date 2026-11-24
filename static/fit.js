@@ -38,6 +38,7 @@ function evaluationView(e, jobId, onChange) {
         ? `${e.checks.dropped_strengths} unsupported strength(s) and ${e.checks.cleared_quotes} quote(s) not found in the ad were removed. ` : "") +
       "It can be wrong: read the ad yourself."),
     h("div", { class: "row" },
+      h("a", { class: "btn small", href: `#/prepare?job=${jobId}` }, "Prepare CV, letter and email"),
       e.stale ? h("button", { class: "secondary small", onclick: () => evaluate(jobId, false).then(onChange) },
         "Compare again (the ad or your CV changed)") : "",
       h("button", { class: "secondary small", onclick: async () => {
