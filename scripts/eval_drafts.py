@@ -46,7 +46,9 @@ def main(argv=None):
             drafts[case["id"]] = draft.draft_answer(case["ad_text"], case["question"], case["cv"],
                                                     case["word_limit"], case["language"], settings)
         except (llm.LLMError, ValueError) as error:
-            print(f"  drafting failed: {error}", file=sys.stderr)
+            # Stop and write nothing: a partial report would look like a complete one
+            print(f"Stopped: {case['id']}: {error} No report was written.", file=sys.stderr)
+            return 1
     drafted = draft_eval.summarise_drafts(drafts, labels)
     today = date.today().isoformat()
     text = draft_eval.report_markdown(planted, drafted, {

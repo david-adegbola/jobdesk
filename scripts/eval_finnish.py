@@ -41,8 +41,9 @@ def main(argv=None):
         try:
             results[r["id"]] = finnish.classify(r["ad_text_excerpt"], settings)
         except llm.LLMError as error:
-            print(f"  LLM failed ({error}); counted as unclear", file=sys.stderr)
-            results[r["id"]] = {"level": "unclear", "evidence": [], "rejected_evidence": [], "method": "error"}
+            # Stop and write nothing: a report full of failed calls (e.g. a wrong key) would look like results
+            print(f"Stopped: {r['id']}: {error} No report was written.", file=sys.stderr)
+            return 1
 
     summary = evaluate.evaluate(rows, baseline, {i: res["level"] for i, res in results.items()})
     today = date.today().isoformat()

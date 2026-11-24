@@ -113,5 +113,35 @@ class CallTests(unittest.TestCase):
         self.assertEqual(transport.requests, [])
 
 
+class OpenRouterTests(unittest.TestCase):
+    def test_openrouter_key_selects_openrouter(self):
+        settings = llm.settings_from_env({"JOBDESK_LLM_MODE": "live", "OPENROUTER_API_KEY": "sk-or-test",
+                                          "JOBDESK_LLM_MODEL": "claude-haiku-5-5"})
+        self.assertEqual((settings.provider, settings.live), ("openrouter", True))
+        self.assertNotIn("sk-or-test", repr(settings))
+        url, headers, body = llm.build_request(settings, "system", "user", SCHEMA, 100)
+        self.assertEqual(url, llm.OPENROUTER_URL)
+        self.assertEqual(headers["authorization"], "Bearer sk-or-test")
+        self.assertEqual(body["model"], "anthropic/claude-haiku-5.5")
+        self.assertEqual(body["provider"], {"require_parameters": True, "data_collection": "deny"})
+        self.assertEqual(body["response_format"]["json_schema"]["schema"], SCHEMA)
+        self.assertNotIn("fallbacks", body)
+
+    def test_openrouter_reply_and_cut_off(self):
+        settings = llm.Settings(mode="live", provider="openrouter", api_key="sk-or-test")
+        reply = {"model": "anthropic/claude-haiku-5.5",
+                 "choices": [{"finish_reason": "stop", "message": {"content": '{"ok": true}'}}]}
+        transport = FakeTransport((200, {}, json.dumps(reply).encode()))
+        self.assertEqual(llm.call_json("s", "u", SCHEMA, settings, post=transport)["data"], {"ok": True})
+        self.assertEqual(transport.requests[0]["url"], llm.OPENROUTER_URL)
+        reply["choices"][0]["finish_reason"] = "length"
+        with self.assertRaises(llm.LLMError):
+            llm.call_json("s", "u", SCHEMA, settings, post=FakeTransport((200, {}, json.dumps(reply).encode())))
+
+    def test_model_names(self):
+        self.assertEqual(llm.openrouter_model("claude-opus-5-5"), "anthropic/claude-opus-5.5")
+        self.assertEqual(llm.openrouter_model("anthropic/claude-sonnet-5.5"), "anthropic/claude-sonnet-5.5")
+
+
 if __name__ == "__main__":
     unittest.main()
