@@ -37,8 +37,8 @@ def _event(uid, day, summary, description="", url=""):
 def build(applications):
     """Deadlines of open applications and interview dates, from today on."""
     today = date.today().isoformat()
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Woodesk//JobDesk//EN",
-             "CALSCALE:GREGORIAN", "X-WR-CALNAME:Woodesk"]
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//JobDesk//EN",
+             "CALSCALE:GREGORIAN", "X-WR-CALNAME:JobDesk"]
     for a in applications:
         if a["status"] in ("Rejected", "Offer"):
             continue

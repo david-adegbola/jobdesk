@@ -358,7 +358,7 @@ def render_tex(cv, style_source):
             "Member CV PDFs are switched off on this server: JOBDESK_CV_TEMPLATE_OWNER is not set.")
     if template_owner not in style_source:
         raise PdfBuildError("The shared CV template is missing its expected footer name.")
-    style = style_source.replace(template_owner, r"\woodeskCVFooterName")
+    style = style_source.replace(template_owner, r"\jobdeskCVFooterName")
     return source, style
 
 

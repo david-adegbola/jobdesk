@@ -7,7 +7,7 @@ that allow automated reading. For each ad they see whether Finnish is required, 
 together with the sentence from the ad that says so. They can rank a batch of ads against their skills, draft
 application answers grounded in their own CV, and track their applications.
 
-It started as Woodesk, a forestry careers portal; the forestry pages (For you, News) are still there for members who
+It started as a forestry careers portal; the forestry pages (For you, News) are still there for members who
 choose forestry. A small standalone version of the Finnish checker, written for a Metropolia job application, lives
 in its own repository (finnish-check) and shares this repository's `core/` code.
 
@@ -214,7 +214,7 @@ works the same way.
 
 ### Migrating an existing server
 
-Deploy the new code normally; the installer removes Caddy Basic Auth and enables Woodesk accounts.
+Deploy the new code normally; the installer removes Caddy Basic Auth and enables JobDesk accounts.
 Then set the owner's email on the existing owner record without replacing the server database
 (sign-in is by emailed link; old passwords are cleared):
 

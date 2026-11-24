@@ -598,7 +598,7 @@ Metropolia names four fields: **Business, Culture, Health Care and Social Servic
 - A page can now say which fields it belongs to: `register({ id: "news", fields: ["forestry"], … })`. The menu
   shows it only to members who chose that field. The forestry "For you" page and News desk are hidden for
   everyone else, whose start page becomes Jobs. Saving fields on Account rebuilds the menu.
-- **Neutral name:** "Woodesk" became "JobDesk", and the sign-in screen no longer says "forestry careers portal".
+- **Neutral name:** the app is now called "JobDesk" everywhere, and the sign-in screen no longer says "forestry careers portal".
 
 ### "Was this right?"
 
