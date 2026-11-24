@@ -6,7 +6,7 @@ repo holds generic templates with empty answers; the administrator's own drafts 
 git-ignored owner/prep/ folder, which is used instead when it exists. Answers edited on the Prep
 page are saved per job type in the database (db.py) and replace the drafts for every job of that type.
 
-The templates are a small YAML subset, read here so Woodesk stays standard-library only:
+The templates are a small YAML subset, read here so JobDesk stays standard-library only:
 top-level "key: value" lines and lists of "- key: value" items, one value per line, optionally quoted.
 """
 

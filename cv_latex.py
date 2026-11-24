@@ -338,7 +338,7 @@ def render_tex(cv, style_source):
         r"\usepackage{cv-style}",
         r"\cvlang{fi}" if language == "fi" else "",
         r"\cvrole{" + escape_latex(role.strip()) + "}",
-        rf"\newcommand{{\woodeskCVFooterName}}{{{escape_latex(name.strip())}}}",
+        rf"\newcommand{{\jobdeskCVFooterName}}{{{escape_latex(name.strip())}}}",
         r"\begin{document}",
         r"\small",
         r"\setlength{\cvlabelw}{3.9cm}",
@@ -375,9 +375,9 @@ def build_pdf(cv, repo=None, pdflatex=None):
         raise FileNotFoundError("pdflatex is not installed.")
     tex, style = render_tex(cv, style_source)
 
-    with tempfile.TemporaryDirectory(prefix="woodesk-cv-") as directory:
+    with tempfile.TemporaryDirectory(prefix="jobdesk-cv-") as directory:
         workdir = Path(directory)
-        tex_path = workdir / "woodesk-cv.tex"
+        tex_path = workdir / "jobdesk-cv.tex"
         tex_path.write_text(tex, encoding="utf-8")
         (workdir / "cv-style.sty").write_text(style, encoding="utf-8")
         environment = os.environ.copy()
@@ -405,7 +405,7 @@ def build_pdf(cv, repo=None, pdflatex=None):
                 raise PdfBuildError(
                     "CV compilation failed. The server may be missing a required LaTeX package."
                 )
-        pdf_path = workdir / "woodesk-cv.pdf"
+        pdf_path = workdir / "jobdesk-cv.pdf"
         try:
             pdf = pdf_path.read_bytes()
         except OSError as error:
@@ -424,7 +424,7 @@ def build_original_pdf(source, pdflatex=None):
     if not executable:
         raise FileNotFoundError("pdflatex is not installed.")
 
-    with tempfile.TemporaryDirectory(prefix="woodesk-original-cv-") as directory:
+    with tempfile.TemporaryDirectory(prefix="jobdesk-original-cv-") as directory:
         output_dir = Path(directory)
         environment = os.environ.copy()
         environment["HOME"] = str(output_dir)
