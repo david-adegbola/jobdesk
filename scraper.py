@@ -509,6 +509,10 @@ def _covers(source, field_ids):
 
 
 def _enabled(source):
+    """A source is read when sources.json has it on, or when this copy lists it in JOBDESK_ENABLE_SOURCES
+    (for a source switched off over its terms, once the site has given permission)."""
+    if source["id"] in config.ENABLE_SOURCES:
+        return True
     if source.get("enable_env") == "JOBDESK_ENABLE_DUUNITORI":
         return config.ENABLE_DUUNITORI
     return source.get("enabled", True)
@@ -558,7 +562,7 @@ def run(progress=None, user_id=1, personal=False, field_ids=None):
     personal=True also reads the administrator's own PERSONAL_CATEGORIES from Jobly."""
     field_ids = active_field_ids(field_ids)
     profiles = [PROFILES[i] for i in field_ids]
-    pages = jobly_pages(field_ids, personal)
+    pages = jobly_pages(field_ids, personal) if _enabled(SOURCES["jobly"]) else []     # off: its terms forbid reuse
     readers = sources(field_ids)
     total = len(pages) + len(readers)
     check_id = db.start_check(user_id)

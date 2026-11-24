@@ -14,6 +14,8 @@ JOBDESK_PREP_DIR          prep templates (default: <owner dir>/prep when it exis
 JOBDESK_CV_TEMPLATE_OWNER the name written in the shared LaTeX template's footer. Member PDFs replace
                           it with the member's own name; when unset, member PDFs are not built.
 JOBDESK_DEFAULT_FIELDS    fields for members who haven't chosen any (default forestry)
+JOBDESK_ENABLE_SOURCES    job sources that are off in sources.json to read anyway, e.g. "jobly" once the site has
+                          given written permission (default: none)
 JOBDESK_OPEN_SIGNUP       1 (default): anyone can create an account with their email; 0: invitation codes only
 JOBDESK_PUBLIC_URL        the site's address, used in sign-in links (default http://localhost:8765)
 JOBDESK_EMAIL_BACKEND     log (default, development), smtp or memory; see mailer.py
@@ -45,6 +47,9 @@ SOURCES_FILE = APP / "sources.json"         # job sources, their fields and robo
 # Fields for members who haven't chosen yet (comma-separated ids; the pilot asks everyone on first login)
 DEFAULT_FIELDS = [f.strip() for f in os.environ.get("JOBDESK_DEFAULT_FIELDS", "forestry").split(",") if f.strip()]
 ENABLE_DUUNITORI = os.environ.get("JOBDESK_ENABLE_DUUNITORI", "0") == "1"
+# Job sources that are off in sources.json (their terms forbid automated reuse, or haven't been checked) and that
+# this copy may read anyway, e.g. after written permission from the site: comma-separated source ids ("jobly,uef")
+ENABLE_SOURCES = {s.strip() for s in os.environ.get("JOBDESK_ENABLE_SOURCES", "").split(",") if s.strip()}
 # Sign-up: anyone with an email address (1, default), or invitation codes only (0, e.g. for a closed pilot)
 OPEN_SIGNUP = os.environ.get("JOBDESK_OPEN_SIGNUP", "1") == "1"
 # The address in sign-in links (no trailing slash), e.g. https://jobdesk.example.fi

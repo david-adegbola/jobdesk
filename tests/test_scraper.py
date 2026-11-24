@@ -233,8 +233,11 @@ class MetsalehtiFeedTests(unittest.TestCase):
                 "description": "",
             }]
 
+        # The page and API readers are off by default (their terms aren't cleared); this test turns them on to
+        # check that they still read and filter correctly.
         with patch.object(scraper, "fetch", side_effect=fetch), \
                 patch.object(scraper, "fetch_workday_jobs", side_effect=workday_jobs), \
+                patch.object(scraper.config, "ENABLE_SOURCES", {"metsakeskus", "uef", "metsa-group", "upm", "stora-enso"}), \
                 patch.object(scraper.time, "sleep"):
             result = scraper.run()
 
@@ -246,6 +249,20 @@ class MetsalehtiFeedTests(unittest.TestCase):
             "Valtiolle", "UEF",
         })
         self.assertTrue(all(job["category"] == "Forestry" for job in jobs))
+
+    def test_by_default_only_feeds_meant_for_reuse_are_read(self):
+        names = {name for name, _ in scraper.sources(["forestry", "it", "engineering", "health", "business", "culture"])}
+        self.assertEqual(names, {"Metsälehti", "Metsähallitus", "Valtiolle", "Kuntarekry"})
+        with patch.object(scraper.config, "ENABLE_SOURCES", {"uef"}):
+            self.assertIn("UEF", {name for name, _ in scraper.sources(["forestry"])})
+
+    def test_jobly_is_not_read_without_permission(self):
+        fetched = []
+        with patch.object(scraper, "fetch", side_effect=lambda url: fetched.append(url) or "<rss version='2.0'><channel/></rss>"), \
+                patch.object(scraper, "fetch_workday_jobs", return_value=[]), \
+                patch.object(scraper.time, "sleep"):
+            scraper.run(personal=True)
+        self.assertFalse([url for url in fetched if "jobly.fi" in url])
 
     def test_duunitori_is_read_only_when_enabled(self):
         self.assertNotIn("Duunitori", [name for name, _ in scraper.sources()])
@@ -408,6 +425,7 @@ class MetsalehtiFeedTests(unittest.TestCase):
 
         with patch.object(scraper, "fetch", side_effect=fetch), \
                 patch.object(scraper, "fetch_workday_jobs", return_value=[]), \
+                patch.object(scraper.config, "ENABLE_SOURCES", {"jobly"}), \
                 patch.object(scraper.time, "sleep"):
             scraper.run()
             self.assertEqual({job["category"] for job in db.list_jobs()}, {"Forestry"})

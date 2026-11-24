@@ -1,25 +1,31 @@
 {
+  "_policy": "A source is on only when it publishes a feed meant for reuse (RSS) and robots.txt allows it. Sources that read web pages or internal APIs, or whose terms forbid reuse, are off ('off' says why); JOBDESK_ENABLE_SOURCES turns one on for a copy that has the site's permission.",
   "_comment": "Job sources. 'fields' is a list of field ids, or \"all\". 'kind' decides how ads are filtered: field_board = everything it lists belongs to its fields; broad_portal = whole public-sector portals, so the ad text must contain a field's core words (or the title a field word); employer/general = title, description or location must contain a field word. Before adding a source: check robots.txt and the site's terms, and record them here. Robots.txt is also checked automatically before every request (core/robots.py).",
   "checked": "2026-11-24",
   "sources": [
     {
       "id": "jobly", "name": "Jobly", "reader": "jobly", "kind": "general", "fields": "per-profile",
-      "enabled": true, "base_url": "https://www.jobly.fi",
-      "robots": "User-agent * allows /tyopaikat/; Crawl-delay: 10 (honoured).",
-      "terms": "Not read: www.jobly.fi/kayttoehdot shows a sign-in page; general terms at almamedia.fi/markkinapaikkaehdot/#jobly should be read before deploying."
+      "enabled": false,
+      "off": "Terms forbid it. Turn on (JOBDESK_ENABLE_SOURCES=jobly) only with Alma Media's written permission.",
+      "base_url": "https://www.jobly.fi",
+      "robots": "User-agent * has no rule for /tyopaikat/; Crawl-delay: 10 (checked 2026-11-24).",
+      "terms": "almamedia.fi/markkinapaikkaehdot/ section 4 (read 2026-11-24): material, including listings, only for personal non-commercial use; 'Käyttäjällä ei ole oikeutta kerätä Palvelusta osia tai muodostaa niistä omaa palvelu- tai aineistokokonaisuutta.' Section 9 reportedly bans automated tools without written consent (not read word for word)."
     },
     {
       "id": "metsalehti", "name": "Metsälehti", "reader": "metsalehti", "kind": "field_board", "fields": ["forestry"],
       "enabled": true,
       "urls": {"feed": "https://www.metsalehti.fi/tyopaikat/feed/", "jobs": "https://www.metsalehti.fi/tyopaikat/"},
       "link_pattern": "metsalehti\\.fi/tyopaikat/(?!feed/?$|page/)[a-z0-9-]+/?$",
-      "robots": "Asks for 10 s between requests."
+      "robots": "User-agent * Disallow: (empty, all allowed); Crawl-delay: 10 (checked 2026-11-24). Publishes an RSS job feed.",
+      "terms": "No terms of use linked from the site (checked 2026-11-24)."
     },
     {
       "id": "metsahallitus", "name": "Metsähallitus", "reader": "rss", "kind": "employer", "fields": ["forestry"],
       "enabled": true,
       "urls": {"feed": "https://metsa.rekrytointi.com/paikat/?o=A_RSS&jgid=2"},
-      "base_url": "https://metsa.rekrytointi.com/"
+      "base_url": "https://metsa.rekrytointi.com/",
+      "robots": "User-agent * disallows only /list/; /paikat/ allowed (checked 2026-11-24). The employer publishes this RSS feed.",
+      "terms": "Not checked yet."
     },
     {
       "id": "valtiolle", "name": "Valtiolle", "reader": "portal_feeds", "kind": "broad_portal", "fields": "all",
@@ -37,32 +43,39 @@
     },
     {
       "id": "metsakeskus", "name": "Metsäkeskus", "reader": "links", "kind": "employer", "fields": ["forestry"],
-      "enabled": true,
+      "enabled": false,
+      "off": "Reads web pages, not a feed, and the terms haven't been checked. Turn on (JOBDESK_ENABLE_SOURCES=metsakeskus) after checking them.",
       "urls": {"jobs": "https://www.metsakeskus.fi/fi/tietoa-meista/toihin-metsakeskukseen/avoimet-tyopaikat"},
-      "base_url": "https://www.metsakeskus.fi/", "link_pattern": "ats\\.talentadore\\.com/apply/"
+      "base_url": "https://www.metsakeskus.fi/", "link_pattern": "ats\\.talentadore\\.com/apply/",
+      "robots": "Job page allowed; ats.talentadore.com /apply/ allowed (checked 2026-11-24)."
     },
     {
       "id": "uef", "name": "UEF", "reader": "links", "kind": "employer", "fields": "all",
-      "enabled": true,
+      "enabled": false,
+      "off": "Reads web pages, not a feed, and the terms of uef.fi and uef.varbi.com haven't been checked. Turn on (JOBDESK_ENABLE_SOURCES=uef) after checking them.",
+      "robots": "uef.fi job pages allowed; uef.varbi.com has no rule for unnamed bots (checked 2026-11-24).",
       "urls": {"fi": "https://www.uef.fi/fi/avoimet-tyopaikat", "en": "https://www.uef.fi/en/open-positions"},
       "base_url": "https://www.uef.fi/", "link_pattern": "uef\\.varbi\\.com/(?:fi|en)/what:job/jobID:(\\d+)",
       "id_pattern": "uef\\.varbi\\.com/(?:fi|en)/what:job/jobID:(\\d+)"
     },
     {
       "id": "metsa-group", "name": "Metsä Group", "reader": "workday", "kind": "employer", "fields": "all",
-      "enabled": true,
+      "enabled": false,
+      "off": "Reads Workday's internal /wday/cxs/ API, which robots.txt doesn't cover (it allows only /MetsaGroup_Careers/); terms not checked.",
       "urls": {"api": "https://metsagroup.wd103.myworkdayjobs.com/wday/cxs/metsagroup/MetsaGroup_Careers/jobs",
                "jobs": "https://metsagroup.wd103.myworkdayjobs.com/fi-FI/MetsaGroup_Careers"}
     },
     {
       "id": "upm", "name": "UPM", "reader": "workday", "kind": "employer", "fields": "all",
-      "enabled": true,
+      "enabled": false,
+      "off": "Reads Workday's internal /wday/cxs/ API, which robots.txt doesn't cover (it allows only /Careers/ and /seasonal_careers/); terms not checked.",
       "urls": {"api": "https://upm.wd103.myworkdayjobs.com/wday/cxs/upm/Careers/jobs",
                "jobs": "https://upm.wd103.myworkdayjobs.com/fi-FI/Careers"}
     },
     {
       "id": "stora-enso", "name": "Stora Enso", "reader": "workday", "kind": "employer", "fields": "all",
-      "enabled": true,
+      "enabled": false,
+      "off": "Reads Workday's internal /wday/cxs/ API, which robots.txt doesn't cover (it allows only /Stora_Enso_site_opportunities/); terms not checked.",
       "urls": {"api": "https://storaenso.wd502.myworkdayjobs.com/wday/cxs/storaenso/Stora_Enso_site_opportunities/jobs",
                "jobs": "https://storaenso.wd502.myworkdayjobs.com/fi-FI/Stora_Enso_site_opportunities"}
     },
@@ -76,7 +89,10 @@
     }
   ],
   "not_added": [
-    {"name": "Työmarkkinatori (public job search pages)", "why": "robots.txt allows the public pages, but the official route is the Työpaikkailmoitusten Hakurajapinta, which needs registration with KEHA-keskus (tmt-rajapinnat@keha-keskus.fi), forbids passing ads on to third parties without separate permission, and requires the credit 'Lähde: Työmarkkinatorin asiakastietojärjestelmä'. Apply for access rather than scraping the pages."},
+    {"name": "Työmarkkinatori (search API, the recommended replacement)", "why": "Not connected yet: needs credentials. Terms (updated 12.3.2026, read 2026-11-24): any organisation may use the search API; access is tied to a Y-tunnus and KEHA-keskus checks suitability; the user 'on oikeus esittää hakurajapinnan kautta saamiaan työpaikkailmoituksia omissa palveluissaan', must credit '(Lähde: Työmarkkinatorin asiakastietojärjestelmä)', keep ads current and remove deleted ones at once, and may not pass ads on to third parties or use them for marketing without permission. Covers all fields and every TE-office ad, including traineeships. Apply with the käyttöönottoilmoitus form; questions to tmt-rajapinnat@keha-keskus.fi. Test credentials first, then production. The old APIs close in May 2027."},
+    {"name": "Työmarkkinatori (public job search pages)", "why": "Don't scrape the pages; use the search API above."},
+    {"name": "Jobly, Duunitori", "why": "Only with a written agreement: Alma Media's terms forbid building a service from Jobly ads, and Duunitori's robots.txt blocks unnamed bots. Neither publishes a partner API; ask (Duunitori: asiakaspalvelu@duunitori.fi)."},
+    {"name": "EURES", "why": "Every Työmarkkinatori ad is copied to EURES, so the search API covers Finland. No official reuse licence or public API for EURES was found."},
     {"name": "Duunitori", "why": "robots.txt: User-agent * Disallow: /."},
     {"name": "avoindata.fi job datasets", "why": "The search page answered 403 to the checker; no job-ad dataset was verified."},
     {"name": "Jobly category 'it'", "why": "Already read for the administrator's private IT category; reading it for the IT field too would mix the two. The verified 'ohjelmistokehittaja' category is used instead."},
