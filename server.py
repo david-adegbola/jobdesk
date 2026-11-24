@@ -44,7 +44,7 @@ import skills   # noqa: E402
 import language  # noqa: E402
 import mailer   # noqa: E402
 from core import fields as core_fields  # noqa: E402
-from core import batch, draft, finnish, llm, rank  # noqa: E402
+from core import batch, draft, finnish, jobpage, llm, rank  # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -569,6 +569,69 @@ def api_jobs(h, m):
     return {"jobs": safe_jobs, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
 
 
+PREVIEW_LIMIT_PER_USER = 60     # job pages read per member per hour ("Read this link")
+
+
+def find_saved_url(user, url):
+    """A job this member can already see with the same address (written any way), or None.
+    Their own saved copy comes first, then a shared listing."""
+    key = jobpage.canonical_url(url)
+    if not key:
+        return None
+    fields = user_fields(user)
+    same = [job for job in db.list_jobs(user["id"])
+            if job.get("url") and jobpage.canonical_url(job["url"]) == key and can_see(job, user, fields=fields)]
+    same.sort(key=lambda job: (not job.get("private"), job["id"]))
+    return same[0] if same else None
+
+
+def _duplicate(job):
+    return {"id": job["id"], "title": job["title"], "company": job.get("company", ""),
+            "private": bool(job.get("private")), "status": job.get("status") or ""}
+
+
+def _valid_job_url(url):
+    parsed_url = urlparse(url)
+    return (len(url) <= 2048 and parsed_url.scheme in {"http", "https"} and parsed_url.hostname and
+            not parsed_url.username and not parsed_url.password and not re.search(r"[\x00-\x20]", url))
+
+
+@route("POST", "/api/jobs/preview")
+def api_preview_job(h, m):
+    """Read a job ad's page and return its details for the member to check before saving.
+    Nothing is stored. When the page can't be read, readable is false and the reason says why,
+    so the member can paste the details instead."""
+    body = h.json()
+    url = body.get("url", "").strip() if isinstance(body, dict) and isinstance(body.get("url"), str) else ""
+    if not url or not _valid_job_url(url):
+        return h.error(400, "Use a public job link beginning with http:// or https://.")
+    existing = find_saved_url(h.user, url)
+    if existing:
+        return {"readable": False, "duplicate": _duplicate(existing),
+                "reason": "This job is already on your list." if existing.get("private") or existing.get("status")
+                else "This job is already in the shared listings. Save it from there."}
+    if not _allowed(("preview", h.user["id"]), PREVIEW_LIMIT_PER_USER):
+        return h.error(429, f"You've read {PREVIEW_LIMIT_PER_USER} links in the last hour. "
+                            "Paste the details instead, or try again later.")
+    if not scraper.is_public_http_url(url):
+        return h.error(400, "That address isn't a public web page.")
+    if not scraper.ROBOTS.allowed(url):
+        return {"readable": False, "url": url,
+                "reason": "This site asks automated tools not to read its pages (robots.txt). "
+                          "Fill in the details yourself: with the bookmarklet, select the ad text first."}
+    html = scraper.fetch_page(url)
+    if not html:
+        return {"readable": False, "url": url,
+                "reason": "The page couldn't be read (it may need a sign-in, or the site didn't answer). "
+                          "Fill in the details yourself."}
+    found = jobpage.extract(html, url)
+    if not found["title"]:
+        return {"readable": False, "url": url, "reason": "No job title was found on that page. Fill it in yourself."}
+    matched = scraper.relevant_fields({**found, "source": "Community"})
+    return {"readable": True, "url": url, **found,
+            "category": scraper.PROFILES[matched[0]]["category"] if matched else ""}
+
+
 @route("POST", "/api/jobs")
 def api_add_job(h, m):
     body = h.json()
@@ -583,11 +646,8 @@ def api_add_job(h, m):
         return h.error(400, "A job title of 1–200 characters is needed.")
     if len(url) > 2048 or len(body.get("company", "")) > 200 or len(body.get("location", "")) > 200:
         return h.error(400, "The link, company or location is too long.")
-    if url:
-        parsed_url = urlparse(url)
-        if (parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname or
-                parsed_url.username or parsed_url.password or re.search(r"[\x00-\x20]", url)):
-            return h.error(400, "Use a public job link beginning with http:// or https://.")
+    if url and not _valid_job_url(url):
+        return h.error(400, "Use a public job link beginning with http:// or https://.")
     if len(body.get("ad_text", "")) > 20_000:
         return h.error(400, "The public job description must be 20,000 characters or fewer.")
     member_fields = user_fields(h.user)
@@ -597,8 +657,14 @@ def api_add_job(h, m):
         labels = " or ".join(scraper.PROFILES[i]["label_en"].lower() for i in member_fields)
         return h.error(400, f"Only {labels} opportunities can be shared here. "
                             "You can still save it for yourself, or choose more fields on the Account page.")
+    existing = find_saved_url(h.user, url) if url else None
+    if existing and not existing.get("private"):
+        # Already a shared listing (or shared by someone else): save that one instead of making a copy
+        if not existing.get("status"):
+            db.set_status(existing["id"], "Saved", {}, h.user["id"])
+        return {"id": existing["id"], "existing": True}
     jid = scraper.jobly_id(url)
-    external = f"jobly-{jid}" if jid else (url or f"manual-{uuid.uuid4().hex[:12]}")
+    external = f"jobly-{jid}" if jid else (jobpage.canonical_url(url) or f"manual-{uuid.uuid4().hex[:12]}")
     fields = {key: body.get(key, "").strip() for key in text_fields}
     fields.update(url=url, title=title)
     matched_any = matched or scraper.relevant_fields({**body, "source": "Community"})
@@ -607,9 +673,14 @@ def api_add_job(h, m):
         fields.update(source="Community", external_id=external, private=False)
     else:          # the default: a job this member collects for themselves; nobody else sees it
         fields.update(source="Saved", external_id=f"private-{h.user['id']}-{external}", private=True)
+        if existing:      # their own copy, saved earlier under the link written another way: update it
+            fields.update(source=existing["source"], external_id=existing["external_id"])
     fields["contact_name"] = ""
     fields["contact_phone"] = ""
-    return {"id": db.add_manual(fields, h.user["id"])}
+    job_id = db.add_manual(fields, h.user["id"])
+    if not (existing or {}).get("status"):
+        db.set_status(job_id, "Saved", {}, h.user["id"])     # it appears under Saved in My jobs and the Tracker
+    return {"id": job_id, "existing": bool(existing)}
 
 
 @route("POST", r"/api/jobs/(\d+)/fetch")

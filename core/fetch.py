@@ -5,6 +5,7 @@ way. Nothing here runs at import time.
 
   is_public_http_url(url)   True only for http(s) URLs whose host resolves to public IP addresses,
                             so a pasted URL can't make the server read its own network (SSRF).
+  fetch_page(url, ...)      the HTML of one public page, or "" (same checks).
   fetch_ad_text(url, ...)   the visible text of one ad page, or "" when it can't or mustn't be read.
   fetch_status_text(url)    (status, text) for robots.txt files, used by core.robots.RobotsCache.
   user_agent()              the User-Agent JobDesk sends: it names JobDesk instead of a browser.
@@ -93,19 +94,26 @@ def _opener(context, allowed=None):
                                        PublicRedirectHandler(allowed))
 
 
-def fetch_ad_text(url, allowed, context=None, agent=None, max_chars=MAX_AD_CHARS):
-    """Visible text of a single ad page, or '' if it can't be read.
-
-    allowed(url) -> bool is the robots.txt check (core.robots.RobotsCache.allowed); it is required,
-    so no caller can forget it. context is an ssl.SSLContext (None = Python's default)."""
+def fetch_page(url, allowed, context=None, agent=None):
+    """The HTML of a single public page, or '' if it can't or mustn't be read (same checks as below)."""
     if not is_public_http_url(url) or not allowed(url):
         return ""
     req = urllib.request.Request(url, headers={"User-Agent": agent or user_agent(), "Accept-Language": "fi,en"})
     try:
         with _opener(context, allowed).open(req, timeout=15) as response:
-            body = response.read(MAX_BODY_BYTES).decode("utf-8", errors="replace")
+            return response.read(MAX_BODY_BYTES).decode("utf-8", errors="replace")
     except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError) as error:
         print(f"  ! {url} -> {getattr(error, 'code', '')} {getattr(error, 'reason', error)}")
+        return ""
+
+
+def fetch_ad_text(url, allowed, context=None, agent=None, max_chars=MAX_AD_CHARS):
+    """Visible text of a single ad page, or '' if it can't be read.
+
+    allowed(url) -> bool is the robots.txt check (core.robots.RobotsCache.allowed); it is required,
+    so no caller can forget it. context is an ssl.SSLContext (None = Python's default)."""
+    body = fetch_page(url, allowed, context, agent)
+    if not body:
         return ""
     parser = TextExtractor()
     parser.feed(body)

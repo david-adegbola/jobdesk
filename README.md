@@ -43,7 +43,19 @@ evaluated or certified against WCAG 2.1 Level AA.
 - **Fields and Finnish level** (Account): choose your fields; Jobs, Match and What to study follow them. The
   Finnish level orders the Shortlist (fluent speakers aren't affected). Field profiles are JSON files in `fields/`.
 - **For you** (forestry members): a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
-- **Jobs:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry, internship
+- **Jobs** has two views. **My jobs** holds the ads you saved or added, with a count per status.
+  **Discover** holds the shared listings in your fields; **Save** moves one to My jobs.
+  **Add a job:** paste a link and click **Read this link**. JobDesk reads the ad's schema.org
+  `JobPosting` data (title, employer, place, posting and closing dates, description), which most job
+  sites publish for search engines; without it, only the page title and text are read. You check
+  the details before saving. If the page can't be read (robots.txt disallows it, it needs a sign-in,
+  or it didn't answer), the same form opens for you to fill in. Links are compared in a normalised
+  form (no `www.`, tracking parameters, `#fragment` or trailing slash), so the same ad isn't saved
+  twice, and adding a link that is already a shared listing saves that listing instead of copying
+  it. The **Save to JobDesk** bookmarklet opens this form from any job page, with the text you
+  selected copied into the description. Jobs you add are private unless you share them.
+  `core/jobpage.py` does the reading; reading links is limited to 60 per member per hour.
+- **Listings:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry, internship
   (`harjoittelija`) and summer-job (`kesatyo`) category pages, waiting 10 s between
   requests as Jobly's robots.txt asks. The source list follows the 2025 forestry internship
   overview. It also checks

@@ -755,6 +755,90 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual([row["url"] for row in result["rows"]], ["https://example.org/a"])
         self.assertIn("Paste the ad text instead", result["errors"][0]["message"])
 
+    JOB_PAGE = ('<html><head><title>x</title><script type="application/ld+json">{"@type": "JobPosting", '
+                '"title": "GIS trainee", "hiringOrganization": {"name": "Example Oy"}, "validThrough": "2027-01-15", '
+                '"jobLocation": {"address": {"addressLocality": "Tampere"}}, '
+                '"description": "<p>Remote sensing and QGIS. English is the working language.</p>"}</script>'
+                '</head><body>page</body></html>')
+
+    def preview(self, url, page=None, robots=True, cookie=None):
+        with patch.object(server.scraper, "is_public_http_url", return_value=True), \
+                patch.object(server.scraper.ROBOTS, "allowed", return_value=robots), \
+                patch.object(server.scraper, "fetch_page", return_value=self.JOB_PAGE if page is None else page) as fetch:
+            result = self.request("POST", "/api/jobs/preview", {"url": url},
+                                  headers=cookie)
+        return (*result, fetch)
+
+    def test_preview_reads_the_ads_structured_data_without_saving(self):
+        status, found, fetch = self.preview("https://jobs.example.fi/gis")
+        self.assertEqual(status, 200, found)
+        self.assertTrue(found["readable"])
+        self.assertEqual((found["title"], found["company"], found["location"], found["deadline"], found["method"]),
+                         ("GIS trainee", "Example Oy", "Tampere", "2027-01-15", "jsonld"))
+        self.assertIn("QGIS", found["ad_text"])
+        fetch.assert_called_once_with("https://jobs.example.fi/gis")
+        status, jobs = self.request("GET", "/api/jobs")
+        self.assertEqual(jobs["jobs"], [])
+
+    def test_preview_explains_when_a_page_cant_be_read(self):
+        status, found, fetch = self.preview("https://jobs.example.fi/a", robots=False)
+        self.assertEqual((status, found["readable"]), (200, False))
+        self.assertIn("robots.txt", found["reason"])
+        fetch.assert_not_called()
+        status, found, _ = self.preview("https://jobs.example.fi/b", page="")
+        self.assertFalse(found["readable"])
+        self.assertIn("couldn't be read", found["reason"])
+        status, found, _ = self.preview("https://jobs.example.fi/c", page="<html></html>")
+        self.assertFalse(found["readable"])
+        for bad in ("ftp://x.fi/a", "https://user:pw@x.fi/", "not a link", ""):
+            self.assertEqual(self.preview(bad)[0], 400, bad)
+        with patch.object(server.scraper, "is_public_http_url", return_value=False):
+            status, error = self.request("POST", "/api/jobs/preview", {"url": "http://127.0.0.1/admin"})
+        self.assertEqual(status, 400)
+
+    def test_preview_is_rate_limited_per_member(self):
+        with patch.object(server, "PREVIEW_LIMIT_PER_USER", 2):
+            self.assertEqual(self.preview("https://jobs.example.fi/1")[0], 200)
+            self.assertEqual(self.preview("https://jobs.example.fi/2")[0], 200)
+            self.assertEqual(self.preview("https://jobs.example.fi/3")[0], 429)
+
+    def test_the_same_link_written_differently_is_one_job(self):
+        cookie = self.member_cookie()
+        status, first = self.request("POST", "/api/jobs", {"url": "https://www.jobs.example.fi/gis/?utm_source=li",
+                                                           "title": "GIS trainee"}, headers=cookie)
+        self.assertEqual((status, first["existing"]), (200, False))
+        status, found, fetch = self.preview("https://jobs.example.fi/gis#apply", cookie=cookie)
+        self.assertFalse(found["readable"])
+        self.assertEqual(found["duplicate"]["id"], first["id"])
+        fetch.assert_not_called()
+        status, again = self.request("POST", "/api/jobs", {"url": "http://jobs.example.fi/gis", "title": "GIS trainee",
+                                                           "company": "Example Oy"}, headers=cookie)
+        self.assertEqual((again["id"], again["existing"]), (first["id"], True))
+        status, jobs = self.request("GET", "/api/jobs", headers=cookie)
+        self.assertEqual([(j["id"], j["company"]) for j in jobs["jobs"]], [(first["id"], "Example Oy")])
+        # Another member's copy is separate and private
+        other = self.sign_in_by_link("other@example.test", "Other Student")
+        status, theirs = self.request("POST", "/api/jobs", {"url": "https://jobs.example.fi/gis", "title": "GIS trainee"},
+                                      headers=other)
+        self.assertNotEqual(theirs["id"], first["id"])
+
+    def test_adding_a_listed_job_saves_the_listing_instead_of_copying_it(self):
+        cookie = self.member_cookie()
+        db.upsert_scraped({"source": "Jobly", "external_id": "9", "url": "https://www.jobly.fi/tyopaikka/metsuri-9",
+                           "title": "Metsuri", "company": "", "location": "", "posted": "", "category": "Forestry"}, None)
+        status, jobs = self.request("GET", "/api/jobs", headers=cookie)
+        listed = jobs["jobs"][0]
+        self.assertFalse(listed["status"])
+        status, found, _ = self.preview("https://jobly.fi/tyopaikka/metsuri-9?utm_campaign=x", cookie=cookie)
+        self.assertIn("shared listings", found["reason"])
+        status, added = self.request("POST", "/api/jobs", {"url": "https://jobly.fi/tyopaikka/metsuri-9",
+                                                           "title": "Metsuri"}, headers=cookie)
+        self.assertEqual((added["id"], added["existing"]), (listed["id"], True))
+        status, jobs = self.request("GET", "/api/jobs", headers=cookie)
+        self.assertEqual([(j["id"], j["status"]) for j in jobs["jobs"]], [(listed["id"], "Saved")])
+        status, admin = self.request("GET", "/api/jobs")
+        self.assertFalse(admin["jobs"][0]["status"])     # the status is the member's own
+
     def test_shortlist_live_mode_uses_the_ai_and_has_a_daily_limit(self):
         def fake(text, settings, call=None):
             return {"level": "not_needed", "evidence": [], "explanation_en": "x", "method": "llm", "model": "m",

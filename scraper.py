@@ -438,6 +438,11 @@ def fetch(url):
         return None
 
 
+def fetch_page(url):
+    """HTML of a single public page, or '' if it can't be read or robots.txt disallows it (core/fetch.py)."""
+    return core_fetch.fetch_page(url, robots_allowed, context=SSL_CONTEXT, agent=USER_AGENT)
+
+
 def fetch_ad_text(url):
     """Text of a single ad page, or '' if it can't be read or robots.txt disallows it (core/fetch.py)."""
     return core_fetch.fetch_ad_text(url, robots_allowed, context=SSL_CONTEXT, agent=USER_AGENT)

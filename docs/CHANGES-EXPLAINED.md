@@ -710,3 +710,50 @@ Deleting an account deletes its private jobs; shared ones stay, without the name
   similar services fetch every URL in an email. If a GET signed in, the scanner would consume the single-use link.
 - *Why make jobs private by default?* A student may save an ad they found through a contact or an internal list.
   Sharing should be a choice, not a side effect.
+
+## Platform B: collecting jobs by link
+
+Students find jobs everywhere: LinkedIn, employer sites, Duunitori, a teacher's email. Phase B lets them collect all
+of them in one place.
+
+**What changed**
+- **Add a job by link.** Paste a link and click "Read this link". JobDesk fills in the title, employer, place, dates
+  and description, and the student checks them before saving. Nothing is stored until they click Save.
+- **When a page can't be read**, the same form opens empty (with the link filled in) and the reason is shown:
+  robots.txt disallows it, the page needs a sign-in, or the site didn't answer.
+- **Bookmarklet.** "Save to JobDesk" is a bookmark that opens JobDesk with the current page's link and title. If the
+  student selected the ad's text first, it goes into the description. That covers sites JobDesk can't read, such as
+  LinkedIn.
+- **No duplicates.** The same ad written two ways (`www.`, `?utm_source=…`, `#apply`, a trailing slash) counts as one.
+- **My jobs and Discover.** The Jobs page now has two views: the student's own jobs with a count per status, and the
+  shared listings in their fields with a Save button. A job added by link starts as "Saved", so it also appears in
+  the Tracker's Saved column.
+
+**How it works, step by step**
+1. `POST /api/jobs/preview` checks the link (http/https, no user name or password in it, a public address so the
+   server can't be pointed at its own network), then checks whether the student already has it.
+2. It checks robots.txt, then fetches the page with `core/fetch.fetch_page` (public redirects only, 2 MB at most,
+   15-second timeout, an honest User-Agent).
+3. `core/jobpage.extract` reads the page. Most job sites publish a schema.org `JobPosting` in a
+   `<script type="application/ld+json">` block, because Google for Jobs uses it. The code looks for it at the top
+   level, in lists and in `@graph`, and skips blocks that aren't valid JSON. The description is HTML inside JSON, so
+   it is converted to plain text. Dates keep only the `YYYY-MM-DD` part.
+4. Without a `JobPosting`, the title comes from `og:title`, then the first `<h1>`, then `<title>`, and the description
+   from the visible text (without menus, scripts and forms). The answer says which method was used, so the page can
+   tell the student to check more carefully.
+5. `canonical_url` writes a link one way: https, lower-case host without `www.`, no fragment, no trailing slash, no
+   tracking parameters (`utm_*`, `gclid`, `fbclid` and similar), the remaining parameters sorted. Parameters such as
+   `?id=7` stay, because they often identify the job.
+6. `POST /api/jobs` uses the same check. If the link is a shared listing, it saves that listing for the student
+   instead of making a private copy. If it is their own earlier copy, that copy is updated.
+
+**Interview questions**
+- *Why structured data instead of scraping each site?* One parser works on thousands of sites, because employers
+  publish `JobPosting` for search engines anyway. Site-specific scrapers break whenever a site changes its layout.
+- *Why check robots.txt for a link the student pasted?* JobDesk applies the same rule to every request it makes.
+  The bookmarklet and the manual form are the way around it that respects the site: the student copies what they
+  can already see.
+- *Why not drop every query parameter when comparing links?* On many sites the parameter is the job (`?jobId=123`).
+  Removing only known tracking parameters can miss a duplicate now and then, but it never merges two different jobs.
+- *What stops the preview being used to make the server attack other sites?* Public addresses only, robots.txt, one
+  page per request, and 60 links per student per hour.
