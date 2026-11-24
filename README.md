@@ -1,10 +1,21 @@
-# Woodesk
+# JobDesk
 
-A multi-user forestry careers portal for students, researchers, forest owners and professionals.
-Members share forestry opportunities and news, while CVs, applications and recommendation
-preferences stay private to each account. New accounts are invitation-only.
+Job and internship search for students in Finland, built around one question international students keep asking:
+**can I apply to this ad without fluent Finnish?** Each student has a private, invitation-only account. They choose
+their fields (forestry, IT, engineering, health and social care, business, culture), and see job ads from sources
+that allow automated reading. For each ad they see whether Finnish is required, an advantage, not needed or unclear,
+together with the sentence from the ad that says so. They can rank a batch of ads against their skills, draft
+application answers grounded in their own CV, and track their applications.
 
-Python 3 standard library, SQLite and plain HTML/CSS/JS: nothing to install.
+It started as Woodesk, a forestry careers portal; the forestry pages (For you, News) are still there for members who
+choose forestry. A small standalone version of the Finnish checker, written for a Metropolia job application, lives
+in its own repository (finnish-check) and shares this repository's `core/` code.
+
+Python 3 standard library, SQLite and plain HTML/CSS/JS: nothing to install. The AI features run in **mock mode**
+without an API key.
+
+**Pilot:** `docs/PILOT-DEPLOYMENT.md` (running a pilot), `docs/pilot/` (proposal, privacy notice and accessibility
+statement drafts for Metropolia). `docs/CHANGES-EXPLAINED.md` explains every change in plain English.
 
 ## Tests
 
@@ -23,7 +34,15 @@ evaluated or certified against WCAG 2.1 Level AA.
 
 ## Pages
 
-- **For you:** a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
+- **Shortlist:** paste up to 20 ads (or a CSV, or up to 10 links). For each ad you get the Finnish level, the exact
+  quoted sentence it rests on, and the skills from your CV it mentions; ads you can realistically apply to come first.
+  Each result has "Was this right?" for measuring accuracy. AI in live mode, a keyword rule in mock mode.
+- **Draft an answer:** an answer to an application question, built only from facts in your CV. Every sentence is
+  checked against the facts it cites; unsupported sentences are marked and kept out of the answer box. The AI is used
+  only if you turn on "AI drafting" under Account.
+- **Fields and Finnish level** (Account): choose your fields; Jobs, Match and What to study follow them. The
+  Finnish level orders the Shortlist (fluent speakers aren't affected). Field profiles are JSON files in `fields/`.
+- **For you** (forestry members): a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
 - **Jobs:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry, internship
   (`harjoittelija`) and summer-job (`kesatyo`) category pages, waiting 10 s between
   requests as Jobly's robots.txt asks. The source list follows the 2025 forestry internship
@@ -61,7 +80,7 @@ evaluated or certified against WCAG 2.1 Level AA.
   administrator adds by hand, are stored in the administrator's account. They are tagged "Only you"
   and never shown to members. `python3 server.py --prune-unrelated-jobs` (add `--apply` to delete,
   after an automatic backup) removes stored jobs that nobody can see.
-- **News:** a forestry and forest-bioeconomy news desk focused on Finland and Joensuu/North Karelia,
+- **News** (forestry members): a forestry and forest-bioeconomy news desk focused on Finland and Joensuu/North Karelia,
   with research, industry, policy, climate/nature, markets and forest-tech coverage. Refreshes
   Finnish-language feeds from [Luke](https://www.luke.fi/fi/feed),
   [Metsäteollisuus ry](https://metsateollisuus.fi/feed/) and
@@ -111,6 +130,14 @@ evaluated or certified against WCAG 2.1 Level AA.
   change, so translate it before saving.
 - **Account:** change your password, download your private data and sign out. Administrators can
   create single-use, seven-day invitation codes to onboard classmates.
+
+## AI and mock mode
+
+Set `JOBDESK_LLM_MODE=live` and **one** key, `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`, to use Claude (see
+`.env.example`). Otherwise everything runs in mock mode: the keyword rule for Finnish levels, and drafts copied from
+CV facts, all clearly labelled. Only ad text is sent for the Finnish check; CV facts (never name or contact details)
+are sent for drafting, and only with the member's opt-in. Evaluations: `python3 scripts/eval_finnish.py` and
+`python3 scripts/eval_drafts.py` (mock by default; live runs cost money).
 
 ## Where it runs
 

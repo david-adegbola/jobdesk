@@ -646,3 +646,29 @@ checklist says to use a copy that contains only the LaTeX template.
 **Interview question.** *Why a command for deleting everyone, rather than asking students to delete themselves?* A
 pilot has an end date, and the privacy notice promises that the data is gone by then. One dry-run-first command makes
 that promise checkable. Students can still delete their own account at any time.
+
+---
+
+## Pilot P5: documents for Metropolia, and an accessibility check
+
+- **Accessibility check:** axe-core 4.10.2 (WCAG 2.1 A/AA rules) was run in headless Firefox, in a container, on the
+  sign-in page and every page a pilot student uses. It found three problems, all fixed:
+  - a sorted table header with too little contrast, which was already there before the pilot work;
+  - the Tracker board, which scrolls sideways but couldn't get keyboard focus;
+  - a new button style of mine that broke contrast on My CVs.
+
+  After the fixes no automated rule fails. Automated tools only find part of the problems, so screen readers, zoom
+  and dark mode are listed as not yet checked.
+- **`docs/pilot/PROPOSAL.md`:** a 1–2 page proposal for Metropolia staff. It covers the problem (their own survey),
+  what students get, why the results can be trusted, the pilot's shape, what's needed from Metropolia (no system
+  integration), how success is measured, privacy, cost and limits.
+- **`docs/pilot/PRIVACY-NOTICE.md`:** a draft for the data protection officer. It describes exactly what the software
+  stores and sends. Decisions that aren't the software's to make (controller, legal basis, transfer mechanism, server
+  region) are left as clearly marked blanks.
+- **`docs/pilot/ACCESSIBILITY.md`:** a draft statement of "partially conforming", saying what was checked and what
+  wasn't.
+- **README:** now describes JobDesk as it is: fields, Shortlist, Draft, AI and mock mode, pilot documents.
+
+**Interview question.** *Why leave blanks in the privacy notice instead of filling them in?* The controller, the legal
+basis and the transfer mechanism are legal decisions for the university. Guessing them would make the document look
+finished when it isn't. The draft is precise about what the software does, and leaves the rest visibly open.
