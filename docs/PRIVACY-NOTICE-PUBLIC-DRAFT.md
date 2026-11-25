@@ -1,5 +1,9 @@
 # JobDesk: privacy notice for the public site (DRAFT)
 
+> **Superseded by the `/privacy` page** (`public.privacy_page()`), which is written from the server's own settings
+> and names who is responsible from `JOBDESK_PRIVACY_CONTROLLER`, `JOBDESK_PRIVACY_CONTACT` and `JOBDESK_HOSTING`.
+> This file is kept as the reasoning behind it.
+
 > **Draft, not published.** It describes what the software does after Phase 5 (public job pages, employer form,
 > member accounts). Everything in [square brackets] must be filled in or confirmed, ideally by someone who knows
 > the GDPR, before the public site goes live. Not legal advice. The pilot's notice is `docs/pilot/PRIVACY-NOTICE.md`.

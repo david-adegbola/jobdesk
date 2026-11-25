@@ -102,7 +102,7 @@ function renderLogin(main) {
       } },
         signup ? "Already have an account? Sign in" : "New here? Create an account"),
       h("p", { class: "muted small" }, h("a", { href: "/jobs" }, "Browse open jobs without an account"),
-        " · ", h("a", { href: "/employers.html" }, "Post a job")));
+        " · ", h("a", { href: "/employers.html" }, "Post a job"), " · ", h("a", { href: "/privacy" }, "Privacy")));
   }
   draw();
   const logo = h("span", { class: "brand" });

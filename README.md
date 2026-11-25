@@ -93,9 +93,11 @@ evaluated or certified against WCAG 2.1 Level AA.
   own job types, closed ads or contact details. `/sitemap.xml` lists the job pages and landing pages with ads (a
   combination needs 3); `/robots.txt` allows only the public pages. The app sends `X-Robots-Tag` itself: public
   pages with ads are `index, follow`, empty pages, searches and closed jobs `noindex, follow`, everything else
-  `noindex, nofollow` (Caddy no longer sets it). **Indexing is off until `JOBDESK_PUBLIC_INDEXING=1`**: before
-  that every public page says `noindex, nofollow` and `robots.txt` disallows everything; turn it on once the public
-  privacy notice is published. `JOBDESK_AD_SLOTS=1` shows the reserved advert spaces (empty: no ad
+  `noindex, nofollow` (Caddy no longer sets it). **Indexing is off until `JOBDESK_PUBLIC_INDEXING=1`** and the privacy
+  notice is complete: before that every public page says `noindex, nofollow` and `robots.txt` disallows everything.
+  **`/privacy`** is written from the server's own settings (email and AI on or off, no adverts) and names who is
+  responsible from `JOBDESK_PRIVACY_CONTROLLER`, `JOBDESK_PRIVACY_CONTACT` and `JOBDESK_HOSTING` in
+  `/srv/jobdesk/private.env`; missing values are marked on the page. `JOBDESK_AD_SLOTS=1` shows the reserved advert spaces (empty: no ad
   code is loaded until a certified consent tool is chosen). The privacy notice draft for the public site is
   `docs/PRIVACY-NOTICE-PUBLIC-DRAFT.md`.
 - **Post a job** (`/employers.html`, public, no account): employers send an ad with its fields, town, level, type,

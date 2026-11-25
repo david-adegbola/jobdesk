@@ -2161,6 +2161,11 @@ def page_public_job(h, m):
     return _public_html(*public.job_page(int(m.group(1))))
 
 
+@route("GET", "/privacy")
+def page_privacy(h, m):
+    return _public_html(*public.privacy_page())
+
+
 @route("GET", "/sitemap.xml")
 def page_sitemap(h, m):
     return (200, public.sitemap_xml().encode("utf-8"), "application/xml; charset=utf-8",

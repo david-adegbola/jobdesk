@@ -19,9 +19,12 @@ class PublicPageTests(unittest.TestCase):
 
     def setUp(self):
         self.setUp_server()
-        indexing = patch.object(public.config, "PUBLIC_INDEXING", True)      # the default is off
-        indexing.start()
-        self.addCleanup(indexing.stop)
+        # The default is off; indexing also needs a complete privacy notice
+        for name, value in (("PUBLIC_INDEXING", True), ("PRIVACY_CONTROLLER", "Example Controller Oy (1234567-8)"),
+                            ("PRIVACY_CONTACT", "privacy@example.test"), ("HOSTING", "Example Cloud, EU")):
+            setting = patch.object(public.config, name, value)
+            setting.start()
+            self.addCleanup(setting.stop)
         self.check = db.start_check(1)
         self.ids = {}
         long_text = "Hoitotyötä sisätautiosastolla. " * 60
@@ -155,6 +158,30 @@ class PublicPageTests(unittest.TestCase):
         self.assertIn('lang="fi">Sairaanhoitaja</a>', self.get("/jobs")[1])
         self.assertIn('<h1 lang="fi">Sairaanhoitaja</h1>', self.get(f"/job/{self.ids['nurse']}")[1])
         self.assertIn('>Junior Software Developer</a>', self.get("/jobs")[1])         # English: the page's own language
+
+    def test_privacy_notice_follows_the_servers_settings(self):
+        status, body, headers = self.get("/privacy")
+        self.assertEqual((status, headers["X-Robots-Tag"]), (200, "index, follow"))
+        self.assertIn("Example Controller Oy (1234567-8)", body)
+        self.assertIn('href="mailto:privacy@example.test"', body)
+        self.assertIn("no email or AI service is used", body)              # mock AI, log email in tests
+        self.assertNotIn("privacy-missing", body)
+        with patch.dict("os.environ", {"JOBDESK_EMAIL_BACKEND": "smtp", "JOBDESK_LLM_MODE": "live",
+                                       "ANTHROPIC_API_KEY": "sk-ant-test"}), \
+                patch.object(public.config, "EMAIL_PROVIDER", "Example Mail (EU)"):
+            body = self.get("/privacy")[1]
+        self.assertIn("Example Mail (EU)", body)
+        self.assertIn("Anthropic", body)
+        self.assertIn("/privacy", self.get("/jobs")[1])
+        self.assertIn('href="/privacy"', self.get("/employers.html")[1])
+
+    def test_without_who_is_responsible_the_notice_says_so_and_nothing_is_indexed(self):
+        with patch.object(public.config, "PRIVACY_CONTACT", ""):
+            status, body, headers = self.get("/privacy")
+            self.assertIn("privacy-missing", body)
+            self.assertEqual(headers["X-Robots-Tag"], "noindex, nofollow")
+            self.assertEqual(self.get("/jobs")[2]["X-Robots-Tag"], "noindex, nofollow")   # even with the switch on
+            self.assertEqual(self.get("/robots.txt")[1], "User-agent: *\nDisallow: /\n")
 
     def test_until_indexing_is_switched_on_nothing_is_indexed(self):
         with patch.object(public.config, "PUBLIC_INDEXING", False):

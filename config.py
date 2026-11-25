@@ -51,6 +51,12 @@ ENABLE_SOURCES = {s.strip() for s in os.environ.get("JOBDESK_ENABLE_SOURCES", ""
 # Public pages: 1 lets search engines index them (default 0: the pages work, but every page says noindex and
 # robots.txt disallows everything; turn on once the public privacy notice is published)
 PUBLIC_INDEXING = os.environ.get("JOBDESK_PUBLIC_INDEXING", "0") == "1"
+# The privacy notice (/privacy) names who is responsible; set these in /srv/jobdesk/private.env, never in the repo.
+# Until the first three are set the page says so and the public pages are not indexed.
+PRIVACY_CONTROLLER = os.environ.get("JOBDESK_PRIVACY_CONTROLLER", "").strip()   # name (and Y-tunnus) of who runs it
+PRIVACY_CONTACT = os.environ.get("JOBDESK_PRIVACY_CONTACT", "").strip()         # email address for privacy questions
+HOSTING = os.environ.get("JOBDESK_HOSTING", "").strip()                         # e.g. "Oracle Cloud, Frankfurt (EU)"
+EMAIL_PROVIDER = os.environ.get("JOBDESK_EMAIL_PROVIDER", "").strip()           # e.g. "Brevo (Sendinblue SAS, France)"
 # Public pages: 1 shows the reserved advert spaces (empty; no ad code is loaded until a consent tool is chosen)
 AD_SLOTS = os.environ.get("JOBDESK_AD_SLOTS", "0") == "1"
 # Sign-up: anyone with an email address (1, default), or invitation codes only (0, e.g. for a closed pilot)

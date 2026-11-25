@@ -879,6 +879,10 @@ input.switch:checked::after { transform: translateX(22px); }
 .public-details dd { margin: 0; }
 .public-ad { max-width: 68ch; }
 .public-footer { max-width: 900px; margin: 0 auto; padding: 24px 16px 40px; border-top: 1px solid var(--border-subtle); }
+.privacy-missing { background: var(--butter-300); color: var(--ink-900); padding: 0 4px; border-radius: 4px; }
+.table-scroll { overflow-x: auto; }
+.privacy-table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; font-size: .9375rem; }
+.privacy-table th, .privacy-table td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); }
 .ad-slot { min-height: 120px; margin: 16px 0; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); }
 .ad-slot::before { content: "Advertisement"; display: block; padding: 8px 12px; font-size: .75rem; color: var(--text-muted); }
 /* phones: the menu wraps onto its own row under the logo (it is never hidden) */

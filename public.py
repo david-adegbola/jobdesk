@@ -28,6 +28,7 @@ from urllib.parse import urlencode
 
 import config
 import db
+import mailer
 import scraper
 import search
 from core import jobmeta
@@ -40,9 +41,15 @@ INDEX = "index, follow"
 NOINDEX = "noindex, follow"
 
 
+def privacy_complete():
+    """True when the privacy notice names who is responsible, how to reach them and where the data is."""
+    return bool(config.PRIVACY_CONTROLLER and config.PRIVACY_CONTACT and config.HOSTING)
+
+
 def indexable():
-    """What a page that may be indexed says: index, unless JOBDESK_PUBLIC_INDEXING is off (the default)."""
-    return INDEX if config.PUBLIC_INDEXING else "noindex, nofollow"
+    """What a page that may be indexed says: index only when JOBDESK_PUBLIC_INDEXING is on (default off) and
+    the privacy notice is complete."""
+    return INDEX if config.PUBLIC_INDEXING and privacy_complete() else "noindex, nofollow"
 
 LEVEL_NOUN = {"thesis": "Thesis positions", "internship": "Internships", "trainee": "Trainee programmes",
               "entry": "Entry-level jobs", "experienced": "Jobs for experienced people"}
@@ -299,7 +306,7 @@ def layout(title, description, body, canonical, robots=INDEX, extra_head=""):
   <footer class="public-footer muted small">
     <p>JobDesk lists open jobs, internships, summer jobs and thesis positions in Finland from public job feeds
       (Valtiolle, Kuntarekry and others) and from employers. Every ad links to the original; apply there.</p>
-    <p><a href="/jobs">All jobs</a> · <a href="/employers.html">Post a job</a> · <a href="/#/jobs">Sign in to save jobs and track applications</a></p>
+    <p><a href="/jobs">All jobs</a> · <a href="/employers.html">Post a job</a> · <a href="/privacy">Privacy</a> · <a href="/#/jobs">Sign in to save jobs and track applications</a></p>
   </footer>
 </body>
 </html>
@@ -489,6 +496,87 @@ def job_page(job_id):
                        robots, head), robots
 
 
+# ---------------------------------------------------------------- privacy notice
+
+def _missing(text):
+    return f'<mark class="privacy-missing">{escape(text)}</mark>'
+
+
+def privacy_page():
+    """(status, html, robots) for /privacy. Written from what this server actually does (its settings), so it
+    stays true when email, AI or adverts are switched on. Who is responsible comes from private settings."""
+    from core import llm
+    ai_live = llm.settings_from_env().live
+    email_on = mailer.backend() == "smtp"
+    controller = escape(config.PRIVACY_CONTROLLER) if config.PRIVACY_CONTROLLER else _missing("[who runs JobDesk: name, Y-tunnus]")
+    contact = (f'<a href="mailto:{escape(config.PRIVACY_CONTACT)}">{escape(config.PRIVACY_CONTACT)}</a>'
+               if config.PRIVACY_CONTACT else _missing("[email address for privacy questions]"))
+    hosting = escape(config.HOSTING) if config.HOSTING else _missing("[hosting provider and region]")
+    mail_provider = escape(config.EMAIL_PROVIDER) if config.EMAIL_PROVIDER else "an email delivery service"
+    rows = lambda items: "".join(f"<tr><td>{a}</td><td>{b}</td><td>{c}</td></tr>" for a, b, c in items)
+    table = lambda head, items: (f'<div class="table-scroll"><table class="privacy-table"><thead><tr>'
+                                 + "".join(f"<th scope=col>{h}</th>" for h in head) + f"</tr></thead><tbody>{rows(items)}</tbody></table></div>")
+    members = [
+        ("Name and email address", "Your account, and signing in with a one-time link (no password is stored)", "Until you delete the account"),
+        ("Your fields, Finnish level and AI setting", "Showing the right jobs and ordering your shortlist", "Until you change or delete them"),
+        ("CVs, comparisons of jobs with your CV, tracked applications, documents you prepare", "The tools you use", "Until you delete them or the account"),
+        ("Saved searches", "Searching again, and emailing you new jobs if you turned that on", "Until you delete them or the account"),
+        ("“Was this right?” answers about the Finnish tag (the level shown, your answer, the quoted sentence)",
+         "Measuring how accurate the Finnish check is", "Until you delete the account"),
+        ("Jobs you save (only you see them) and jobs you share (all members, without your name)", "Collecting and comparing opportunities", "Saved: with the account. Shared: they stay, without your name"),
+        ("A session cookie (jobdesk_session)", "Keeping you signed in; strictly necessary", "14 days, or until you sign out"),
+    ]
+    leaves = []
+    if email_on:
+        leaves.append(("Sign-in links and job alerts", "Your email address and the message", mail_provider))
+    if ai_live:
+        leaves.append(("Checking what an ad says about Finnish", "The text of the job ad only", "Anthropic's Claude API (directly or through OpenRouter)"))
+        leaves.append(("Drafting text and comparing a job with your CV, only if you turned on “AI with your CV”",
+                        "The job ad and facts from your CV; never your name, email, phone, location or links",
+                        "Anthropic's Claude API (directly or through OpenRouter)"))
+    leaves_html = (table(("When", "What", "To whom"), leaves) if leaves
+                   else "<p>Nothing: no email or AI service is used on this server at the moment.</p>")
+    body = f"""<p class="eyebrow">Privacy</p><h1>How JobDesk handles your data</h1>
+<p class="muted lede">This notice describes what this JobDesk server actually does, for visitors, members and employers.</p>
+<h2>Who is responsible</h2>
+<p>{controller}. Questions about your data: {contact}.</p>
+<h2>Visitors to the job pages</h2>
+<p>Browsing the public job pages sets <strong>no cookies</strong> and stores nothing about you. Fonts, styles and
+scripts all come from this server, so no third party is contacted when you open a page. The server keeps no log of
+visitors' network addresses; requests that fail are logged with the time and the page, to keep the service working.
+To stop misuse, the sign-in and job-posting forms count requests per network address in memory for one hour.</p>
+<p>There are <strong>no adverts</strong> and no analytics. If adverts are added later, they will be shown only after
+you choose in a consent banner, and this notice will list the partners first.</p>
+<h2>Members</h2>
+{table(("What", "Why", "How long"), members)}
+<p>Display preferences (such as list sorting or showing titles in English) are kept in your own browser only.
+Legal basis: providing the service you signed up for (GDPR art. 6(1)(b)); using AI with your CV is based on your
+consent (art. 6(1)(a)), which you withdraw by turning the switch off.</p>
+<h2>Employers who post a job</h2>
+<p>The ad you send is published only after an administrator approves it, and stays listed until its deadline (60 days
+without one). Your contact name and email are <strong>never published</strong>, are seen only by administrators, are
+used only to contact you about the ad, and are deleted 90 days after the ad has been approved or rejected.
+Legal basis: your request to publish the ad, and our legitimate interest in checking ads (art. 6(1)(b) and (f)).</p>
+<h2>Job ads from public feeds</h2>
+<p>Ads from public job feeds (Valtiolle, Kuntarekry and others) are shown with their source and a link to the original.
+Recruiters' names and phone numbers in them are never shown on the public pages.</p>
+<h2>When data leaves the server</h2>
+{leaves_html}
+<h2>Where the data is</h2>
+<p>{hosting}. A copy of the database is made every day and kept for 14 days.</p>
+<h2>Your rights</h2>
+<ul>
+<li><strong>See and copy</strong> your data: Profile → Account → Download my data.</li>
+<li><strong>Correct</strong> it: edit your CVs, applications and settings at any time.</li>
+<li><strong>Delete</strong> it: Profile → Account → Delete my account removes everything above at once (ads you shared stay, without your name).</li>
+<li>Employers and visitors: email {contact}.</li>
+<li><strong>Complain</strong> to the Data Protection Ombudsman (<a href="https://tietosuoja.fi/en">tietosuoja.fi</a>).</li>
+</ul>"""
+    robots = indexable() if privacy_complete() else "noindex, nofollow"
+    return 200, layout("Privacy · JobDesk", "How JobDesk handles the data of visitors, members and employers.",
+                       body, "/privacy", robots), robots
+
+
 # ---------------------------------------------------------------- crawlers
 
 def sitemap_urls():
@@ -533,7 +621,7 @@ def sitemap_xml():
 
 def robots_txt():
     base = config.PUBLIC_URL.rstrip("/")
-    if not config.PUBLIC_INDEXING:
+    if indexable() != INDEX:
         return "User-agent: *\nDisallow: /\n"
     return ("User-agent: *\nAllow: /jobs\nAllow: /job/\nAllow: /employers.html\nAllow: /static/\n"
             "Disallow: /api/\nDisallow: /\n"
