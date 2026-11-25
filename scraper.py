@@ -588,7 +588,9 @@ def run(progress=None, user_id=1, field_ids=None):
     # field was read (otherwise jobs of the fields left out weren't refreshed).
     complete = set(field_ids) >= set(TAXONOMY.field_ids())
     today = date.today().isoformat()
-    db.expire_jobs(today, sorted(answered) if complete and not error else ())
+    # Listings from sources that are no longer read at all (removed or switched off) close after a week unseen
+    read_now = [name for name, _ in readers] + [a.name for a in adapters] if complete else None
+    db.expire_jobs(today, sorted(answered) if complete and not error else (), read_now=read_now)
     for adapter in adapters:            # an API's terms may ask for deleted ads to go sooner
         if complete and adapter.name in answered:
             db.expire_jobs(today, [adapter.name], adapter.remove_missing_after_days)

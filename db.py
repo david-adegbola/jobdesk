@@ -649,20 +649,28 @@ def purge_submissions(today, keep_days=SUBMISSION_KEEP_DAYS):
                             (cutoff,)).rowcount
 
 
-def expire_jobs(today, sources_read=(), stale_days=EXPIRE_AFTER_DAYS):
+def expire_jobs(today, sources_read=(), stale_days=EXPIRE_AFTER_DAYS, read_now=None):
     """Close listings that are over: shared jobs whose deadline has passed, and scraped jobs from one of
     sources_read (sources the latest check read without errors) that weren't in the feed for stale_days.
+    read_now: every source the job check reads at all; scraped jobs from any other source (one that was
+    removed or switched off, such as Jobly) close once they haven't been seen for stale_days.
     Members' own saved jobs are never closed. Returns how many were closed."""
     cutoff = (date.fromisoformat(today) - timedelta(days=stale_days)).isoformat()
     sources_read = list(sources_read)
-    absent = (f" OR (manual=0 AND source IN ({','.join('?' * len(sources_read))}) AND last_seen < ?)"
-              if sources_read else "")
+    where, args = ["(deadline!='' AND deadline < ?)"], [today]
+    if sources_read:
+        where.append(f"(manual=0 AND source IN ({','.join('?' * len(sources_read))}) AND last_seen < ?)")
+        args += sources_read + [cutoff]
+    if read_now is not None:
+        read_now = list(read_now)
+        marks = ",".join("?" * len(read_now)) or "''"
+        where.append(f"(manual=0 AND source NOT IN ({marks}) AND last_seen < ?)")
+        args += read_now + [cutoff]
     with connect() as conn:
         return conn.execute(
             f"""UPDATE jobs SET listing_status='expired', expired_at=?
-                WHERE listing_status='active' AND private=0
-                  AND ((deadline!='' AND deadline < ?){absent})""",
-            [today, today] + (sources_read + [cutoff] if sources_read else [])).rowcount
+                WHERE listing_status='active' AND private=0 AND ({' OR '.join(where)})""",
+            [today] + args).rowcount
 
 
 # The job's career fields as "it,health", and its tags as "level:internship,employment:summer", for rows read

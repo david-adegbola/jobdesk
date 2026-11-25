@@ -86,6 +86,21 @@ class ExpiryTests(IsolatedDb):
             scraper.run()
         self.assertEqual(self.job("v1")["listing_status"], "active")
 
+    def test_listings_from_sources_no_longer_read_close_after_a_week(self):
+        today = date.today()
+        self.add("Jobly", "j-old", "Asentaja")
+        self.add("Jobly", "j-new", "Metsuri")
+        self.add("Valtiolle", "v1", "Kirjanpitäjä")
+        old = (today - timedelta(days=db.EXPIRE_AFTER_DAYS + 1)).isoformat()
+        with db.connect() as conn:
+            conn.execute("UPDATE jobs SET last_seen=? WHERE external_id IN ('j-old', 'v1')", (old,))
+        app_job = self.job("j-old")["id"]
+        db.set_status(app_job, "Applied", {}, 1)
+        self.assertEqual(db.expire_jobs(today.isoformat(), read_now=["Valtiolle", "Kuntarekry"]), 1)
+        status = {j["external_id"]: j["listing_status"] for j in db.list_jobs()}
+        self.assertEqual(status, {"j-old": "expired", "j-new": "active", "v1": "active"})   # Valtiolle is read
+        self.assertEqual(self.job("j-old")["status"], "Applied")                         # the tracker keeps it
+
     def test_members_own_saved_jobs_never_close(self):
         job_id = db.add_manual({"source": "Saved", "external_id": "private-1-x", "title": "Barista",
                                 "deadline": "2000-01-01", "private": True}, 1)
