@@ -96,7 +96,7 @@
       "sjuksköterska",
       "närvårdare"
     ],
-    "whole_words": [],
+    "whole_words": ["doctor"],
     "ignore_patterns": []
   },
   "skills": [

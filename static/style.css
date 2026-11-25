@@ -445,7 +445,17 @@ fieldset.segmented { padding: 4px; border: 1.5px solid var(--border-strong); bor
 .card { background: var(--bg-surface); padding: 24px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
 .card + .card { margin-top: 16px; }
 .card > :first-child { margin-top: 0; }
-main > .card, main > div > .card { margin-bottom: 24px; }
+main > .card, main > div > .card, .page-view > .card, .page-view > div > .card { margin-bottom: 24px; }
+/* While a page loads: a quiet skeleton (shown only if loading takes longer than a moment) */
+.page-skeleton { display: grid; gap: 14px; max-width: 900px; padding-top: 8px; }
+.page-skeleton span { display: block; height: 18px; border-radius: var(--radius-sm); background: var(--bg-sunken); }
+.page-skeleton span:first-child { width: 40%; height: 34px; }
+.page-skeleton span:nth-child(2) { width: 75%; }
+.page-skeleton span:nth-child(3) { width: 60%; }
+@media (prefers-reduced-motion: no-preference) {
+  .page-skeleton span { animation: skeleton-pulse 1.2s ease-in-out infinite alternate; }
+  @keyframes skeleton-pulse { from { opacity: .55; } to { opacity: 1; } }
+}
 .card > :last-child { margin-bottom: 0; }
 details.card > summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; gap: 10px; align-items: center; min-height: 28px; }
 details.card > summary::-webkit-details-marker { display: none; }
@@ -517,9 +527,14 @@ pre.prompt {
 
 /* ------------------------------------------------------------------ tracker (board) */
 .kanban {
-  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 1fr); gap: 16px;
+  /* 7 status columns fit side by side from about 1400px wide; narrower, the board scrolls a column at a time
+     (it used to stop with the last column cut in half) */
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); gap: 12px;
   overflow-x: auto; padding-bottom: 8px; align-items: start; scrollbar-color: var(--border-input) transparent;
+  scroll-snap-type: x mandatory; scroll-padding-inline: 0;
 }
+.kanban > .column { scroll-snap-align: start; }
+@media (max-width: 760px) { .kanban { grid-auto-columns: minmax(240px, 82%); } }
 .column { background: var(--bg-sunken); min-height: 420px; display: flex; flex-direction: column; border-radius: var(--radius-lg); border-top: 4px solid var(--s); }
 .column-head {
   display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 16px; margin: 0;
@@ -853,6 +868,13 @@ input.switch:checked::after { transform: translateX(22px); }
 .discover-fields p { margin: 0 0 4px; }
 .field.inline { display: inline-flex; gap: 8px; align-items: center; margin: 0; }
 .pager { justify-content: center; }
+/* Discover and public cards have no fit ring: the text takes the first column (was squeezed into the ring's 76px) */
+.job-card.discover-card, .job-card.public-card { grid-template-columns: minmax(0, 1fr) auto; }
+@media (max-width: 760px) {
+  .job-card.discover-card, .job-card.public-card { grid-template-columns: minmax(0, 1fr); }
+}
+.fit-ring.is-rating > span { font-size: 1.25rem; letter-spacing: -.04em; }
+.fit-ring.mini.is-rating > span { font-size: .8125rem; }
 .discover-count { justify-content: space-between; margin: 4px 0 8px; }
 .discover-count .job-count { margin: 0; }
 .saved-searches { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }

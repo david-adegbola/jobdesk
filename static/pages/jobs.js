@@ -2,7 +2,7 @@ import { api, h, register, store, message, getState } from "../core.js";
 import { sourceAttrs, translateSwitch } from "../translate.js";
 import { FINNISH, METHOD, feedbackControls } from "../finnish.js";
 import { gettingStarted } from "../getting-started.js";
-import { fitBadge, fitPanel, evaluate } from "../fit.js";
+import { fitBadge, fitPanel, fitRing, fitScore, evaluate } from "../fit.js";
 
 function places(text) {
   const p = (text || "").split(", ").filter(Boolean);
@@ -50,7 +50,7 @@ function loadTypeOrder(jobTypes) {
 function sortValue(j, key, typeOrder) {
   if (key === "posted") return j.posted || null;
   if (key === "deadline") return j.deadline || null;
-  if (key === "match") return j.match.score || null;
+  if (key === "match") return fitScore(j) || null;       // the same order as the rings show
   if (!j.category) return null;
   const i = typeOrder.indexOf(j.category);
   return i < 0 ? typeOrder.length : i;
@@ -71,15 +71,7 @@ function sortJobs(jobs, sort, typeOrder) {
 
 const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
 
-// The fit ring: the AI fit score when there is a current one, otherwise the keyword match with the CV
-function fitRing(j) {
-  const ai = j.fit && !j.fit.stale;
-  const n = ai ? j.fit.suitability : (j.match.score || 0);
-  const level = n >= 75 ? "high" : n >= 60 ? "mid" : "low";
-  return h("span", { class: `fit-ring ${level}`, role: "img",
-    "aria-label": `${ai ? "Fit with your CV" : "Keyword match with your CV"}: ${n} out of 100` },
-    h("span", null, String(n)));
-}
+// The fit ring (fit.js): the CV comparison's rating when there is a current one, otherwise the keyword match
 
 // "Add a job": paste a link and JobDesk reads the ad's details for you to check, or fill them in by hand.
 // prefill comes from the bookmarklet or the Home page's paste bar: {url, title, text} (text = what was selected on the page)
@@ -251,7 +243,7 @@ async function renderJobs(main, query, mode) {
   const saveView = () => store("jobs.view", JSON.stringify(view));
 
   async function load(restoreKey) {
-    const data = await api("/api/jobs");
+    const data = await api("/api/jobs?scope=mine");
     jobs = data.jobs;
     const c = data.latest_check;
     const newCount = jobs.filter(j => j.is_new).length;

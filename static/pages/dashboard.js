@@ -3,6 +3,7 @@
 // fit and match scores, and the dates coming up. Everything comes from existing APIs; nothing is stored here.
 import { api, h, register } from "../core.js";
 import { FINNISH } from "../finnish.js";
+import { FIT, fitRing, fitScore } from "../fit.js";
 
 const BEFORE_APPLYING = new Set(["Saved", "Shortlisted"]);     // a job's deadline matters only until you apply
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -19,14 +20,9 @@ function daysUntil(iso) {
   return Math.round((d - today) / 86400000);
 }
 const when = days => days === 0 ? "today" : days === 1 ? "tomorrow" : days < 7 ? `in ${days} days` : `on ${DAY.format(new Date(Date.now() + days * 86400000))}`;
-const score = job => job.fit && !job.fit.stale ? job.fit.suitability : (job.match?.score ?? 0);
-const level = n => n >= 75 ? "high" : n >= 60 ? "mid" : "low";
+const score = fitScore;       // a CV comparison's rating counts like a score, so picks sort sensibly
 const firstName = user => String(user?.name || "").trim().split(/\s+/)[0] || "";
 const where = job => [job.company, job.location].filter(Boolean).join(" · ");
-
-function fitRing(n, label) {
-  return h("span", { class: `fit-ring ${level(n)}`, role: "img", "aria-label": `${label}: ${n} out of 100` }, h("span", null, String(n)));
-}
 
 function brief(data) {
   const { mine, picks, cvs, applications } = data;
@@ -39,7 +35,12 @@ function brief(data) {
   if (followUp) lines.push([`${followUp.title}: ${followUp.overdue ? `“${followUp.next_action || "next step"}” is overdue` : followUp.follow_up}`, "#/tracker", "Open the tracker"]);
   const unchecked = mine.filter(j => (j.status === "Saved" || j.status === "Shortlisted") && !j.fit).length;
   if (unchecked && lines.length < 3) lines.push([`${unchecked} saved job${unchecked === 1 ? " isn't" : "s aren't"} checked against your CV yet.`, "#/myjobs", "Check fit"]);
-  if (picks[0] && lines.length < 3) lines.push([`Your closest match right now fits ${score(picks[0])}%: ${picks[0].title}.`, null, null]);
+  if (picks[0] && lines.length < 3) {
+    const best = picks[0];
+    lines.push([best.fit && !best.fit.stale
+      ? `Your best fit right now: ${best.title} (${(FIT[best.fit.suitability] || FIT.stretch)[0].toLowerCase()}).`
+      : `Your closest match right now fits ${best.match?.score || 0}%: ${best.title}.`, null, null]);
+  }
   if (!lines.length) lines.push(["Nothing urgent today. Paste a job link below to add the next one.", null, null]);
   return lines.slice(0, 3);
 }
@@ -73,7 +74,6 @@ function blocks(data) {
 }
 
 function jobRow(job, reload) {
-  const n = score(job);
   const fin = FINNISH[job.finnish?.level];
   const words = [];     // matched CV words, skipping near-duplicates such as "assistant" and "assisted"
   for (const w of job.match?.words || []) if (words.length < 3 && !words.some(x => x.slice(0, 5) === w.slice(0, 5))) words.push(w);
@@ -89,7 +89,7 @@ function jobRow(job, reload) {
   }
   actions.append(h("a", { class: "btn", href: `#/prepare?job=${job.id}` }, "Prepare"));
   return h("article", { class: "dash-job" },
-    fitRing(n, job.fit && !job.fit.stale ? "Fit with your CV" : "Keyword match with your CV"),
+    fitRing(job),
     h("div", { class: "dash-job-main" },
       h("h3", null, job.url ? h("a", { href: job.url, target: "_blank", rel: "noopener" }, job.title) : job.title),
       h("p", { class: "muted" }, [where(job), job.days_left != null && job.days_left >= 0 ? `closes ${when(job.days_left)}` : ""].filter(Boolean).join(" · ")),
@@ -120,8 +120,8 @@ function dates(data) {
 register({
   id: "home", title: "Home",
   async render(main) {
-    const [me, { jobs }, { cvs }, apps] = await Promise.all([
-      api("/api/auth/me"), api("/api/jobs"), api("/api/cvs"), api("/api/applications").catch(() => ({ applications: [] }))]);
+    const [me, { jobs, open_total: openTotal }, { cvs }, apps] = await Promise.all([
+      api("/api/auth/me"), api("/api/jobs?scope=home"), api("/api/cvs"), api("/api/applications").catch(() => ({ applications: [] }))]);
     const applications = apps.applications || [];
     const mine = jobs.filter(j => j.status);
     const picks = jobs.filter(j => j.status !== "Rejected" && !["Applied", "Interview", "Offer"].includes(j.status) && (j.days_left == null || j.days_left >= 0))
@@ -143,7 +143,7 @@ register({
 
     const reload = () => { main.replaceChildren(); this.render(main); };
     const picked = h("section", { class: "dash-picked", "aria-labelledby": "dash-picked-title" },
-      h("div", { class: "dash-heading" }, h("h2", { id: "dash-picked-title" }, "Picked for you"), h("a", { href: "#/jobs" }, `All ${jobs.length} jobs`)),
+      h("div", { class: "dash-heading" }, h("h2", { id: "dash-picked-title" }, "Picked for you"), h("a", { href: "#/jobs" }, `All ${openTotal ?? jobs.length} jobs`)),
       picks.length ? picks.map(j => jobRow(j, reload))
         : h("p", { class: "dash-empty" }, "No jobs yet. Paste a link above, or choose your fields under Profile to see shared ads."));
     const coming = h("section", { class: "dash-coming", "aria-labelledby": "dash-coming-title" },

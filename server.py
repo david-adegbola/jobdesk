@@ -142,13 +142,35 @@ def cv_roles(user_id):
         roles.append({
             "id": cv["id"], "slug": f"cv-{cv['id']}", "title": cv["title"],
             "language": cv["language"], "keywords": words,
+            "_signature": (cv["id"], hash(frozenset(words))),     # changes when the CV's words change
         })
     return roles
 
 
+# Match results by (ad text, title, the exact CVs), so a list loaded again doesn't redo the matching. Editing
+# a CV or an ad changes the key; the oldest entries go when the cache is full.
+MATCH_CACHE = {}
+MATCH_CACHE_SIZE = 20_000
+MATCH_CACHE_LOCK = threading.Lock()
+
+
+def cached_match(text, roles, title):
+    key = (hash(text), title, tuple(r.get("_signature") or (r["slug"], len(r["keywords"])) for r in roles))
+    with MATCH_CACHE_LOCK:
+        if key in MATCH_CACHE:
+            return MATCH_CACHE[key]
+    scores = match.match(text, roles, title)
+    with MATCH_CACHE_LOCK:
+        if len(MATCH_CACHE) >= MATCH_CACHE_SIZE:
+            for old in list(MATCH_CACHE)[:MATCH_CACHE_SIZE // 10]:
+                del MATCH_CACHE[old]
+        MATCH_CACHE[key] = scores
+    return scores
+
+
 def enrich(job, roles, f=None):
     text = job_text(job)
-    scores = match.match(text, roles, job.get("title") or "")
+    scores = cached_match(text, roles, job.get("title") or "")
     best = scores[0] if scores else {"slug": "", "score": 0, "words": []}
     use_cv = job.get("app_cv_role") or (best["slug"] if best["score"] >= 20 else "")
     days_left = None
@@ -626,12 +648,50 @@ class JobPresenter:
         return enrich(safe, self.roles)
 
 
+HOME_PICKS = 8
+LIST_LEAVE_OUT = {"ad_text", "contact_name", "contact_phone"}       # pages that list jobs never show these
+
+
+def _is_mine(job):
+    return bool(job.get("private") or job.get("status"))
+
+
+# A CV comparison is a rating, not a number; for ordering picks it counts like a match score of this size
+RATING_SCORE = {"strong": 90, "possible": 70, "stretch": 50, "weak": 30}
+
+
+def _pick_score(job):
+    fit_result = job.get("fit")
+    if fit_result and not fit_result["stale"]:
+        return RATING_SCORE.get(fit_result["suitability"], 50)
+    return (job.get("match") or {}).get("score", 0)
+
+
 @route("GET", "/api/jobs")
 def api_jobs(h, m):
+    """The jobs a member can see. ?scope=mine: only theirs (saved, tracked or collected), for My jobs, the
+    Tracker, Account and drafting. ?scope=home: theirs plus the best-matching open ads, for Home. Without a
+    scope: every visible job (the owner tools); Discover uses /api/search instead."""
+    from urllib.parse import parse_qs
+    scope = (parse_qs(urlparse(h.path).query).get("scope") or [""])[0]
     fields = user_fields(h.user)
     present = JobPresenter(h.user, fields)
-    return {"jobs": [present(job) for job in listed_jobs(h.user, fields)],
-            "latest_check": db.latest_check(SHARED_DATA_OWNER)}
+    jobs = listed_jobs(h.user, fields)
+    if scope == "mine":
+        jobs = [job for job in jobs if _is_mine(job)]
+    shown = [present(job) for job in jobs]
+    extra = {}
+    if scope == "home":
+        mine = [job for job in shown if _is_mine(job)]
+        open_ads = [job for job in shown if not _is_mine(job) and not job.get("personal")
+                    and (job.get("days_left") is None or job["days_left"] >= 0)]
+        open_ads.sort(key=lambda job: -_pick_score(job))
+        extra["open_total"] = len([job for job in shown if not job.get("private") and not job.get("personal")
+                                   and job.get("listing_status") != "expired"])
+        shown = mine + open_ads[:HOME_PICKS]
+    if scope in ("mine", "home"):
+        shown = [{k: v for k, v in job.items() if k not in LIST_LEAVE_OUT} for job in shown]
+    return {"jobs": shown, "latest_check": db.latest_check(SHARED_DATA_OWNER), **extra}
 
 
 # ---------------------------------------------------------------- search (Discover)
@@ -657,7 +717,8 @@ def api_search(h, m):
     results, facets = search.run(
         jobs, f, lambda job: job_details(job, present.finnish(job))["finnish_not_required"])
     shown, page, pages = search.page_of(results, f["page"], SEARCH_PAGE_SIZE)
-    return {"jobs": [present(job) for job in shown], "total": len(results), "page": page, "pages": pages,
+    cards = [{k: v for k, v in present(job).items() if k not in LIST_LEAVE_OUT} for job in shown]
+    return {"jobs": cards, "total": len(results), "page": page, "pages": pages,
             "filters": {"field_default": False, **f, "page": page}, "facets": facets, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
 
 
@@ -2265,8 +2326,19 @@ class Handler(BaseHTTPRequestHandler):
                  ".txt": "text/plain; charset=utf-8", ".woff2": "font/woff2"}
         # The employer form is public and should be found; the app itself (index.html) is not indexed
         extra = {"X-Robots-Tag": public.indexable()} if rel == "employers.html" else {}
+        stat = file.stat()
+        etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
         if file.suffix == ".woff2":          # fonts never change under the same name
             extra["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:                                # keep a copy, but ask each time whether it changed (304 if not)
+            extra["Cache-Control"] = "no-cache"
+        extra["ETag"] = etag
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            for key, value in extra.items():
+                self.send_header(key, value)
+            self.end_headers()
+            return
         self.send(200, file.read_bytes(), types.get(file.suffix, "application/octet-stream"), extra)
 
     def do_GET(self):

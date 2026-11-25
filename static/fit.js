@@ -10,6 +10,34 @@ export const FIT = {
   weak: ["Weak fit", "tag bad"],
 };
 
+// The fit ring, shared by Home, My jobs and the Tracker. A current CV comparison is a rating, shown as a symbol
+// that fits the ring (the colour repeats it, the label says it in words); otherwise the keyword match, 0–100.
+const RATING = {
+  strong: { score: 90, symbol: "✓✓", level: "high" },
+  possible: { score: 70, symbol: "✓", level: "mid" },
+  stretch: { score: 50, symbol: "≈", level: "low" },
+  weak: { score: 30, symbol: "✗", level: "low" },
+};
+
+export function fitScore(job) {
+  if (job?.fit && !job.fit.stale) return (RATING[job.fit.suitability] || RATING.stretch).score;
+  return job?.match?.score || 0;
+}
+
+export function fitRing(job, size = "") {
+  if (!job) return "";
+  if (job.fit && !job.fit.stale) {
+    const rating = RATING[job.fit.suitability] || RATING.stretch;
+    const [label] = FIT[job.fit.suitability] || FIT.stretch;
+    return h("span", { class: `fit-ring ${size} ${rating.level} is-rating`, role: "img", "aria-label": `${label} with your CV` },
+      h("span", { "aria-hidden": "true" }, rating.symbol));
+  }
+  const n = job.match?.score || 0;
+  const level = n >= 75 ? "high" : n >= 60 ? "mid" : "low";
+  return h("span", { class: `fit-ring ${size} ${level}`, role: "img", "aria-label": `Keyword match with your CV: ${n} out of 100` },
+    h("span", { "aria-hidden": "true" }, String(n)));
+}
+
 export function fitBadge(f) {
   const [label, cls] = FIT[f.suitability] || FIT.stretch;
   return h("span", { class: cls }, label + (f.stale ? " (out of date)" : ""));

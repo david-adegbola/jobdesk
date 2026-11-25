@@ -1,19 +1,12 @@
 // Applications → Tracker: a board of the member's applications, one column per status. Every card says the one
 // thing to do next. Drag a card, or use "Move to", to change its status.
 import { api, h, register, message, getState, today } from "../core.js";
+import { fitRing } from "../fit.js";
 
 const LABEL = { Rejected: "Not this time" };       // stored statuses stay the same; only the column title is kinder
 const EMPTY = { Saved: "Save jobs from Discover.", Shortlisted: "Shortlist a saved job to check your fit.", Applied: "Drag a card here when you've applied.",
   Interview: "Interviews come after applying.", Offer: "No offers yet. Keep going.", Rejected: "Nothing here, and that's fine." };
 
-function fitRing(job) {
-  if (!job) return "";
-  const ai = job.fit && !job.fit.stale;
-  const n = ai ? job.fit.suitability : (job.match?.score || 0);
-  const level = n >= 75 ? "high" : n >= 60 ? "mid" : "low";
-  return h("span", { class: `fit-ring mini ${level}`, role: "img", "aria-label": `${ai ? "Fit" : "Keyword match"} with your CV: ${n} out of 100` },
-    h("span", null, String(n)));
-}
 
 // The one next step: the member's own, else a reminder, else what usually comes next at this stage
 function nextStep(a) {
@@ -41,7 +34,7 @@ function card(a, job, roles, statuses, reload) {
   return h("article", { class: "app-card", draggable: "true", "data-id": a.id, "data-status": a.status,
       ondragstart: e => { e.dataTransfer.setData("text/plain", String(a.id)); e.dataTransfer.effectAllowed = "move"; e.currentTarget.classList.add("dragging"); },
       ondragend: e => e.currentTarget.classList.remove("dragging") },
-    h("div", { class: "app-card-top" }, h("span", { class: "muted small" }, [a.company, a.location].filter(Boolean).join(" · ") || "Employer not given"), fitRing(job)),
+    h("div", { class: "app-card-top" }, h("span", { class: "muted small" }, [a.company, a.location].filter(Boolean).join(" · ") || "Employer not given"), fitRing(job, "mini")),
     h("div", { class: "title" }, a.url ? h("a", { href: a.url, target: "_blank", rel: "noopener" }, a.title) : a.title),
     nextStep(a),
     meta.length ? h("dl", { class: "meta" }, meta.flatMap(([k, v]) => [h("dt", null, k), h("dd", null, v)])) : "",
@@ -83,7 +76,7 @@ register({
 
     async function load(restoreKey) {
       const focusKey = restoreKey || document.activeElement?.dataset.focus;
-      const [{ applications, statuses }, { jobs }] = await Promise.all([api("/api/applications"), api("/api/jobs").catch(() => ({ jobs: [] }))]);
+      const [{ applications, statuses }, { jobs }] = await Promise.all([api("/api/applications"), api("/api/jobs?scope=mine").catch(() => ({ jobs: [] }))]);
       const jobById = Object.fromEntries(jobs.map(j => [j.id, j]));
       board.replaceChildren(...statuses.map(status => {
         const items = applications.filter(a => a.status === status);

@@ -9,7 +9,7 @@ register({
   id: "draft", title: "Draft an answer",
   async render(main) {
     const state = await getState();
-    const [{ cvs }, { jobs }] = await Promise.all([api("/api/cvs"), api("/api/jobs")]);
+    const [{ cvs }, { jobs }] = await Promise.all([api("/api/cvs"), api("/api/jobs?scope=mine")]);
     let handed = null;
     try { handed = JSON.parse(sessionStorage.getItem(DRAFT_AD_KEY) || "null"); sessionStorage.removeItem(DRAFT_AD_KEY); }
     catch (e) { handed = null; }
@@ -31,7 +31,7 @@ register({
     const f = {};
     const adSource = h("select", { onchange: () => { jobField.hidden = adSource.value !== "job"; pasteField.hidden = adSource.value !== "paste"; } },
       h("option", { value: "job" }, "One of my jobs"), h("option", { value: "paste" }, "Paste the ad"));
-    // Your active jobs first (not rejected or "not a fit"), then the shared ones
+    // Your active jobs first (not rejected or "not a fit"), then the ones you collected without a status
     const rank = j => j.status && !["Rejected", "Not a fit"].includes(j.status) ? 0 : j.status ? 2 : 1;
     const choices = jobs.filter(j => rank(j) < 2).sort((a, b) => rank(a) - rank(b));
     const jobField = h("label", { class: "field" }, "Job", f.job = h("select", null, choices.map(j => h("option", { value: j.id }, `${j.title}${j.company ? ` – ${j.company}` : ""}`))));

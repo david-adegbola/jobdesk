@@ -1,6 +1,23 @@
 // JobDesk front end core: a small hash router and shared page helpers.
+import { createCache, createNavigator } from "./nav.js";
+
+const navigation = createNavigator();
+const cache = createCache();
+let pageSignal = null;          // aborts the current page's reads when the member moves to another page
+
+// GET reads belong to the page that made them (they stop when it's left); the list endpoints pages load on
+// arrival come from a 20-second cache. Anything else (a save, a delete) is never aborted and empties the cache.
 export async function api(path, options = {}) {
-  const opts = { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } };
+  const method = (options.method || "GET").toUpperCase();
+  const isRead = method === "GET";
+  if (isRead && cache.cacheable(path) && !options.fresh) {
+    const hit = cache.get(path);
+    if (hit !== undefined) return hit;
+  }
+  if (!isRead) cache.clear();
+  const { fresh, ...rest } = options;
+  const opts = { ...rest, headers: { "Content-Type": "application/json", ...(options.headers || {}) } };
+  if (isRead && !opts.signal && pageSignal) opts.signal = pageSignal;
   if (opts.body && typeof opts.body !== "string") opts.body = JSON.stringify(opts.body);
   const res = await fetch(path, opts);
   let data;
@@ -15,6 +32,8 @@ export async function api(path, options = {}) {
     }
     throw new Error(data.error || `Request failed (${res.status})`);
   }
+  if (isRead && cache.cacheable(path)) cache.set(path, data);
+  if (!isRead) cache.clear();          // again after the change, in case a read finished in between
   return data;
 }
 
@@ -217,11 +236,25 @@ async function show(focusMain = false) {
   const shown = visiblePages();
   const page = shown.find(candidate => candidate.id === id) || shown[0];
   if (!page) return;
+  // The new page is drawn into its own (hidden) container, so content from the page just left can never
+  // land in it: that page's reads are aborted, and anything it still draws goes into a discarded container.
+  const ticket = navigation.begin();
+  pageSignal = ticket.signal;
   markCurrent(page);
-  main.replaceChildren();
   document.title = `${page.title} · JobDesk`;
-  try { await page.render(main, location.hash.split("?")[1] || ""); }
-  catch (error) { main.append(message(error.message, true)); }
+  const view = h("div", { class: "page-view", hidden: true });
+  const skeleton = h("div", { class: "page-skeleton", role: "status", "aria-label": "Loading", hidden: true },
+    h("span"), h("span"), h("span"));
+  const showSkeleton = setTimeout(() => { skeleton.hidden = false; }, 150);    // no flash for fast pages
+  main.replaceChildren(skeleton, view);
+  try { await page.render(view, location.hash.split("?")[1] || ""); }
+  catch (error) {
+    if (!ticket.current || error.name === "AbortError") return;
+    view.append(message(error.message, true));
+  } finally { clearTimeout(showSkeleton); }
+  if (!ticket.current) return;
+  skeleton.remove();
+  view.hidden = false;
   if (focusMain) main.focus();
 }
 

@@ -33,7 +33,7 @@ register({
   async render(main) {
     const state = await getState();
     const feedback = h("div", { "aria-live": "polite" });
-    const [{ jobs }, apps] = await Promise.all([api("/api/jobs"), api("/api/applications").catch(() => ({ applications: [] }))]);
+    const [{ jobs }, apps] = await Promise.all([api("/api/jobs?scope=mine"), api("/api/applications").catch(() => ({ applications: [] }))]);
     const checked = jobs.filter(j => j.fit).length;
     const sent = jobs.filter(j => ["Applied", "Interview", "Offer"].includes(j.status)).length;
     const interviews = jobs.filter(j => j.status === "Interview").length;
