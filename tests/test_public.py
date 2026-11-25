@@ -116,7 +116,7 @@ class PublicPageTests(unittest.TestCase):
             status, body, headers = self.get(path)
             self.assertEqual((status, headers["X-Robots-Tag"]), (200, "index, follow"), path)
             self.assertIn(f"<h1>{h1}</h1>", body)
-            self.assertEqual(sorted(re.findall(r'<h3><a href="/job/[^"]+">([^<]+)</a>', body)), sorted(titles), path)
+            self.assertEqual(sorted(re.findall(r'<h3><a href="/job/[^"]+"[^>]*>([^<]+)</a>', body)), sorted(titles), path)
             self.assertIn(f'rel="canonical" href="http://localhost:8765{path}"', body)
         self.assertEqual(self.get("/jobs/town/nowhere")[0], 404)
         self.assertEqual(self.get("/jobs/colour/blue")[0], 404)
@@ -144,6 +144,17 @@ class PublicPageTests(unittest.TestCase):
         css = self.get("/static/fonts/fonts.css")[1]
         for name in re.findall(r"url\(([^)]+)\)", css):
             self.assertEqual(self.request("GET", f"/static/fonts/{name}", headers={"Cookie": ""})[0], 200, name)
+
+    def test_headings_follow_in_order_and_finnish_text_is_marked_as_finnish(self):
+        for path in ("/jobs", "/jobs/town/kuopio", f"/job/{self.ids['nurse']}"):
+            body = self.get(path)[1]
+            levels = [int(n) for n in re.findall(r"<h([1-6])\b", body)]
+            self.assertEqual(levels[0], 1, path)
+            for before, after in zip(levels, levels[1:]):
+                self.assertLessEqual(after, before + 1, (path, levels))      # no skipped level
+        self.assertIn('lang="fi">Sairaanhoitaja</a>', self.get("/jobs")[1])
+        self.assertIn('<h1 lang="fi">Sairaanhoitaja</h1>', self.get(f"/job/{self.ids['nurse']}")[1])
+        self.assertIn('>Junior Software Developer</a>', self.get("/jobs")[1])         # English: the page's own language
 
     def test_until_indexing_is_switched_on_nothing_is_indexed(self):
         with patch.object(public.config, "PUBLIC_INDEXING", False):

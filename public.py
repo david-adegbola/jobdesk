@@ -245,12 +245,18 @@ def _place(job):
         "Remote" if job.get("work_mode") == "remote" else "")
 
 
+def _lang(job):
+    """A lang attribute for text in the ad's own language (screen readers pronounce Finnish as Finnish)."""
+    language = job.get("ad_language") or ""
+    return f' lang="{language}"' if language in ("fi", "sv") else ""
+
+
 def card(job):
     meta = " · ".join(escape(x) for x in [job.get("company") or "", _place(job),
                                            f"closes {_date(job['deadline'])}" if job.get("deadline") else ""] if x)
     tags = "".join(f'<span class="tag">{escape(t)}</span>' for t in _tags(job))
     return (f'<article class="job-card public-card"><div class="job-main">'
-            f'<h3><a href="{job_path(job)}">{escape(job["title"])}</a></h3>'
+            f'<h3><a href="{job_path(job)}"{_lang(job)}>{escape(job["title"])}</a></h3>'
             f'<p class="job-meta muted">{meta}</p><p class="job-tags">{tags}</p></div></article>')
 
 
@@ -365,7 +371,7 @@ def landing(path, query=""):
     cards = [card(job) for job in shown]
     if len(cards) > 5:
         cards.insert(5, _ad_slot("results"))
-    listing = ('<div class="job-list">' + "".join(cards) + "</div>") if shown else (
+    listing = ('<h2 class="visually-hidden">Open jobs</h2><div class="job-list">' + "".join(cards) + "</div>") if shown else (
         '<div class="empty-state"><p class="empty-title">No open ads here right now</p>'
         '<p><a href="/jobs">See all open jobs</a>, or sign in to get new ads as they come.</p></div>')
     pager = ""
@@ -466,11 +472,12 @@ def job_page(job_id):
     paragraphs = "".join(f"<p>{escape(p)}</p>" for p in text.split("\n") if p.strip())
     body = (f'<nav class="muted small" aria-label="Breadcrumb">{crumb_html}</nav>'
             + ('<p class="msg err" role="status">This ad has closed. <a href="/jobs">See open jobs</a>.</p>' if closed else "")
-            + f'<h1>{escape(job["title"])}</h1>'
+            + f'<h1{_lang(job)}>{escape(job["title"])}</h1>'
             f'<p class="job-tags">{"".join(f"<span class=tag>{escape(t)}</span>" for t in _tags(job))}</p>'
             f'<div class="public-job"><dl class="public-details">{details}</dl>'
             f'<div class="row">{apply}<a class="btn secondary" href="/#/jobs">Sign in to save it</a></div></div>'
-            f'<section class="public-ad"><h2>About the job</h2>{paragraphs or "<p class=muted>The ad text is on the original page.</p>"}'
+            f'<section class="public-ad"><h2>About the job</h2><div{_lang(job)}>'
+            f'{paragraphs or "<p class=muted>The ad text is on the original page.</p>"}</div>'
             + (f'<p class="muted small">This is the start of the ad. Read all of it, and apply, on the original page.</p>' if excerpt else "")
             + f'</section>{_ad_slot("job")}'
             f'<p class="muted small">From {escape("the employer" if job.get("source") == "Employer" else job.get("source") or "")}'

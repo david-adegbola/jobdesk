@@ -181,6 +181,7 @@ async function renderDiscover(main, query) {
   }
 
   let request = 0;
+  let focusAfterLoad = false;
   async function load() {
     const mine = ++request;
     results.setAttribute("aria-busy", "true");
@@ -207,16 +208,22 @@ async function renderDiscover(main, query) {
     if (c) checkStatus.textContent = `Updated ${c.finished_at?.replace("T", " ").slice(0, 16) || ""}`;
     const pager = data.pages > 1 ? h("nav", { class: "row pager", "aria-label": "Pages" },
       h("button", { type: "button", class: "secondary small", disabled: data.page <= 1,
-        onclick: () => { apply({ page: data.page - 1 }, true); main.scrollIntoView(); } }, "Previous"),
+        onclick: () => { apply({ page: data.page - 1 }, true); focusAfterLoad = true; } }, "Previous"),
       h("span", { class: "muted small" }, `Page ${data.page} of ${data.pages}`),
       h("button", { type: "button", class: "secondary small", disabled: data.page >= data.pages,
-        onclick: () => { apply({ page: data.page + 1 }, true); main.scrollIntoView(); } }, "Next")) : "";
+        onclick: () => { apply({ page: data.page + 1 }, true); focusAfterLoad = true; } }, "Next")) : "";
     results.replaceChildren(...(data.jobs.length
-      ? [h("div", { class: "job-list" }, data.jobs.map(j => jobCard(j, save))), pager]
+      ? [h("h2", { class: "visually-hidden" }, "Results"), h("div", { class: "job-list" }, data.jobs.map(j => jobCard(j, save))), pager]
       : [h("div", { class: "empty-state" }, h("p", { class: "empty-title" }, "No jobs match"),
           h("p", null, f.no_finnish ? "Few ads say outright that Finnish isn't needed. Try without “Finnish not required”, or a wider search."
             : "Try fewer filters or other words. Searches find word starts in English and Finnish."))]));
     translation.apply();
+    if (focusAfterLoad) {        // after Next/Previous: the button is gone, so move to the new page's count
+      focusAfterLoad = false;
+      count.tabIndex = -1;
+      count.focus();
+      count.scrollIntoView({ block: "start" });
+    }
   }
 
   // Saved searches: save the current one; each can email new jobs after every job check (twice a day)
