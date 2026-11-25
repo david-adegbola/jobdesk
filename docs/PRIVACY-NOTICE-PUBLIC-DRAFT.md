@@ -13,8 +13,8 @@
 
 Browsing `/jobs`, the landing pages and the job pages sets **no cookies** and stores nothing about you. The server's
 web log keeps the network address, time, page and browser name of each request for [N] days to keep the service
-secure and working (legitimate interest). The pages load fonts from Google Fonts, which sees your network address
-[decide: keep, or serve the fonts from JobDesk's own server so no third party is involved].
+secure and working (legitimate interest). Fonts, styles and scripts all come from JobDesk's own server: no third
+party is contacted when you open a page.
 
 **Adverts:** there are none yet. If adverts are added (Google AdSense), they will be shown only after you choose in
 a consent banner from a Google-certified consent platform; without consent only non-personalised adverts, or none,

@@ -2127,10 +2127,14 @@ class Handler(BaseHTTPRequestHandler):
         file = (APP / rel).resolve() if rel.startswith("static/") else (STATIC / rel).resolve()
         if not str(file).startswith(str(STATIC)) or not file.is_file():
             return self.send(404, b"Not found", "text/plain")
-        types = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}
+        types = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml; charset=utf-8",
+                 ".txt": "text/plain; charset=utf-8", ".woff2": "font/woff2"}
         # The employer form is public and should be found; the app itself (index.html) is not indexed
-        extra = {"X-Robots-Tag": "index, follow"} if rel == "employers.html" else None
-        self.send(200, file.read_bytes(), types.get(file.suffix, "application/octet-stream") + "; charset=utf-8", extra)
+        extra = {"X-Robots-Tag": "index, follow"} if rel == "employers.html" else {}
+        if file.suffix == ".woff2":          # fonts never change under the same name
+            extra["Cache-Control"] = "public, max-age=31536000, immutable"
+        self.send(200, file.read_bytes(), types.get(file.suffix, "application/octet-stream"), extra)
 
     def do_GET(self):
         self.dispatch("GET")

@@ -265,9 +265,7 @@ def layout(title, description, body, canonical, robots=INDEX, extra_head=""):
   <meta name="theme-color" content="#FBF7EF" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#12110D" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="/static/favicon.svg" sizes="any" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&display=swap">
+  <link rel="stylesheet" href="/static/fonts/fonts.css">
   <link rel="stylesheet" href="/static/style.css">{extra_head}
 </head>
 <body class="public-page">

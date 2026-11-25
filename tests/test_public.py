@@ -126,6 +126,20 @@ class PublicPageTests(unittest.TestCase):
                      "/jobs/field/social-care/region/north-karelia", "/jobs/type/part-time/remote"):
             self.assertEqual(public.path_for(public.filters_for_path(path)), path)
 
+    def test_pages_load_nothing_from_other_sites(self):
+        for path in ("/jobs", f"/job/{self.ids['dev']}", "/employers.html", "/"):
+            body = self.get(path)[1]
+            loads = re.findall(r'<link[^>]+rel="(?:stylesheet|preconnect|preload)"[^>]*href="(https?://[^"]+)"', body)
+            loads += re.findall(r'<(?:script|img|iframe)[^>]+src="(https?://[^"]+)"', body)
+            self.assertEqual(loads, [], path)
+        status, font, headers = self.request("GET", "/static/fonts/instrument-sans-normal-400-latin.woff2",
+                                             headers={"Cookie": ""}, include_headers=True)
+        self.assertEqual((status, headers["Content-Type"]), (200, "font/woff2"))
+        self.assertIn("immutable", headers["Cache-Control"])
+        css = self.get("/static/fonts/fonts.css")[1]
+        for name in re.findall(r"url\(([^)]+)\)", css):
+            self.assertEqual(self.request("GET", f"/static/fonts/{name}", headers={"Cookie": ""})[0], 200, name)
+
     def test_the_rest_of_the_site_stays_out_of_search_engines(self):
         _, _, headers = self.request("GET", "/api/state", include_headers=True)
         self.assertEqual(headers["X-Robots-Tag"], "noindex, nofollow")
