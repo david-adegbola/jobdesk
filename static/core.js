@@ -100,7 +100,9 @@ function renderLogin(main) {
         draw();
         card.querySelector("input")?.focus();
       } },
-        signup ? "Already have an account? Sign in" : "New here? Create an account"));
+        signup ? "Already have an account? Sign in" : "New here? Create an account"),
+      h("p", { class: "muted small" }, h("a", { href: "/jobs" }, "Browse open jobs without an account"),
+        " · ", h("a", { href: "/employers.html" }, "Post a job")));
   }
   draw();
   const logo = h("span", { class: "brand" });

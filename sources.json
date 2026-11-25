@@ -13,7 +13,8 @@
     },
     {
       "id": "tyomarkkinatori", "name": "Työmarkkinatori", "reader": "adapter", "kind": "broad_portal", "fields": "all",
-      "enabled": true,
+      "enabled": true, "public_pages": false,
+      "_public_pages": "Members only until we confirm that public, ad-funded pages aren't 'marketing use' under the terms.",
       "_note": "core/importers.py TyomarkkinatoriAdapter. Reads nothing until JOBDESK_TMT_API_URL and JOBDESK_TMT_API_KEY are set (credentials from KEHA-keskus); set enabled false here to keep it off even then.",
       "terms": "See not_added: credit '(Lähde: Työmarkkinatorin asiakastietojärjestelmä)' shown with every ad; deleted ads removed within a day; no passing ads on; no marketing use without permission.",
       "attribution": "(Lähde: Työmarkkinatorin asiakastietojärjestelmä)"

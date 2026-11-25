@@ -859,6 +859,25 @@ input.switch:checked::after { transform: translateX(22px); }
   .chip.toggle-key[aria-pressed="true"] { background: var(--forest-300); color: var(--night-950); border-color: var(--forest-300); }
 }
 
+/* ===== public pages (public.py): /jobs, landing pages, /job/<id> ===== */
+.public-nav { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; }
+.public-nav a { color: var(--text-primary); font-weight: 500; text-decoration: none; }
+.public-nav a:hover { text-decoration: underline; }
+.public-main { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
+.public-main .lede { max-width: 62ch; }
+.public-related { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 32px; }
+.public-links h2 { font-size: 1rem; margin: 0 0 8px; }
+.public-links ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.public-job { display: grid; gap: 16px; margin: 16px 0 24px; }
+.public-details { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.public-details dt { font-weight: 600; color: var(--text-secondary); }
+.public-details dd { margin: 0; }
+.public-ad { max-width: 68ch; }
+.public-footer { max-width: 900px; margin: 0 auto; padding: 24px 16px 40px; border-top: 1px solid var(--border-subtle); }
+.ad-slot { min-height: 120px; margin: 16px 0; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); }
+.ad-slot::before { content: "Advertisement"; display: block; padding: 8px 12px; font-size: .75rem; color: var(--text-muted); }
+@media (max-width: 760px) { .public-nav { display: none; } .public-details { grid-template-columns: 1fr; } .public-details dt { margin-top: 6px; } }
+
 /* ===== admin: employer submissions to review ===== */
 .submission { display: grid; gap: 8px; padding: 16px 0; border-top: 1px solid var(--border-subtle); }
 .submission:first-of-type { border-top: 0; }

@@ -38,7 +38,9 @@ import prep     # noqa: E402
 import prompt   # noqa: E402
 import match    # noqa: E402
 import owner    # noqa: E402
+import public   # noqa: E402
 import scraper  # noqa: E402
+import search   # noqa: E402
 import skills   # noqa: E402
 import language  # noqa: E402
 import mailer   # noqa: E402
@@ -632,68 +634,7 @@ def api_jobs(h, m):
 
 # ---------------------------------------------------------------- search (Discover)
 SEARCH_PAGE_SIZE = 25
-SEARCH_SORTS = ("newest", "deadline")
-
-
-def search_filters(query_string):
-    """The filters in a search address (?q=nurse&level=internship,thesis&no_finnish=1&page=2). Unknown
-    values are dropped, so an old or edited link still works."""
-    from urllib.parse import parse_qs
-    raw = parse_qs(query_string or "", keep_blank_values=False)
-    one = lambda key: (raw.get(key) or [""])[0].strip()
-    many = lambda key, allowed: [v for v in dict.fromkeys(",".join(raw.get(key) or []).split(",")) if v in allowed]
-    places = core_places.load()
-    try:
-        page = max(1, min(int(one("page") or 1), 1000))
-    except ValueError:
-        page = 1
-    return {
-        "q": one("q")[:100],
-        # None: no field in the address, so the member's own fields are the default; [] for field=all
-        "field": None if "field" not in raw else ([] if one("field") == "all" else many("field", scraper.TAXONOMY.by_id)),
-        "level": many("level", jobmeta.LEVELS),
-        "type": many("type", jobmeta.EMPLOYMENT_TYPES),
-        "mode": many("mode", jobmeta.WORK_MODES),
-        "sector": many("sector", jobmeta.SECTORS),
-        "region": one("region") if one("region") in places.region_by_code else "",
-        "municipality": one("municipality") if one("municipality") in places.municipality_by_code else "",
-        "no_finnish": one("no_finnish") == "1",
-        "paid": one("paid") == "1",
-        "with_studies": one("with_studies") == "1",
-        "sort": one("sort") if one("sort") in SEARCH_SORTS else "newest",
-        "page": page,
-    }
-
-
-def _search_matches(job, f, tags, finnish_free, text_ids, roles):
-    if f["q"] and job["id"] not in text_ids and not scraper.TAXONOMY.title_matches_roles(job.get("title"), roles):
-        return False
-    if f["field"] and not set(f["field"]) & set(scraper.stored_fields(job) or []):
-        return False
-    for key, column in (("level", "levels"), ("type", "employment_types")):
-        if f[key] and not set(f[key]) & set(tags[column]):
-            return False
-    if f["mode"] and job.get("work_mode") not in f["mode"]:
-        return False
-    if f["sector"] and job.get("employer_sector") not in f["sector"]:
-        return False
-    if f["municipality"] and job.get("municipality_code") != f["municipality"]:
-        return False
-    if f["region"] and job.get("region_code") != f["region"]:
-        return False
-    if f["no_finnish"] and not finnish_free:
-        return False
-    if f["paid"] and job.get("paid") != 1:
-        return False
-    if f["with_studies"] and job.get("combinable_with_studies") != 1:
-        return False
-    return True
-
-
-def _sort_key(sort):
-    if sort == "deadline":      # soonest open deadline first; jobs without one at the end
-        return lambda job: (not job.get("deadline"), job.get("deadline") or "", -job["id"])
-    return lambda job: (job.get("posted") or job.get("first_seen") or "", job["id"])
+search_filters = search.parse_filters
 
 
 @route("GET", "/api/search")
@@ -708,33 +649,12 @@ def api_search(h, m):
         f["field"] = [] if set(chosen) >= set(every_field) else chosen
         f["field_default"] = True
     present = JobPresenter(h.user, every_field)
-    text_ids = (db.search_text(f["q"]) or set()) if f["q"] else set()
-    roles = scraper.TAXONOMY.roles_for_query(f["q"]) if f["q"] else []
-    results, facets = [], {"level": {}, "type": {}, "mode": {}, "region": {}, "field": {}, "no_finnish": 0, "summer": 0}
-    for job in listed_jobs(h.user, every_field):
-        if job.get("listing_status") == "expired" or job.get("private"):
-            continue                       # Discover lists open shared ads; saved and closed ones are in My jobs
-        tags = db.tags_of(job)
-        finnish_free = job_details(job, present.finnish(job))["finnish_not_required"]
-        if not _search_matches(job, f, tags, finnish_free, text_ids, roles):
-            continue
-        results.append(job)
-        for value in tags["levels"]:
-            facets["level"][value] = facets["level"].get(value, 0) + 1
-        for value in tags["employment_types"]:
-            facets["type"][value] = facets["type"].get(value, 0) + 1
-        if job.get("work_mode"):
-            facets["mode"][job["work_mode"]] = facets["mode"].get(job["work_mode"], 0) + 1
-        if job.get("region_code"):
-            facets["region"][job["region_code"]] = facets["region"].get(job["region_code"], 0) + 1
-        for value in scraper.stored_fields(job) or []:
-            facets["field"][value] = facets["field"].get(value, 0) + 1
-        facets["no_finnish"] += finnish_free
-        facets["summer"] += "summer" in tags["employment_types"]
-    results.sort(key=_sort_key(f["sort"]), reverse=f["sort"] == "newest")
-    pages = max(1, -(-len(results) // SEARCH_PAGE_SIZE))
-    page = min(f["page"], pages)
-    shown = results[(page - 1) * SEARCH_PAGE_SIZE: page * SEARCH_PAGE_SIZE]
+    # Discover lists open shared ads; saved and closed ones are in My jobs
+    jobs = [job for job in listed_jobs(h.user, every_field)
+            if job.get("listing_status") != "expired" and not job.get("private")]
+    results, facets = search.run(
+        jobs, f, lambda job: job_details(job, present.finnish(job))["finnish_not_required"])
+    shown, page, pages = search.page_of(results, f["page"], SEARCH_PAGE_SIZE)
     return {"jobs": [present(job) for job in shown], "total": len(results), "page": page, "pages": pages,
             "filters": {"field_default": False, **f, "page": page}, "facets": facets, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
 
@@ -2093,6 +2013,38 @@ def api_decide_submission(h, m):
     return {"ok": True, "job_id": job_id}
 
 
+# ---------------------------------------------------------------- public pages (no account; public.py)
+PUBLIC_CACHE = "public, max-age=300"
+
+
+def _public_html(status, html_text, robots):
+    return (status, html_text.encode("utf-8"), "text/html; charset=utf-8",
+            {"X-Robots-Tag": robots, "Cache-Control": PUBLIC_CACHE if status == 200 else "no-store"})
+
+
+@route("GET", r"/jobs(?:/[a-z0-9/-]*)?")
+def page_public_jobs(h, m):
+    parsed = urlparse(h.path)
+    return _public_html(*public.landing(parsed.path.rstrip("/") or "/jobs", parsed.query))
+
+
+@route("GET", r"/job/(\d+)(?:-[a-z0-9-]*)?")
+def page_public_job(h, m):
+    return _public_html(*public.job_page(int(m.group(1))))
+
+
+@route("GET", "/sitemap.xml")
+def page_sitemap(h, m):
+    return (200, public.sitemap_xml().encode("utf-8"), "application/xml; charset=utf-8",
+            {"X-Robots-Tag": "noindex", "Cache-Control": PUBLIC_CACHE})
+
+
+@route("GET", "/robots.txt")
+def page_robots(h, m):
+    return (200, public.robots_txt().encode("utf-8"), "text/plain; charset=utf-8",
+            {"X-Robots-Tag": "noindex", "Cache-Control": PUBLIC_CACHE})
+
+
 # ---------------------------------------------------------------- HTTP plumbing
 
 class Handler(BaseHTTPRequestHandler):
@@ -2117,8 +2069,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
         headers = dict(extra or {})
+        headers.setdefault("Cache-Control", "no-store")
+        # Search engines: nothing is indexed unless a public page says so (public.py)
+        headers.setdefault("X-Robots-Tag", "noindex, nofollow")
         if getattr(self, "auth_cookie", None):
             headers["Set-Cookie"] = self.auth_cookie
         for k, v in headers.items():
@@ -2159,6 +2113,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(503, {"error": str(error)})
                 if isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], int):
                     return self.send(*result)
+                if isinstance(result, tuple) and len(result) == 4:     # (status, bytes, content-type, headers)
+                    return self.send(*result)
                 if isinstance(result, tuple):       # (bytes, content-type, headers)
                     return self.send(200, result[0], result[1], result[2] if len(result) > 2 else None)
                 return self.send(200, result)
@@ -2172,7 +2128,9 @@ class Handler(BaseHTTPRequestHandler):
         if not str(file).startswith(str(STATIC)) or not file.is_file():
             return self.send(404, b"Not found", "text/plain")
         types = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}
-        self.send(200, file.read_bytes(), types.get(file.suffix, "application/octet-stream") + "; charset=utf-8")
+        # The employer form is public and should be found; the app itself (index.html) is not indexed
+        extra = {"X-Robots-Tag": "index, follow"} if rel == "employers.html" else None
+        self.send(200, file.read_bytes(), types.get(file.suffix, "application/octet-stream") + "; charset=utf-8", extra)
 
     def do_GET(self):
         self.dispatch("GET")

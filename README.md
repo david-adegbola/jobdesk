@@ -77,6 +77,20 @@ evaluated or certified against WCAG 2.1 Level AA.
   a current one, otherwise the keyword match with your CV), the employer, place and deadline, and tags for the type,
   the matching CV words and the Finnish requirement; "Why …?" opens the sentence the Finnish tag is based on.
   Filters, "Sort by" chips (Shift-click adds a level) and the type order work as before.
+- **Public pages** (`public.py`, no account, plain HTML from the server): `/jobs` lists every open public ad
+  (`?q=` searches, 20 a page), with landing pages such as `/jobs/summer`, `/jobs/no-finnish`, `/jobs/remote`,
+  `/jobs/field/it`, `/jobs/level/internship`, `/jobs/town/tampere`, `/jobs/region/north-karelia` and combinations
+  (`/jobs/field/health/town/kuopio/summer`). Each page has its own heading, a short summary in our own words (how many
+  ads, where, how many without Finnish) and links to nearby pages. `/job/<id>-<title>` shows one job with schema.org
+  `JobPosting` data and a link to the original; ads from feeds are shown as an excerpt, employers' own ads in full.
+  Public means open listings from `sources.json` sources (unless `"public_pages": false`, as for Työmarkkinatori
+  until its terms are confirmed) and approved employer ads; never members' saved or shared jobs, the administrator's
+  own job types, closed ads or contact details. `/sitemap.xml` lists the job pages and landing pages with ads (a
+  combination needs 3); `/robots.txt` allows only the public pages. The app sends `X-Robots-Tag` itself: public
+  pages with ads are `index, follow`, empty pages, searches and closed jobs `noindex, follow`, everything else
+  `noindex, nofollow` (Caddy no longer sets it). `JOBDESK_AD_SLOTS=1` shows the reserved advert spaces (empty: no ad
+  code is loaded until a certified consent tool is chosen). The privacy notice draft for the public site is
+  `docs/PRIVACY-NOTICE-PUBLIC-DRAFT.md`.
 - **Post a job** (`/employers.html`, public, no account): employers send an ad with its fields, town, level, type,
   dates, pay, TES, languages, permit notes and student details. Answers are checked on the server, the form has a
   honeypot and is limited to 5 ads an hour per address and per email, and nothing is listed until an administrator
@@ -284,7 +298,7 @@ What runs on the server (`deploy/systemd/`):
   listings that are over and deletes old employer submissions.
 - `jobdesk-pull.timer`: `git pull` of the cv repo every 10 minutes.
 - `jobdesk-backup.timer`: a copy of the database every day in `/srv/jobdesk/backups`, 14 kept.
-- Caddy (`deploy/Caddyfile`): HTTPS, `noindex` and security headers; JobDesk handles accounts.
+- Caddy (`deploy/Caddyfile`): HTTPS and security headers; JobDesk handles accounts and `X-Robots-Tag`.
 
 ## Privacy
 
@@ -311,6 +325,8 @@ jobdesk/
 ├── core/taxonomy.py career fields and roles     core/jobmeta.py   job details read from the ad
 ├── core/places.py   towns and regions           core/dedupe.py    same posting from two sources
 ├── core/importers.py  API adapters (Työmarkkinatori)
+├── search.py        job search shared by Discover and the public pages
+├── public.py        public pages: /jobs, landing pages, /job/<id>, sitemap.xml, robots.txt
 ├── scripts/seed_demo.py  fictional demo jobs for development
 ├── language.py      Finnish / English / Swedish detection, used by the English switch
 ├── skills.py        What to study: skills asked for by role type vs. the member's CVs

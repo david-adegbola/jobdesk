@@ -48,6 +48,8 @@ DEFAULT_FIELDS = [f.strip() for f in os.environ.get("JOBDESK_DEFAULT_FIELDS", "a
 # Job sources that are off in sources.json (their terms forbid automated reuse, or haven't been checked) and that
 # this copy may read anyway, e.g. after written permission from the site: comma-separated source ids ("uef,metsakeskus")
 ENABLE_SOURCES = {s.strip() for s in os.environ.get("JOBDESK_ENABLE_SOURCES", "").split(",") if s.strip()}
+# Public pages: 1 shows the reserved advert spaces (empty; no ad code is loaded until a consent tool is chosen)
+AD_SLOTS = os.environ.get("JOBDESK_AD_SLOTS", "0") == "1"
 # Sign-up: anyone with an email address (1, default), or invitation codes only (0, e.g. for a closed pilot)
 OPEN_SIGNUP = os.environ.get("JOBDESK_OPEN_SIGNUP", "1") == "1"
 # The address in sign-in links (no trailing slash), e.g. https://jobdesk.example.fi
