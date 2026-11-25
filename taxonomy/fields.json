@@ -1,0 +1,24 @@
+{
+  "_comment": "Career fields: the top level members choose and search by. Structure follows ISCO-08 (the base of Statistics Finland's Ammattiluokitus 2010): 'isco' lists the major, sub-major, minor or unit groups a field covers. Roles (occupations) are in roles.json. Fields are data: add one here (and its roles) without changing code. 'legacy_categories' are old jobs.category values that map to the field; 'profile' names a keyword profile in fields/*.json whose rules also count. Licences of ISCO-08 / Ammattiluokitus and ESCO still to be confirmed before their full datasets are imported (see docs).",
+  "version": 1,
+  "fields": [
+    {"id": "it", "order": 1, "en": "IT & software", "fi": "IT ja ohjelmistot", "isco": ["25", "35"], "profile": "it", "legacy_categories": ["IT", "IT-Data centre"]},
+    {"id": "engineering", "order": 2, "en": "Engineering & technology", "fi": "Tekniikka ja insinöörityö", "isco": ["214", "215", "311", "313"], "profile": "engineering", "legacy_categories": ["Engineering"]},
+    {"id": "manufacturing", "order": 3, "en": "Manufacturing & production", "fi": "Teollisuus ja tuotanto", "isco": ["72", "73", "74", "75", "81", "82", "3122"], "profile": null, "legacy_categories": ["Industrial"]},
+    {"id": "construction", "order": 4, "en": "Construction & property", "fi": "Rakentaminen ja kiinteistöt", "isco": ["71", "2142", "2161", "2165", "3112", "3123"], "profile": null, "legacy_categories": ["Construction"]},
+    {"id": "health", "order": 5, "en": "Healthcare", "fi": "Terveydenhuolto", "isco": ["22", "32"], "profile": "health", "legacy_categories": ["Health"]},
+    {"id": "social_care", "order": 6, "en": "Social care & early childhood education", "fi": "Sosiaaliala ja varhaiskasvatus", "isco": ["2635", "2342", "3412", "53"], "profile": null, "legacy_categories": []},
+    {"id": "education", "order": 7, "en": "Education & teaching", "fi": "Opetus ja koulutus", "isco": ["231", "232", "233", "235", "2341"], "profile": null, "legacy_categories": []},
+    {"id": "research", "order": 8, "en": "Science & research", "fi": "Tiede ja tutkimus", "isco": ["211", "212", "213", "314"], "profile": null, "legacy_categories": []},
+    {"id": "business", "order": 9, "en": "Business, finance & administration", "fi": "Liiketalous, talous ja hallinto", "isco": ["241", "242", "331", "333", "334", "41", "43", "44"], "profile": "business", "legacy_categories": ["Business"]},
+    {"id": "sales", "order": 10, "en": "Sales, marketing & customer service", "fi": "Myynti, markkinointi ja asiakaspalvelu", "isco": ["243", "332", "42", "52"], "profile": null, "legacy_categories": ["Sales"]},
+    {"id": "hospitality", "order": 11, "en": "Hospitality, food & tourism", "fi": "Ravintola-, matkailu- ja elintarvikeala", "isco": ["3434", "511", "512", "513", "94"], "profile": null, "legacy_categories": []},
+    {"id": "logistics", "order": 12, "en": "Logistics & transport", "fi": "Logistiikka ja kuljetus", "isco": ["83", "432", "933", "3323"], "profile": null, "legacy_categories": ["Warehouse"]},
+    {"id": "forestry", "order": 13, "en": "Forestry, agriculture & environment", "fi": "Metsä-, maatalous- ja ympäristöala", "isco": ["6", "2132", "2133", "3142", "3143", "92"], "profile": "forestry", "legacy_categories": ["Forestry"]},
+    {"id": "culture", "order": 14, "en": "Design, media & culture", "fi": "Muotoilu, media ja kulttuuri", "isco": ["2163", "2166", "264", "265", "343", "352"], "profile": "culture", "legacy_categories": ["Culture"]},
+    {"id": "law", "order": 15, "en": "Law & public administration", "fi": "Laki ja julkishallinto", "isco": ["261", "1112", "2422", "335", "3411"], "profile": null, "legacy_categories": []},
+    {"id": "security", "order": 16, "en": "Security, defence & rescue", "fi": "Turvallisuus, puolustus ja pelastus", "isco": ["0", "541"], "profile": null, "legacy_categories": []},
+    {"id": "cleaning", "order": 17, "en": "Cleaning & property services", "fi": "Siivous- ja kiinteistöpalvelut", "isco": ["91", "515"], "profile": null, "legacy_categories": []},
+    {"id": "languages", "order": 18, "en": "Languages & communication", "fi": "Kielet ja viestintä", "isco": ["2432", "2641", "2643"], "profile": null, "legacy_categories": []}
+  ]
+}

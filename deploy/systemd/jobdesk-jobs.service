@@ -1,0 +1,19 @@
+[Unit]
+Description=JobDesk: read the job feeds (shared sources only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jobdesk
+Group=jobdesk
+EnvironmentFile=/srv/jobdesk/app/deploy/jobdesk.env
+EnvironmentFile=-/srv/jobdesk/private.env
+# Same as the "Check for new jobs" button; a lock file stops the two from running at once.
+ExecStart=/usr/bin/python3 /srv/jobdesk/app/server.py --check-jobs
+TimeoutStartSec=30min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/jobdesk/data

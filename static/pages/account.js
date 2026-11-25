@@ -60,7 +60,7 @@ register({
         h("span", null, h("strong", null, "Skills to learn next"),
           h("span", { class: "muted" }, "What to study shows the skills your saved jobs ask for that your CV doesn't show, and drafts a CV for that kind of role.")),
         h("span", { class: "btn secondary small", "aria-hidden": "true" }, "Open")),
-      h("p", { class: "muted small" }, "Your CVs, applications, reading list and preferences are private to your account. Shared job ads are visible to members in the same field; news is visible to all members."));
+      h("p", { class: "muted small" }, "Your CVs, applications and preferences are private to your account. Job ads you share are visible to all members."));
 
     // ---- right: settings
     const fieldsFeedback = h("div", { "aria-live": "polite" });
@@ -74,7 +74,7 @@ register({
       try {
         await api("/api/account/fields", { method: "POST", body: { fields, finnish_level: fieldsForm.elements.finnish_level.value } });
         await getState(true);
-        await mountNav();          // pages such as the forestry News desk follow the chosen fields
+        await mountNav();          // pages tied to a field follow the chosen fields
         fieldsFeedback.replaceChildren(message("Saved. Jobs, Match and What to study now use these fields."));
       } catch (error) { fieldsFeedback.replaceChildren(message(error.message, true)); }
     } },
@@ -122,7 +122,7 @@ register({
         window.location.reload();
       } catch (error) { deleteFeedback.replaceChildren(message(error.message, true)); }
     } },
-      h("p", null, "Deletes your account, CVs, applications, settings, reading list and feedback, straight away. " +
+      h("p", null, "Deletes your account, CVs, applications, settings and feedback, straight away. " +
         "Job ads you shared stay visible to others, without your name. This can't be undone; download your data first if you want a copy."),
       h("label", { class: "field" }, `Type your email address (${state.user.email}) to confirm`,
         h("input", { name: "confirm_email", type: "email", autocomplete: "off", required: true })),
@@ -133,7 +133,7 @@ register({
       h("div", { id: "profile-fields" }, settingRow("Fields and Finnish",
         `${fieldNames.join(", ") || "No fields yet"} · Finnish: ${levelName}`, null, fieldsForm)),
       aiRow,
-      settingRow("Download my data", "Your CVs, applications, preferences and saved/read news, as JSON.",
+      settingRow("Download my data", "Your CVs, applications and preferences (and any news stories you saved earlier), as JSON.",
         h("a", { class: "btn secondary small", href: "/api/account/export", download: "jobdesk-account-data.json" }, "Download")));
 
     if (state.user.is_admin) {
@@ -176,6 +176,36 @@ register({
         } catch (error) { invitationList.replaceChildren(message(error.message, true)); }
       }
       await loadInvitations();
+
+      // Employer ads waiting for review (the public form at /employers.html)
+      const reviewList = h("div", { "aria-live": "polite" });
+      settings.append(h("div", { class: "setting-block" },
+        settingRow("Employer ads to review", h("span", null, "Ads sent with the public ",
+          h("a", { href: "/employers.html" }, "Post a job"), " form. Nothing is published until you approve it."), null),
+        reviewList));
+      async function loadSubmissions() {
+        try {
+          const { submissions, keep_days } = await api("/api/admin/submissions");
+          const pending = submissions.filter(s => s.status === "pending");
+          const decide = (s, decision) => async () => {
+            try {
+              await api(`/api/admin/submissions/${s.id}`, { method: "POST", body: { decision } });
+              await loadSubmissions();
+            } catch (error) { reviewList.prepend(message(error.message, true)); }
+          };
+          reviewList.replaceChildren(...(pending.length ? pending.map(s => h("article", { class: "submission" },
+            h("strong", null, `${s.data.title} · ${s.employer}`),
+            h("span", { class: "muted small" }, [s.data.municipality || (s.data.work_mode === "remote" ? "Remote" : "No town"),
+              `apply: ${s.data.apply_url}`, `contact: ${s.contact_name ? `${s.contact_name}, ` : ""}${s.contact_email}`,
+              `sent ${dateLabel(s.created_at)}`].join(" · ")),
+            h("div", { class: "submission-text small" }, s.data.description),
+            h("div", { class: "row" },
+              h("button", { class: "small", onclick: decide(s, "approve") }, "Approve and publish"),
+              h("button", { class: "small secondary danger", onclick: decide(s, "reject") }, "Reject"))))
+            : [h("p", { class: "muted small" }, `No ads waiting. Decided ads and the employer's contact details are deleted after ${keep_days} days.`)]));
+        } catch (error) { reviewList.replaceChildren(message(error.message, true)); }
+      }
+      await loadSubmissions();
     }
 
     if (!state.user.is_admin || state.user.id !== 1) {

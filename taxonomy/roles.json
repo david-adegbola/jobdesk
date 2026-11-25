@@ -1,0 +1,116 @@
+{
+  "_comment": "Roles (occupations) inside the career fields. 'isco' is the ISCO-08 unit group (4 digits) the role belongs to; 'esco' is the ESCO occupation URI, null until filled from the official ESCO dataset. 'title' is a case-insensitive regular expression matched against job titles, with Finnish stems and English words. A job can match several roles, and so belong to several fields.",
+  "version": 1,
+  "roles": [
+    {"id": "software_developer", "field": "it", "en": "Software developer", "fi": "Ohjelmistokehittäjä", "isco": "2512", "esco": null, "title": "ohjelmistokehit|ohjelmoija|sovelluskehit|software (developer|engineer)|(?<!business )(?<!game )developer|full[- ]?stack|back[- ]?end|front[- ]?end|mobiilikehit"},
+    {"id": "web_developer", "field": "it", "en": "Web developer", "fi": "Web-kehittäjä", "isco": "2513", "esco": null, "title": "web[- ]?(kehit|developer|designer)|verkkosivu"},
+    {"id": "data_analyst", "field": "it", "en": "Data analyst or data scientist", "fi": "Data-analyytikko", "isco": "2511", "esco": null, "title": "data[- ]?(analyyt|analyst|scientist|engineer|insinöö)|analytiikka|business intelligence|\\bbi[- ]"},
+    {"id": "it_support", "field": "it", "en": "IT support specialist", "fi": "IT-tukihenkilö", "isco": "3512", "esco": null, "title": "it[- ]?(tuki|support|asiantuntija|specialist|harjoittelija|trainee)|lähituki|helpdesk|service desk|mikrotuki"},
+    {"id": "systems_admin", "field": "it", "en": "Systems or cloud administrator", "fi": "Järjestelmäasiantuntija", "isco": "2522", "esco": null, "title": "järjestelmäasiantunt|järjestelmäylläpit|systems? (or cloud )?administrator|sysadmin|devops|cloud (engineer|specialist|administrator)|pilviasiantunt"},
+    {"id": "cybersecurity", "field": "it", "en": "Cybersecurity specialist", "fi": "Kyberturva-asiantuntija", "isco": "2529", "esco": null, "title": "kyberturv|tietoturv|cyber ?security|security (analyst|engineer)|information security"},
+    {"id": "ux_designer", "field": "it", "en": "UX or UI designer", "fi": "UX-suunnittelija", "isco": "2513", "esco": null, "title": "\\bux\\b|\\bui\\b|käyttöliittymäsuunnit|user experience|service designer|palvelumuotoil"},
+
+    {"id": "mechanical_engineer", "field": "engineering", "en": "Mechanical engineer", "fi": "Konetekniikan insinööri", "isco": "2144", "esco": null, "title": "kone(insinöö|suunnit|tekni)|mechanical (engineer|design)|mekaniikkasuunnit"},
+    {"id": "electrical_engineer", "field": "engineering", "en": "Electrical or automation engineer", "fi": "Sähkö- tai automaatioinsinööri", "isco": "2151", "esco": null, "title": "sähkö(insinöö|suunnit|tekni)|automaatio(insinöö|suunnit|asiantunt)|electrical (engineer|design)|automation engineer|elektroniikkasuunnit|electronics engineer"},
+    {"id": "process_engineer", "field": "engineering", "en": "Process or chemical engineer", "fi": "Prosessi-insinööri", "isco": "2145", "esco": null, "title": "prosessi-?(insinöö|asiantunt)|process engineer|chemical engineer|kemian(insinöö|tekni)"},
+    {"id": "industrial_engineer", "field": "engineering", "en": "Production or quality engineer", "fi": "Tuotanto- tai laatuinsinööri", "isco": "2141", "esco": null, "title": "tuotantoinsinöö|laatu(insinöö|asiantunt)|quality engineer|production engineer|manufacturing engineer"},
+    {"id": "energy_engineer", "field": "engineering", "en": "Energy engineer", "fi": "Energiainsinööri", "isco": "2149", "esco": null, "title": "energia(insinöö|asiantunt)|energy engineer|renewable energy|uusiutuv"},
+    {"id": "engineering_technician", "field": "engineering", "en": "Engineering technician", "fi": "Teknikko", "isco": "3115", "esco": null, "title": "teknikko|technician|insinööriharjoittel|engineering (intern|trainee)|diplomityö"},
+
+    {"id": "production_worker", "field": "manufacturing", "en": "Production worker", "fi": "Tuotantotyöntekijä", "isco": "8219", "esco": null, "title": "tuotantotyönt|tuotannon työnt|kokoonpan|asentaja|assembler|production (worker|operator)|tehdastyö"},
+    {"id": "machine_operator", "field": "manufacturing", "en": "Machine operator", "fi": "Koneenkäyttäjä", "isco": "8189", "esco": null, "title": "koneenkäytt|koneistaj|cnc|machine operator|prosessinhoitaj|process operator"},
+    {"id": "welder", "field": "manufacturing", "en": "Welder or metal worker", "fi": "Hitsaaja", "isco": "7212", "esco": null, "title": "hitsaaj|welder|levyseppä|sheet metal"},
+    {"id": "maintenance_mechanic", "field": "manufacturing", "en": "Maintenance mechanic", "fi": "Kunnossapitoasentaja", "isco": "7233", "esco": null, "title": "kunnossapi|huoltomekaanik|maintenance (mechanic|technician)|mekaanikko|\\bmechanics?\\b"},
+    {"id": "production_supervisor", "field": "manufacturing", "en": "Production supervisor", "fi": "Tuotantoesihenkilö", "isco": "3122", "esco": null, "title": "tuotantoesimi|tuotantoesihenk|työnjohtaja|production supervisor|shift supervisor|vuoroesihenk"},
+
+    {"id": "construction_worker", "field": "construction", "en": "Construction worker", "fi": "Rakennustyöntekijä", "isco": "7119", "esco": null, "title": "rakennustyönt|rakennusmies|rakentaja|construction worker|kirvesmies|raudoittaj"},
+    {"id": "carpenter", "field": "construction", "en": "Carpenter", "fi": "Puuseppä", "isco": "7115", "esco": null, "title": "puuseppä|carpenter|timpuri"},
+    {"id": "site_supervisor", "field": "construction", "en": "Site supervisor or engineer", "fi": "Vastaava työnjohtaja", "isco": "3123", "esco": null, "title": "vastaava työnjoht|työmaa(insinöö|mestari|johtaja)|site (engineer|manager|supervisor)|rakennusinsinöö|construction engineer|rakennesuunnit|structural engineer"},
+    {"id": "architect", "field": "construction", "en": "Architect", "fi": "Arkkitehti", "isco": "2161", "esco": null, "title": "arkkiteh|architect"},
+    {"id": "hvac_plumber", "field": "construction", "en": "Plumber or HVAC installer", "fi": "LVI-asentaja", "isco": "7126", "esco": null, "title": "lvi|putkiasentaj|plumber|hvac"},
+    {"id": "electrician", "field": "construction", "en": "Electrician", "fi": "Sähköasentaja", "isco": "7411", "esco": null, "title": "sähköasentaj|electrician"},
+    {"id": "real_estate", "field": "construction", "en": "Property or real estate specialist", "fi": "Kiinteistöasiantuntija", "isco": "3334", "esco": null, "title": "kiinteistö(asiantunt|päällikkö|välittä|sihteeri)|real estate|property manager|isännöit"},
+
+    {"id": "nurse", "field": "health", "en": "Registered nurse", "fi": "Sairaanhoitaja", "isco": "2221", "esco": null, "title": "sairaanhoitaj|terveydenhoitaj|kätilö|registered nurse|\\bnurse\\b|midwife|sjukskötare"},
+    {"id": "practical_nurse", "field": "health", "en": "Practical nurse", "fi": "Lähihoitaja", "isco": "5321", "esco": null, "title": "lähihoitaj|perushoitaj|hoitoapulai|practical nurse|care assistant|närvårdare"},
+    {"id": "doctor", "field": "health", "en": "Doctor", "fi": "Lääkäri", "isco": "2211", "esco": null, "title": "lääkäri|physician|\\bdoctor\\b|amanuenssi|läkare"},
+    {"id": "physiotherapist", "field": "health", "en": "Physiotherapist", "fi": "Fysioterapeutti", "isco": "2264", "esco": null, "title": "fysioterap|physiotherap|toimintaterap|occupational therap|kuntoutus"},
+    {"id": "pharmacist", "field": "health", "en": "Pharmacist", "fi": "Farmaseutti", "isco": "2262", "esco": null, "title": "farmaseut|proviisori|pharmacist|apteek"},
+    {"id": "dentist", "field": "health", "en": "Dentist or dental nurse", "fi": "Hammaslääkäri", "isco": "2261", "esco": null, "title": "hammaslääk|suuhygien|dentist|dental"},
+    {"id": "lab_technician", "field": "health", "en": "Laboratory or imaging technician", "fi": "Bioanalyytikko", "isco": "3212", "esco": null, "title": "bioanalyyt|laboratoriohoitaj|röntgenhoitaj|radiograph|laboratory (or imaging )?technician|imaging technician"},
+    {"id": "paramedic", "field": "health", "en": "Paramedic", "fi": "Ensihoitaja", "isco": "3258", "esco": null, "title": "ensihoitaj|paramedic"},
+
+    {"id": "social_worker", "field": "social_care", "en": "Social worker", "fi": "Sosiaalityöntekijä", "isco": "2635", "esco": null, "title": "sosiaalityönt|sosiaaliohjaaj|social worker|sosionomi|socialarbetare"},
+    {"id": "early_childhood_teacher", "field": "social_care", "en": "Early childhood education teacher", "fi": "Varhaiskasvatuksen opettaja", "isco": "2342", "esco": null, "title": "varhaiskasvatuksen (opettaja|sosionomi)|lastentarhanopett|early childhood|kindergarten teacher|barnträdgårdslärare"},
+    {"id": "childcare_worker", "field": "social_care", "en": "Childcare worker", "fi": "Lastenhoitaja", "isco": "5311", "esco": null, "title": "lastenhoitaj|varhaiskasvatuksen (lastenhoitaja|työntekijä)|päiväkoti|childcare|nanny|barnskötare"},
+    {"id": "personal_assistant", "field": "social_care", "en": "Personal assistant or care worker", "fi": "Henkilökohtainen avustaja", "isco": "5322", "esco": null, "title": "henkilökohtai(nen|sena) avustaj|kotihoi|personal assistant|home care|hoiva-avustaj"},
+    {"id": "youth_worker", "field": "social_care", "en": "Youth worker", "fi": "Nuoriso-ohjaaja", "isco": "3412", "esco": null, "title": "nuoriso(ohjaaj|-ohjaaj|työntek)|youth worker|vapaa-ajan ?ohjaaj|fritidsledare"},
+
+    {"id": "subject_teacher", "field": "education", "en": "Subject teacher", "fi": "Aineenopettaja", "isco": "2330", "esco": null, "title": "lehtori|aineenopett|(?<!varhaiskasvatuksen )opettaja|\\bteacher\\b|lärare"},
+    {"id": "class_teacher", "field": "education", "en": "Class teacher", "fi": "Luokanopettaja", "isco": "2341", "esco": null, "title": "luokanopett|class teacher|primary (school )?teacher|klasslärare"},
+    {"id": "special_needs_teacher", "field": "education", "en": "Special needs teacher", "fi": "Erityisopettaja", "isco": "2352", "esco": null, "title": "erityis(opett|luokanopett)|special (needs|education) teacher"},
+    {"id": "teaching_assistant", "field": "education", "en": "School assistant", "fi": "Koulunkäynninohjaaja", "isco": "5312", "esco": null, "title": "koulunkäynnin(ohjaaj|avustaj)|teaching assistant|school assistant|resurssiopett"},
+    {"id": "lecturer", "field": "education", "en": "University lecturer", "fi": "Yliopisto-opettaja", "isco": "2310", "esco": null, "title": "yliopisto(-?opett|lehtori)|university (lecturer|teacher)|professori|professor|tuntiopett"},
+    {"id": "study_counsellor", "field": "education", "en": "Study counsellor", "fi": "Opinto-ohjaaja", "isco": "2359", "esco": null, "title": "opinto-?ohjaaj|study counsel|koulutussuunnit|education planner"},
+
+    {"id": "doctoral_researcher", "field": "research", "en": "Doctoral researcher", "fi": "Väitöskirjatutkija", "isco": "2310", "esco": null, "title": "väitöskirjatutk|nuorempi tutkija|doctoral (researcher|candidate|student)|\\bphd\\b|doktorand"},
+    {"id": "postdoc", "field": "research", "en": "Postdoctoral researcher", "fi": "Tutkijatohtori", "isco": "2310", "esco": null, "title": "tutkijatohtori|post-?doc|postdoctoral|yliopistotutkija|vanhempi tutkija|senior researcher"},
+    {"id": "researcher", "field": "research", "en": "Researcher", "fi": "Tutkija", "isco": "2131", "esco": null, "title": "tutkija|researcher|tutkimus(avustaja|apulai|harjoittel|insinöö)|research (assistant|scientist|engineer|intern)|forskare"},
+    {"id": "lab_scientist", "field": "research", "en": "Laboratory scientist", "fi": "Laboratorioasiantuntija", "isco": "2113", "esco": null, "title": "kemisti|chemist|biologi|biologist|laboratorio(asiantunt|insinöö)|laboratory (scientist|engineer)|mikrobiolog|bioteknologi"},
+    {"id": "statistician", "field": "research", "en": "Statistician", "fi": "Tilastotieteilijä", "isco": "2120", "esco": null, "title": "tilasto(tieteil|asiantunt)|statisticia|biostatist|aktuaari|actuar"},
+
+    {"id": "accountant", "field": "business", "en": "Accountant", "fi": "Kirjanpitäjä", "isco": "2411", "esco": null, "title": "kirjanpit|tilinpäät|accountant|accounting|reskontra|controller|kontrolleri|tilintarkast|auditor"},
+    {"id": "financial_analyst", "field": "business", "en": "Financial analyst", "fi": "Talousanalyytikko", "isco": "2413", "esco": null, "title": "talous(analyyt|asiantunt|suunnit)|financial (analyst|specialist)|finance (intern|trainee|specialist)|rahoitus|treasury|investment"},
+    {"id": "hr_specialist", "field": "business", "en": "HR specialist", "fi": "HR-asiantuntija", "isco": "2423", "esco": null, "title": "\\bhr\\b|henkilöstö(asiantunt|suunnit|sihteeri|hallin)|rekrytoi|recruit|human resources|talent acquisition"},
+    {"id": "administrative_assistant", "field": "business", "en": "Administrative assistant", "fi": "Assistentti", "isco": "3343", "esco": null, "title": "(?<![a-zåäö])assistentti|(toimisto|hallinto|johdon)assistent|(office|administrative|executive) assistant|sihteeri|secretary|toimistotyönt|office (worker|clerk)"},
+    {"id": "payroll", "field": "business", "en": "Payroll specialist", "fi": "Palkanlaskija", "isco": "4313", "esco": null, "title": "palkanlask|payroll|palkka-asiantunt"},
+    {"id": "business_analyst", "field": "business", "en": "Business analyst or project coordinator", "fi": "Liiketoiminta-analyytikko", "isco": "2421", "esco": null, "title": "liiketoiminta-?(analyyt|asiantunt|kehit)|business (analyst|developer|controller)|projekti(koordinaat|assistent|päällikkö|suunnit)|project (coordinator|manager|assistant)|konsultti|consultant"},
+
+    {"id": "sales_representative", "field": "sales", "en": "Sales representative", "fi": "Myyntiedustaja", "isco": "3322", "esco": null, "title": "myynti(edustaj|neuvott|päällikkö|assistent|insinöö)|sales (representative|executive|manager|assistant|engineer|intern|trainee)|account (manager|executive)|key account|säljare"},
+    {"id": "customer_service", "field": "sales", "en": "Customer service advisor", "fi": "Asiakaspalvelija", "isco": "4222", "esco": null, "title": "asiakaspalvel|asiakasneuvoj|customer (service|support|success)|kundtjänst|kundservice"},
+    {"id": "shop_assistant", "field": "sales", "en": "Shop assistant", "fi": "Myyjä", "isco": "5223", "esco": null, "title": "myyjä|kaupan|myymälä|shop assistant|retail|store (assistant|worker)|kassa|cashier|butiksbiträde"},
+    {"id": "marketing_specialist", "field": "sales", "en": "Marketing specialist", "fi": "Markkinointiasiantuntija", "isco": "2431", "esco": null, "title": "markkinoin|marketing|digimarkkin|some(-asiantunt|asiantunt)|social media|brand|growth"},
+
+    {"id": "cook", "field": "hospitality", "en": "Cook or chef", "fi": "Kokki", "isco": "5120", "esco": null, "title": "kokki|keittäjä|ravintolakok|\\bchef\\b|\\bcook\\b|kock"},
+    {"id": "waiter", "field": "hospitality", "en": "Waiter or bartender", "fi": "Tarjoilija", "isco": "5131", "esco": null, "title": "tarjoilij|baarimik|baari|waiter|waitress|bartender|barista|servitör|ravintolatyönt|restaurant worker"},
+    {"id": "kitchen_assistant", "field": "hospitality", "en": "Kitchen assistant", "fi": "Keittiöapulainen", "isco": "9412", "esco": null, "title": "keittiöapul|keittiötyönt|ruokapalvelu|kitchen (assistant|helper|porter)|dishwasher|astianpes"},
+    {"id": "hotel_receptionist", "field": "hospitality", "en": "Hotel receptionist", "fi": "Hotellivirkailija", "isco": "4224", "esco": null, "title": "hotelli|vastaanottovirkail|receptionist|front desk|hotel"},
+    {"id": "tourism_guide", "field": "hospitality", "en": "Tourism guide", "fi": "Matkailuopas", "isco": "5113", "esco": null, "title": "matkailu|opas|guide|tourism|safari|ohjelmapalvelu"},
+
+    {"id": "warehouse_worker", "field": "logistics", "en": "Warehouse worker", "fi": "Varastotyöntekijä", "isco": "9333", "esco": null, "title": "varasto|keräilij|logistiikkatyönt|warehouse|picker|terminaali|lagerarbetare"},
+    {"id": "forklift_driver", "field": "logistics", "en": "Forklift driver", "fi": "Trukinkuljettaja", "isco": "8344", "esco": null, "title": "truk(ki|in)|forklift"},
+    {"id": "truck_driver", "field": "logistics", "en": "Truck or delivery driver", "fi": "Kuljettaja", "isco": "8332", "esco": null, "title": "kuljettaj|kuski|rekka|yhdistelmäajoneuv|driver|courier|lähetti|jakelij|delivery|chaufför"},
+    {"id": "logistics_planner", "field": "logistics", "en": "Logistics planner or purchaser", "fi": "Logistiikkasuunnittelija", "isco": "4323", "esco": null, "title": "logistiikka(suunnit|asiantunt|koordinaat)|logistics (planner|coordinator|specialist)|supply chain|hankinta|ostaja|purchas|procurement|buyer"},
+
+    {"id": "forestry_worker", "field": "forestry", "en": "Forestry worker", "fi": "Metsuri", "isco": "6210", "esco": null, "title": "metsuri|metsätyönt|taimikonhoit|istuttaj|forest worker|forestry worker|skogsarbetare"},
+    {"id": "forest_machine_operator", "field": "forestry", "en": "Forest machine operator", "fi": "Metsäkoneenkuljettaja", "isco": "8341", "esco": null, "title": "metsäkone|harvester|motokuski|ajokoneen|forwarder|forest machine"},
+    {"id": "forestry_specialist", "field": "forestry", "en": "Forestry specialist", "fi": "Metsäasiantuntija", "isco": "2132", "esco": null, "title": "metsä(asiantunt|neuvoj|suunnit|insinöö|ekolog|tiet|talou|varat|harjoittel)|metsänhoit|puunhankin|forest(ry)? (specialist|planner|engineer|advisor|manager|intern|trainee)|forester|skogs"},
+    {"id": "agricultural_worker", "field": "forestry", "en": "Farm or garden worker", "fi": "Maatalous- tai puutarhatyöntekijä", "isco": "6111", "esco": null, "title": "maatalou|maatila|karjanhoit|navetta|lomittaj|puutarh|viherrakent|gardener|garden worker|farm (or garden )?(worker|assistant)|agricultur|landscap"},
+    {"id": "environmental_specialist", "field": "forestry", "en": "Environmental specialist", "fi": "Ympäristöasiantuntija", "isco": "2133", "esco": null, "title": "ympäristö(asiantunt|suunnit|insinöö|tarkast|neuvoj)|luonnonsuojel|luontokartoit|environmental (specialist|engineer|consultant|officer)|sustainability|kestävä kehitys|vastuullisuus|ilmasto"},
+    {"id": "gis_specialist", "field": "forestry", "en": "GIS specialist", "fi": "Paikkatietoasiantuntija", "isco": "2165", "esco": null, "title": "paikkatieto|\\bgis\\b|geoinformat|kaukokartoit|remote sensing|geospatial|kartoittaj|surveyor|mittaus"},
+
+    {"id": "graphic_designer", "field": "culture", "en": "Graphic designer", "fi": "Graafinen suunnittelija", "isco": "2166", "esco": null, "title": "graafi(nen|kko)|graphic designer|visual designer|art director|kuvittaj|illustrator|motion design"},
+    {"id": "journalist", "field": "culture", "en": "Journalist or editor", "fi": "Toimittaja", "isco": "2642", "esco": null, "title": "toimittaj|journalist|reporter|editor|uutis|juontaj"},
+    {"id": "photographer_video", "field": "culture", "en": "Photographer or video producer", "fi": "Valokuvaaja tai videotuottaja", "isco": "3431", "esco": null, "title": "valokuvaaj|photographer|video|kuvaaja|editoij|leikkaaj|tuottaja|producer|äänitekn"},
+    {"id": "game_developer", "field": "culture", "en": "Game designer or developer", "fi": "Pelisuunnittelija", "isco": "2166", "esco": null, "title": "peli(suunnit|kehit|grafiik)|game (designer|developer|artist)|3d[- ]?(artist|graafikko)"},
+    {"id": "artist_musician", "field": "culture", "en": "Artist, musician or performer", "fi": "Taiteilija tai muusikko", "isco": "2652", "esco": null, "title": "muusikko|musician|taiteilij|artist|näyttelij|actor|tanssij|dancer|kulttuuri(tuott|koordinaat)|museo"},
+    {"id": "interior_designer", "field": "culture", "en": "Interior or fashion designer", "fi": "Sisustussuunnittelija", "isco": "3432", "esco": null, "title": "sisustussuunnit|interior designer|muotisuunnit|fashion designer|vaatesuunnit|tekstiilisuunnit"},
+
+    {"id": "lawyer", "field": "law", "en": "Lawyer", "fi": "Juristi", "isco": "2611", "esco": null, "title": "juristi|lakimies|asianajaj|lawyer|legal counsel|attorney|notaari|oikeustiet|käräjä|jurist"},
+    {"id": "legal_assistant", "field": "law", "en": "Legal assistant", "fi": "Lakiassistentti", "isco": "3411", "esco": null, "title": "lakiassistent|legal (assistant|intern|trainee)|paralegal|oikeus(sihteeri|notaari)"},
+    {"id": "public_administrator", "field": "law", "en": "Public administration specialist", "fi": "Hallintoasiantuntija", "isco": "2422", "esco": null, "title": "hallinto(asiantunt|sihteeri|suunnit|päällikkö)|policy (advisor|officer)|erityisasiantunt|ylitarkast|tarkastaja|virkamies|lainvalmist|public administration"},
+    {"id": "tax_customs_officer", "field": "law", "en": "Tax or customs officer", "fi": "Vero- tai tullivirkailija", "isco": "3352", "esco": null, "title": "vero(asiantunt|tarkast)|tulli|customs|tax (officer|inspector)"},
+
+    {"id": "security_guard", "field": "security", "en": "Security guard", "fi": "Vartija", "isco": "5414", "esco": null, "title": "vartij|järjestyksenvalvoj|security (guard|officer)|väktare"},
+    {"id": "police_officer", "field": "security", "en": "Police officer", "fi": "Poliisi", "isco": "5412", "esco": null, "title": "poliisi|police"},
+    {"id": "firefighter", "field": "security", "en": "Firefighter or rescue worker", "fi": "Palomies", "isco": "5411", "esco": null, "title": "palomies|pelastaj|firefighter|rescue|brandman"},
+    {"id": "defence", "field": "security", "en": "Defence forces", "fi": "Puolustusvoimat", "isco": "0310", "esco": null, "title": "puolustusvoim|defen[cs]e forces|sotilas|soldier|varusmies|rajavartij|border guard"},
+
+    {"id": "cleaner", "field": "cleaning", "en": "Cleaner", "fi": "Siivooja", "isco": "9112", "esco": null, "title": "siivooj|siivous|puhtaanapi|laitoshuoltaj|cleaner|cleaning|städare|housekeep"},
+    {"id": "property_maintenance", "field": "cleaning", "en": "Property maintenance worker", "fi": "Kiinteistönhoitaja", "isco": "5153", "esco": null, "title": "kiinteistönhoit|kiinteistöhuol|huoltomies|property maintenance|janitor|caretaker|fastighetsskötare"},
+
+    {"id": "translator", "field": "languages", "en": "Translator or interpreter", "fi": "Kääntäjä tai tulkki", "isco": "2643", "esco": null, "title": "kääntäj|tulkki|translator|interpreter|lokalisoin|localization|översättare"},
+    {"id": "communications_specialist", "field": "languages", "en": "Communications specialist", "fi": "Viestintäasiantuntija", "isco": "2432", "esco": null, "title": "viestin(tä|nän)|communications|tiedottaj|\\bpr\\b|public relations|kommunikation"},
+    {"id": "copywriter", "field": "languages", "en": "Copywriter or content writer", "fi": "Sisällöntuottaja", "isco": "2641", "esco": null, "title": "copywriter|sisällöntuott|content (writer|creator|producer)|kirjoittaj|writer"}
+  ]
+}

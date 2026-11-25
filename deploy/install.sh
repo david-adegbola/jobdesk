@@ -23,7 +23,7 @@ CV_URL=${JOBDESK_CV_GIT_URL:-}
 install_units() {
   install -m 644 "$APP"/deploy/systemd/*.service "$APP"/deploy/systemd/*.timer /etc/systemd/system/
   systemctl daemon-reload
-  systemctl enable --now jobdesk.service jobdesk-pull.timer jobdesk-backup.timer
+  systemctl enable --now jobdesk.service jobdesk-pull.timer jobdesk-backup.timer jobdesk-jobs.timer
   systemctl restart jobdesk.service
 }
 

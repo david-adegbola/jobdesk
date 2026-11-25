@@ -130,7 +130,7 @@ async function openMagicLink(main) {
   }
 }
 
-// A page may name the fields it belongs to (page.fields, e.g. ["forestry"] for the forestry News desk).
+// A page may name the career fields it belongs to (page.fields, e.g. ["forestry"]).
 // It is then shown only to members who chose one of those fields; other pages are shown to everyone.
 let userFields = [];
 const visiblePages = () => pages.filter(page => !page.fields || page.fields.some(field => userFields.includes(field)));
@@ -146,7 +146,7 @@ const ICON = {
 };
 const SECTIONS = [
   { id: "home", title: "Home", pages: ["home"] },
-  { id: "discover", title: "Discover", pages: ["jobs", "foryou", "news"] },
+  { id: "discover", title: "Discover", pages: ["jobs"] },
   { id: "myjobs", title: "My jobs", pages: ["myjobs", "shortlist"] },
   { id: "applications", title: "Applications", short: "Tracker", pages: ["tracker", "prepare", "draft"] },
   { id: "cv", title: "My CV", pages: ["cvs"] },

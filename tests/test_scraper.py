@@ -185,11 +185,6 @@ class MetsalehtiFeedTests(unittest.TestCase):
             <description>Päiväkoti.</description>
           </item>
         </channel></rss>"""
-        duunitori_html = """
-          <a href="/tyopaikat/tyo/metsaalan-ammatillinen-ohjaaja-20690011">
-            Metsäalan ammatillinen ohjaaja
-          </a>
-        """
         uef_html = """
           <a href="https://uef.varbi.com/fi/what:job/jobID:984735/type:job/where:4/apply:1">
             Professori, metsätuotteet ja -palvelut
@@ -210,8 +205,6 @@ class MetsalehtiFeedTests(unittest.TestCase):
                 return kuntarekry_feed
             if url == scraper.METSAKESKUS_JOBS:
                 return metsakeskus_html
-            if url in {scraper.DUUNITORI_JOBS, scraper.DUUNITORI_JOENSUU_JOBS}:
-                return duunitori_html
             if url == scraper.UEF_JOBS:
                 return uef_html
             return "<html></html>"
@@ -239,9 +232,8 @@ class MetsalehtiFeedTests(unittest.TestCase):
                 patch.object(scraper, "fetch_workday_jobs", side_effect=workday_jobs), \
                 patch.object(scraper.config, "ENABLE_SOURCES", {"metsakeskus", "uef", "metsa-group", "upm", "stora-enso"}), \
                 patch.object(scraper.time, "sleep"):
-            result = scraper.run()
+            result = scraper.run(field_ids=["forestry"])      # forestry only; every field is the default
 
-        # Duunitori is off by default (JOBDESK_ENABLE_DUUNITORI), so 7 sources, not 8
         self.assertEqual(result, {"found": 7, "new": 7, "error": None})
         jobs = db.list_jobs()
         self.assertEqual({job["source"] for job in jobs}, {
@@ -250,24 +242,71 @@ class MetsalehtiFeedTests(unittest.TestCase):
         })
         self.assertTrue(all(job["category"] == "Forestry" for job in jobs))
 
+    def test_only_one_job_check_runs_at_a_time(self):
+        import fcntl
+        with open(db.DATA_DIR / "job-check.lock", "w") as held:      # another process is checking
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with patch.object(scraper, "run") as run:
+                result = scraper.run_exclusive()
+            run.assert_not_called()
+        self.assertEqual(result["error"], scraper.CHECK_BUSY)
+        with patch.object(scraper, "run", return_value={"found": 2, "new": 1, "error": None}) as run:
+            self.assertEqual(scraper.run_exclusive(user_id=1)["new"], 1)
+        run.assert_called_once_with(user_id=1)
+
+    def test_scheduled_check_reads_shared_sources_only_and_reports_failures(self):
+        import server
+        ok = {"found": 3, "new": 1, "error": None}
+        with patch.object(server.scraper, "run_exclusive", return_value=ok) as run, patch("builtins.print"):
+            self.assertEqual(server.scheduled_job_check(), 0)
+        self.assertEqual(run.call_args.kwargs, {"user_id": server.SHARED_DATA_OWNER})
+        busy = {"found": 0, "new": 0, "error": scraper.CHECK_BUSY}
+        with patch.object(server.scraper, "run_exclusive", return_value=busy), patch("builtins.print"):
+            self.assertEqual(server.scheduled_job_check(), 0)
+        failed = {"found": 0, "new": 0, "error": "network unreachable"}
+        with patch.object(server.scraper, "run_exclusive", return_value=failed), patch("builtins.print"):
+            self.assertEqual(server.scheduled_job_check(), 1)
+
     def test_by_default_only_feeds_meant_for_reuse_are_read(self):
         names = {name for name, _ in scraper.sources(["forestry", "it", "engineering", "health", "business", "culture"])}
         self.assertEqual(names, {"Metsälehti", "Metsähallitus", "Valtiolle", "Kuntarekry"})
         with patch.object(scraper.config, "ENABLE_SOURCES", {"uef"}):
             self.assertIn("UEF", {name for name, _ in scraper.sources(["forestry"])})
 
-    def test_jobly_is_not_read_without_permission(self):
+    def test_no_job_board_is_fetched_even_when_every_source_is_allowed(self):
         fetched = []
+        every = {s["id"] for s in scraper.SOURCES.values()} | {"jobly", "duunitori"}
         with patch.object(scraper, "fetch", side_effect=lambda url: fetched.append(url) or "<rss version='2.0'><channel/></rss>"), \
                 patch.object(scraper, "fetch_workday_jobs", return_value=[]), \
+                patch.object(scraper.config, "ENABLE_SOURCES", every), \
                 patch.object(scraper.time, "sleep"):
-            scraper.run(personal=True)
-        self.assertFalse([url for url in fetched if "jobly.fi" in url])
+            scraper.run()
+        self.assertTrue(fetched)
+        self.assertFalse([url for url in fetched if "jobly.fi" in url or "duunitori.fi" in url])
 
-    def test_duunitori_is_read_only_when_enabled(self):
-        self.assertNotIn("Duunitori", [name for name, _ in scraper.sources()])
-        with patch.object(scraper.config, "ENABLE_DUUNITORI", True):
-            self.assertIn("Duunitori", [name for name, _ in scraper.sources()])
+    def test_a_default_check_keeps_the_jobs_of_every_career_field(self):
+        feed = """<rss version="2.0"><channel>
+          <item><title>Kirjanpitäjä</title><link>https://valtiolle.fi/fi/tyopaikat/kirjanpitaja-1/</link></item>
+          <item><title>Sairaanhoitaja</title><link>https://valtiolle.fi/fi/tyopaikat/sairaanhoitaja-2/</link></item>
+          <item><title>Metsäasiantuntija</title><link>https://valtiolle.fi/fi/tyopaikat/metsa-3/</link></item>
+          <item><title>Ulosottomies</title><link>https://valtiolle.fi/fi/tyopaikat/ulosotto-4/</link></item>
+        </channel></rss>"""
+        with patch.object(scraper, "fetch", side_effect=lambda url: feed if url in scraper.VALTIOLLE_FEEDS
+                          else "<rss version='2.0'><channel/></rss>"), \
+                patch.object(scraper, "fetch_workday_jobs", return_value=[]), patch.object(scraper.time, "sleep"):
+            scraper.run()
+        jobs = {job["title"]: (job["category"], job["field_ids"]) for job in db.list_jobs()}
+        self.assertEqual(jobs, {"Kirjanpitäjä": ("Business", "business"),
+                                "Sairaanhoitaja": ("Health", "health"),
+                                "Metsäasiantuntija": ("Forestry", "forestry")})      # no field: left out
+
+    def test_other_job_boards_are_never_read(self):
+        # No readers for job boards at all
+        self.assertNotIn("duunitori", scraper.SOURCES)
+        self.assertNotIn("jobly", scraper.SOURCES)
+        self.assertFalse(hasattr(scraper, "JoblyParser"))
+        for name in ("Duunitori", "Jobly"):
+            self.assertNotIn(name, [n for n, _ in scraper.sources(scraper.TAXONOMY.field_ids())])
 
     def test_fetches_disallowed_by_robots_txt_are_skipped(self):
         with patch.object(scraper.ROBOTS, "allowed", return_value=False), \
@@ -394,8 +433,8 @@ class MetsalehtiFeedTests(unittest.TestCase):
                 return conn.execute("SELECT id FROM jobs WHERE title=?", (title,)).fetchone()["id"]
 
         keep = add("Metsäasiantuntija")
-        hand_added = add("Asentaja", manual=1)
-        add("Varastotyöntekijä")
+        hand_added = add("Ulosottomies", manual=1)       # titles no career field recognises
+        add("Kanttori")
         with db.connect() as conn:
             conn.execute("""INSERT INTO applications (user_id, job_id, status, status_changed_at,
                             created_at, updated_at) VALUES (1, ?, 'Applied', '', '', '')""", (hand_added,))
@@ -413,21 +452,3 @@ class MetsalehtiFeedTests(unittest.TestCase):
         backups = list((db.DATA_DIR / "backups").glob("jobdesk-before-prune-*.db"))
         self.assertEqual(len(backups), 1)
 
-    def test_personal_categories_are_read_only_when_asked(self):
-        def jobly_page(slug):
-            return f'<article about="/tyopaikka/{slug}-job-{len(slug)}"><h2 class="node__title">' \
-                   f'{"Metsuri" if slug == "metsuri" else "Asentaja"}</h2></article>'
-
-        def fetch(url):
-            if url.startswith(scraper.BASE + "/tyopaikat/"):
-                return jobly_page(url.rsplit("/", 1)[-1].split("?")[0])
-            return "<rss version='2.0'><channel/></rss>"
-
-        with patch.object(scraper, "fetch", side_effect=fetch), \
-                patch.object(scraper, "fetch_workday_jobs", return_value=[]), \
-                patch.object(scraper.config, "ENABLE_SOURCES", {"jobly"}), \
-                patch.object(scraper.time, "sleep"):
-            scraper.run()
-            self.assertEqual({job["category"] for job in db.list_jobs()}, {"Forestry"})
-            scraper.run(personal=True)
-        self.assertIn("Industrial", {job["category"] for job in db.list_jobs()})

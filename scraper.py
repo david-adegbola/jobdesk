@@ -1,10 +1,12 @@
-"""Forestry job scraper. Reads Jobly's public, Finland-wide category pages (10 s apart, as Jobly's
-robots.txt asks), the state and municipal job portals, forestry-sector boards and employer career
-sites, and stores jobs in SQLite via db.py. A job is NEW when the latest check is the first one
+"""Job feed reader. Reads the job feeds in sources.json and stores the jobs in SQLite via db.py, each
+tagged with its career fields (core/taxonomy.py). A job is NEW when the latest check is the first one
 that saw it.
 
-Sources follow the 2025 forestry internship overview (Metsälehti, Valtiolle, Kuntarekry, Duunitori,
-TE/Työmarkkinatori, Luke, Metsähallitus, Metsäkeskus, MHYs, Metsä Group, UPM, Stora Enso ...).
+SOURCE POLICY - by default only feeds published for reuse (RSS) whose robots.txt allows reading are
+read: the state and municipal portals (Valtiolle, Kuntarekry) and a few sector feeds. Page readers and
+internal APIs (employer career sites, Workday) are off; JOBDESK_ENABLE_SOURCES turns one on only once its
+owner has given permission. There are no readers for job boards (Jobly, Duunitori, LinkedIn ...): their
+terms or robots.txt forbid it. See sources.json.
 
 LANGUAGE CHECK - every source has Finnish and English variants, and they are not always the same:
   * URL slugs differ (valtiolle.fi/fi/tyopaikat/ vs /en/jobs/, uef.varbi.com/fi/ vs /en/,
@@ -12,11 +14,8 @@ LANGUAGE CHECK - every source has Finnish and English variants, and they are not
     can be missing from the Finnish listing, so read both and deduplicate by the posting's number.
   * Search keywords and category/tag slugs must be given in both languages (metsä + forest,
     harjoittelija + intern/trainee, kesätyö + summer job). Swedish (skog) catches bilingual ads.
-  * Jobly has no English category slugs: unknown slugs such as /en/jobs/forestry silently fall back
-    to the generic all-jobs list, so check that a new slug returns its own jobs before adding it.
-  * When adding a source, check robots.txt and the site's terms. Duunitori disallows generic
-    crawlers, so its search pages are read only when JOBDESK_ENABLE_DUUNITORI=1 (default off), and
-    even then only if robots.txt allows it. Työmarkkinatori disallows /api/, so it is not read.
+  * When adding a source, check robots.txt and the site's terms, and note both in sources.json.
+    Työmarkkinatori's public pages are not read; its search API needs credentials (see sources.json).
 
 ROBOTS.TXT - every automatic request (listing pages, feeds, the Workday API, single ad pages) is
 checked first with core.robots.RobotsCache. Disallowed URLs are skipped and logged, never fetched.
@@ -34,7 +33,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from urllib.parse import quote, urljoin, urlsplit
@@ -44,29 +43,25 @@ import config
 import db
 from core import fetch as core_fetch
 from core import fields as core_fields
+from core import importers as core_importers
+from core import jobmeta as core_jobmeta
+from core import taxonomy as core_taxonomy
 from core.fetch import PublicRedirectHandler, TextExtractor, is_public_http_url  # noqa: F401 (re-exported)
 from core.robots import RobotsCache
 
 # Field profiles (fields/*.json) and job sources (sources.json) are configuration, not code.
-PROFILES = core_fields.load_profiles(config.FIELDS_DIR)
+PROFILES = core_fields.load_profiles(config.FIELDS_DIR)       # keyword profiles of some fields (fields/*.json)
+TAXONOMY = core_taxonomy.load(config.TAXONOMY_DIR)            # every career field and its roles (taxonomy/)
 FORESTRY = PROFILES["forestry"]
 with open(config.SOURCES_FILE, encoding="utf-8") as _file:
     SOURCE_CONFIG = json.load(_file)
 SOURCES = {source["id"]: source for source in SOURCE_CONFIG["sources"]}
 SOURCE_BY_NAME = {source["name"]: source for source in SOURCES.values()}
 
-# The administrator's own Jobly searches from before JobDesk covered several fields. These categories
-# are scraped only for the administrator, stored under their account and never shown to members.
-PERSONAL_JOB_TYPES = {
-    "Industrial": ["asentaja", "kokoonpanija", "tuotantotyontekija"],
-    "Construction": ["rakennustyontekija", "rakennusmies"],
-    "Warehouse": ["varastotyontekija", "logistiikkatyontekija"],
-    "IT-Data centre": ["it"],
-}
-PERSONAL_CATEGORIES = list(PERSONAL_JOB_TYPES)
-# Each job type -> Jobly category pages, https://www.jobly.fi/tyopaikat/<slug>. Finnish slugs only:
-# Jobly has no English category slugs (see the module docstring).
-JOB_TYPES = {"Forestry": FORESTRY["jobly"]["slugs"], **PERSONAL_JOB_TYPES}
+# The administrator's own job types from before JobDesk covered several fields (they came from Jobly
+# searches, which are no longer read). Jobs stored with these categories stay in the administrator's
+# account and are never shown to members.
+PERSONAL_CATEGORIES = ["Industrial", "Construction", "Warehouse", "IT-Data centre"]
 # Default CV for each job type (the Match column may suggest a better one)
 CV_FOR_TYPE = {
     "Industrial": "industrial-master",
@@ -76,7 +71,6 @@ CV_FOR_TYPE = {
     "IT-Data centre": "it-field-technician",
 }
 # The forestry word lists now live in fields/forestry.json; these names stay for older code
-FORESTRY_WORDS = FORESTRY["jobly"]["title_words"]
 FORESTRY_RELEVANCE_WORDS = FORESTRY["relevance"]["words"]
 FORESTRY_CORE_WORDS = FORESTRY["relevance"]["core_words"]
 WHOLE_WORDS = set(FORESTRY["relevance"]["whole_words"])
@@ -84,24 +78,20 @@ WHOLE_WORDS = set(FORESTRY["relevance"]["whole_words"])
 # every public-sector job, so they get the stricter core-word rule (core/fields.py).
 FORESTRY_ONLY_SOURCES = {s["name"] for s in SOURCES.values() if s["kind"] == "field_board"}
 BROAD_AD_SOURCES = {s["name"] for s in SOURCES.values() if s["kind"] == "broad_portal"}
-# Personal Jobly categories: a title must contain one of these words
+# The administrator's IT-Data centre type (jobs added by hand): a title must contain one of these words
 TITLE_MUST_MATCH = {
     "it": ["tuki", "support", "asentaja", "kenttä", "field", "lähituki", "helpdesk", "service desk",
            "teknikko", "technician", "datakeskus", "data center", "data centre", "laite"],
 }
 DATA_CENTRE_WORDS = ["datakeskus", "data center", "data centre"]
 
-MAX_PAGES = 3          # about 20 jobs per page
-DELAY_SECONDS = 10     # Jobly robots.txt asks for 10 s between requests
-BASE = SOURCES["jobly"]["base_url"]
+DELAY_SECONDS = 10     # Metsälehti's robots.txt asks for 10 s between requests
 # URLs come from sources.json; the names stay because the readers and tests use them
 METSALEHTI_FEED = SOURCES["metsalehti"]["urls"]["feed"]
 METSALEHTI_JOBS = SOURCES["metsalehti"]["urls"]["jobs"]      # read when the feed is empty
 METSALEHTI_JOB_LINK = SOURCES["metsalehti"]["link_pattern"]
 METSAHALLITUS_FEED = SOURCES["metsahallitus"]["urls"]["feed"]
 METSAKESKUS_JOBS = SOURCES["metsakeskus"]["urls"]["jobs"]
-DUUNITORI_JOBS = SOURCES["duunitori"]["urls"]["search"]
-DUUNITORI_JOENSUU_JOBS = SOURCES["duunitori"]["urls"]["joensuu"]
 UEF_JOBS = SOURCES["uef"]["urls"]["fi"]
 UEF_JOBS_EN = SOURCES["uef"]["urls"]["en"]
 VARBI_JOB_LINK = SOURCES["uef"]["id_pattern"]
@@ -110,8 +100,7 @@ VARBI_JOB_LINK = SOURCES["uef"]["id_pattern"]
 VALTIOLLE_FEEDS = [SOURCES["valtiolle"]["urls"]["fi"], SOURCES["valtiolle"]["urls"]["en"]]
 # Kuntarekry.fi: the full feed stops at the newest 500 of several thousand jobs, so use its free-text
 # search (desc=) with each active field's search_terms; results are filtered like every other source.
-KUNTAREKRY_KEYWORDS = FORESTRY["search_terms"]
-KUNTAREKRY_FEED = SOURCES["kuntarekry"]["url_template"]
+KUNTAREKRY_FEEDS = list(SOURCES["kuntarekry"]["urls"].values())
 # Valtiolle and Kuntarekry run on the same platform; a posting keeps its number across languages
 PORTAL_POSTING_ID = r"-(\d+)/?$"
 WORKDAY_SOURCES = [(s["name"], s["urls"]["api"], s["urls"]["jobs"])
@@ -119,15 +108,8 @@ WORKDAY_SOURCES = [(s["name"], s["urls"]["api"], s["urls"]["jobs"])
 # Names JobDesk instead of pretending to be a browser; robots.txt rules are matched on "JobDesk"
 USER_AGENT = core_fetch.user_agent()
 
+# A Jobly ad address a member pastes in (never fetched by the job check): used to recognise the same ad
 JOB_PATH = re.compile(r"/(?:en/job|tyopaikka)/([a-z0-9-]+-(\d+))/?$")
-VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
-             "track", "wbr"}
-FIELD_CLASSES = {
-    "node__title": "title",
-    "date": "date",
-    "recruiter-company-profile-job-organization": "company",
-    "location": "location",
-}
 
 
 def ssl_context():
@@ -164,64 +146,6 @@ def robots_allowed(url):
         return True
     print(f"  - skipped (robots.txt): {url}")
     return False
-
-
-class JoblyParser(HTMLParser):
-    """Reads Jobly job cards: <article about="/tyopaikka/<slug>"> with the title (h2.node__title),
-    date (span.date), company (span.recruiter-company-profile-job-organization), location (div.location)."""
-
-    def __init__(self):
-        super().__init__()
-        self.jobs = []
-        self._job = None
-        self._depth = 0
-        self._field = None
-
-    def handle_starttag(self, tag, attrs):
-        a = dict(attrs)
-        if tag == "article":
-            m = JOB_PATH.search(a.get("about") or "")
-            if m:
-                self._job = {"id": m.group(2), "url": f"{BASE}/tyopaikka/{m.group(1)}",
-                             "title": [], "date": [], "company": [], "location": []}
-                self._depth, self._field = 0, None
-                return
-        if not self._job or tag in VOID_TAGS:
-            return
-        self._depth += 1
-        if self._field is None:
-            classes = (a.get("class") or "").split()
-            for cls, field in FIELD_CLASSES.items():
-                if cls in classes:
-                    self._field = (field, self._depth)
-                    break
-
-    def handle_endtag(self, tag):
-        if not self._job:
-            return
-        if tag == "article":
-            self._finish()
-            return
-        if tag in VOID_TAGS:
-            return
-        if self._field and self._depth <= self._field[1]:
-            self._field = None
-        self._depth -= 1
-
-    def handle_data(self, data):
-        if self._job and self._field:
-            text = " ".join(data.split()).strip(" ,")
-            if text:
-                self._job[self._field[0]].append(text)
-
-    def _finish(self):
-        j, self._job = self._job, None
-        title = " ".join(j["title"])
-        if title:
-            self.jobs.append({"id": j["id"], "title": title, "url": j["url"],
-                              "company": " ".join(j["company"]),
-                              "location": ", ".join(dict.fromkeys(j["location"])),
-                              "posted": to_iso(" ".join(j["date"]))})
 
 
 def to_iso(text):
@@ -406,10 +330,49 @@ def is_relevant_to(job, profile):
     return core_fields.is_relevant(job, profile, kind, source_fields)
 
 
+def classify_job(job, kind=None, source_fields=None):
+    """Career field ids for a job (core/taxonomy.py): its title's roles, the keyword profiles of the fields
+    that have one (fields/*.json, judged with the source's kind), and its old category."""
+    if kind is None:
+        kind, source_fields = source_kind(job)
+    profile_hits = [f["id"] for f in TAXONOMY.fields if f.get("profile") in PROFILES
+                    and core_fields.is_relevant(job, PROFILES[f["profile"]], kind, source_fields)]
+    return TAXONOMY.classify(job, profile_hits)
+
+
+def job_meta(job):
+    """What the ad says about the job (core/jobmeta.py): level, type, place, dates, pay, languages ...
+    A source's "sector" in sources.json (e.g. the state and municipal portals: public) is used for its jobs."""
+    source = SOURCE_BY_NAME.get(job.get("source") or "") or {}
+    return core_jobmeta.extract(job, source.get("sector", ""))
+
+
+def stored_fields(job):
+    """The job's field ids as saved in job_fields (db rows carry them as "it,health"), or None when the
+    row doesn't say (then callers classify)."""
+    value = job.get("field_ids")
+    if value is None:
+        return None
+    return [f for f in (value.split(",") if isinstance(value, str) else value) if f]
+
+
 def relevant_fields(job, field_ids=None):
-    """Ids of the fields (all, or the given ones) this job belongs to, in profile order."""
-    wanted = PROFILES if field_ids is None else [i for i in PROFILES if i in field_ids]
-    return [i for i in wanted if is_relevant_to(job, PROFILES[i])]
+    """Ids of the fields (all, or the given ones) this job belongs to, in display order: the saved ones
+    when the job has them, otherwise worked out now."""
+    found = stored_fields(job)
+    if found is None:
+        found = classify_job(job)
+    return [f for f in TAXONOMY.field_ids() if f in found and (field_ids is None or f in field_ids)]
+
+
+def category_for(field_ids):
+    """The job "Type" shown in lists: the first field's old category where it has a keyword profile
+    (so "Forestry" stays "Forestry"), otherwise the field's English name; "Other" for none."""
+    if not field_ids:
+        return "Other"
+    field = TAXONOMY.by_id[field_ids[0]]
+    profile = PROFILES.get(field.get("profile") or "")
+    return profile["category"] if profile else field["en"]
 
 
 def is_forestry_related(job):
@@ -498,10 +461,17 @@ def guess_category(text):
     return "Industrial"
 
 
+def default_field_ids():
+    """config.DEFAULT_FIELDS with "all" expanded to every taxonomy field."""
+    if "all" in config.DEFAULT_FIELDS:
+        return TAXONOMY.field_ids()
+    return [i for i in TAXONOMY.field_ids() if i in config.DEFAULT_FIELDS]
+
+
 def active_field_ids(field_ids=None):
-    """The fields to scrape: the given ones, or every field some member has chosen (db), in profile order."""
-    wanted = set(field_ids if field_ids is not None else db.active_field_ids(config.DEFAULT_FIELDS))
-    return [i for i in PROFILES if i in wanted]
+    """The fields to read: the given ones, or every field some member has chosen (db), in display order."""
+    wanted = set(field_ids if field_ids is not None else db.active_field_ids(default_field_ids()))
+    return [i for i in TAXONOMY.field_ids() if i in wanted]
 
 
 def _covers(source, field_ids):
@@ -513,8 +483,6 @@ def _enabled(source):
     (for a source switched off over its terms, once the site has given permission)."""
     if source["id"] in config.ENABLE_SOURCES:
         return True
-    if source.get("enable_env") == "JOBDESK_ENABLE_DUUNITORI":
-        return config.ENABLE_DUUNITORI
     return source.get("enabled", True)
 
 
@@ -528,7 +496,7 @@ def _reader(source, field_ids):
     if kind == "portal_feeds":
         return lambda: read_portal_feeds(list(urls.values()))
     if kind == "keyword_feeds":       # one search per keyword of every active field
-        words = list(dict.fromkeys(w for i in field_ids for w in PROFILES[i]["search_terms"]))
+        words = list(dict.fromkeys(w for i in field_ids if i in PROFILES for w in PROFILES[i]["search_terms"]))
         return lambda: read_portal_feeds([source["url_template"].format(quote(word)) for word in words])
     if kind == "links":
         return lambda: read_links(list(urls.values()), source["base_url"], source["link_pattern"],
@@ -539,91 +507,91 @@ def _reader(source, field_ids):
 
 
 def sources(field_ids=None):
-    """(source name, reader) for every enabled non-Jobly source that covers one of the fields
-    (default: every field members have chosen). Duunitori only when JOBDESK_ENABLE_DUUNITORI=1."""
+    """(source name, reader) for every enabled feed source that covers one of the fields
+    (default: every field members have chosen). API adapters are read separately."""
     field_ids = active_field_ids(field_ids)
     return [(s["name"], _reader(s, field_ids)) for s in SOURCES.values()
-            if s["reader"] != "jobly" and _enabled(s) and _covers(s, field_ids)]
+            if s["reader"] != "adapter" and _enabled(s) and _covers(s, field_ids)]
 
 
-def jobly_pages(field_ids, personal=False):
-    """(category, slug, title words) for each Jobly category page to read."""
-    pages = [(PROFILES[i]["category"], slug, PROFILES[i]["jobly"]["title_words"])
-             for i in field_ids for slug in PROFILES[i]["jobly"]["slugs"]]
-    if personal:
-        pages += [(category, slug, TITLE_MUST_MATCH.get(slug))
-                  for category, slugs in PERSONAL_JOB_TYPES.items() for slug in slugs]
-    return pages
+CHECK_BUSY = "Another job check is already running."
 
 
-def run(progress=None, user_id=1, personal=False, field_ids=None):
-    """One full check. progress(message, done, total) is called as pages are read.
-    field_ids: the fields to read (default: every field some member has chosen).
-    personal=True also reads the administrator's own PERSONAL_CATEGORIES from Jobly."""
+def run_exclusive(*args, **kwargs):
+    """run(), but never two at once, even across processes: the "Check for new jobs" button (inside the
+    server) and the scheduled check (server.py --check-jobs, from a systemd timer) share data/job-check.lock.
+    When a check is already running this returns at once with error CHECK_BUSY."""
+    import fcntl
+    db.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with open(db.DATA_DIR / "job-check.lock", "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {"found": 0, "new": 0, "error": CHECK_BUSY}
+        return run(*args, **kwargs)
+
+
+def run(progress=None, user_id=1, field_ids=None):
+    """One full check of the feeds and API adapters. progress(message, done, total) is called as sources
+    are read. field_ids: the fields to read (default: every field some member has chosen)."""
     field_ids = active_field_ids(field_ids)
-    profiles = [PROFILES[i] for i in field_ids]
-    pages = jobly_pages(field_ids, personal) if _enabled(SOURCES["jobly"]) else []     # off: its terms forbid reuse
     readers = sources(field_ids)
-    total = len(pages) + len(readers)
+    adapters = [a for a in core_importers.enabled_adapters() if _enabled(SOURCES[a.id])]
+    total = len(readers) + len(adapters)
     check_id = db.start_check(user_id)
     found = new = 0
     seen_now = set()
+    answered = set()       # feed sources that returned at least one posting
     error = None
     try:
-        first = True
-        for n, (category, slug, words) in enumerate(pages):
-            for page in range(MAX_PAGES):
-                url = f"{BASE}/tyopaikat/{slug}" + (f"?page={page}" if page else "")
-                if not first:      # Jobly asks for 10 s; a longer Crawl-delay in robots.txt wins
-                    time.sleep(max(DELAY_SECONDS, ROBOTS.crawl_delay(url) or 0))
-                first = False
-                if progress:
-                    progress(f"Reading {slug} page {page + 1}", n, total)
-                body = fetch(url)
-                if not body:
-                    break
-                parser = JoblyParser()
-                parser.feed(body)
-                fresh = [j for j in parser.jobs if ("Jobly", j["id"]) not in seen_now]
-                if not fresh:
-                    break
-                for j in fresh:
-                    seen_now.add(("Jobly", j["id"]))
-                    if words and not any(title_has(j["title"], w) for w in words):
-                        continue
-                    cat = "IT-Data centre" if any(w in j["title"].lower() for w in DATA_CENTRE_WORDS) else category
-                    is_new = db.upsert_scraped(
-                        {"source": "Jobly", "external_id": j["id"], "url": j["url"], "title": j["title"],
-                         "company": j["company"], "location": j["location"], "posted": j["posted"],
-                         "category": cat},
-                        check_id, user_id=user_id)
-                    found += 1
-                    new += is_new
+        def store(source, job):
+            """Save one posting from a feed or an adapter. Returns 1 when it was new."""
+            nonlocal found
+            answered.add(source)
+            kind, source_fields = SOURCE_BY_NAME[source]["kind"], SOURCE_BY_NAME[source]["fields"]
+            # Every career field counts; a job no field recognises (no role in its title, no field word
+            # where the source's kind requires one) is left out, as before.
+            matched = [f for f in classify_job({**job, "source": source}, kind, source_fields) if f in field_ids]
+            key = (source, job["id"])
+            if not matched or key in seen_now:
+                return 0
+            seen_now.add(key)
+            item = {"source": source, "external_id": job["id"], "url": job["url"],
+                    "title": job["title"], "company": job["company"], "location": job["location"],
+                    "posted": job["posted"], "category": category_for(matched),
+                    "description": job.get("description", ""), "deadline": job.get("deadline", "")}
+            meta = job_meta(item)
+            if item["deadline"] and not meta.get("deadline"):
+                meta["deadline"] = item["deadline"]
+            found += 1
+            return int(db.upsert_scraped(item, check_id, user_id=user_id, fields=matched, meta=meta))
 
-        for source_index, (source, read) in enumerate(readers, start=len(pages)):
+        for source_index, (source, read) in enumerate(readers):
             if progress:
                 progress(f"Reading {source} jobs", source_index, total)
-            kind, source_fields = SOURCE_BY_NAME[source]["kind"], SOURCE_BY_NAME[source]["fields"]
-            covered = [p for p in profiles if source_fields == "all" or p["id"] in source_fields]
             for job in read():
-                matched = [p for p in covered
-                           if core_fields.is_relevant({**job, "source": source}, p, kind, source_fields)]
-                if not matched:
-                    continue
-                key = (source, job["id"])
-                if key in seen_now:
-                    continue
-                seen_now.add(key)
-                is_new = db.upsert_scraped(
-                    {"source": source, "external_id": job["id"], "url": job["url"],
-                     "title": job["title"], "company": job["company"], "location": job["location"],
-                     "posted": job["posted"], "category": matched[0]["category"],
-                     "description": job.get("description", "")},
-                    check_id, user_id=user_id)
-                found += 1
-                new += is_new
+                new += store(source, job)
+        # APIs that need credentials (core/importers.py); each is off until its credentials are set
+        for adapter in adapters:
+            if progress:
+                progress(f"Reading {adapter.name} jobs", total, total)
+            try:
+                for job in adapter.read():
+                    new += store(adapter.name, job)
+            except core_importers.ImporterError as e:
+                error = str(e)
+                answered.discard(adapter.name)
     except Exception as e:      # keep what was saved; report the error in the dashboard
         error = f"{type(e).__name__}: {e}"
+    # Close listings that are over. Absence from a feed counts only for sources that answered with postings
+    # in this check (a failed fetch returns nothing, and must not close every job), and only when every
+    # field was read (otherwise jobs of the fields left out weren't refreshed).
+    complete = set(field_ids) >= set(TAXONOMY.field_ids())
+    today = date.today().isoformat()
+    db.expire_jobs(today, sorted(answered) if complete and not error else ())
+    for adapter in adapters:            # an API's terms may ask for deleted ads to go sooner
+        if complete and adapter.name in answered:
+            db.expire_jobs(today, [adapter.name], adapter.remove_missing_after_days)
     db.finish_check(check_id, found, new, error, user_id=user_id)
     if progress:
         progress(f"Done: {found} jobs, {new} new" + (f" (error: {error})" if error else ""),

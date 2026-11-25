@@ -40,7 +40,7 @@ class ProfileTests(unittest.TestCase):
             "Ohjelmistokehittäjä": ["it"], "Software Developer": ["it"], "IT-tukihenkilö": ["it"],
             "Automaatioinsinööri": ["engineering"], "Mechanical Design Engineer": ["engineering"],
             "Sairaanhoitaja, sisätautiosasto": ["health"], "Sjuksköterska": ["health"], "Lähihoitaja": ["health"],
-            "Kirjanpitäjä": ["business"], "Marketing Coordinator": ["business"],
+            "Kirjanpitäjä": ["business"], "Marketing Coordinator": ["business", "sales"],   # marketing: its own field
             "Metsäasiantuntija": ["forestry"], "Forest Data Specialist": ["forestry"],
         }
         for title, expected in cases.items():
@@ -78,7 +78,7 @@ class ProfileTests(unittest.TestCase):
 
 class SourceTests(unittest.TestCase):
     def test_sources_json_is_consistent(self):
-        readers = {"jobly", "metsalehti", "rss", "portal_feeds", "keyword_feeds", "links", "workday"}
+        readers = {"metsalehti", "rss", "portal_feeds", "keyword_feeds", "links", "workday", "adapter"}
         for source in scraper.SOURCES.values():
             self.assertIn(source["reader"], readers, source["id"])
             self.assertIn(source["kind"], {"general", "field_board", "broad_portal", "employer"}, source["id"])
@@ -86,7 +86,7 @@ class SourceTests(unittest.TestCase):
                 self.assertTrue(set(source["fields"]) <= set(PROFILES), source["id"])
             else:
                 self.assertIn(source["fields"], {"all", "per-profile"}, source["id"])
-        self.assertFalse(scraper.SOURCES["duunitori"]["enabled"])
+        self.assertNotIn("jobly", scraper.SOURCES)            # job boards have no reader at all
         self.assertTrue(scraper.SOURCE_CONFIG["not_added"])
 
     def test_only_sources_for_the_chosen_fields_are_read(self):
@@ -96,12 +96,6 @@ class SourceTests(unittest.TestCase):
         self.assertIn("Valtiolle", it_sources)
         self.assertIn("Kuntarekry", it_sources)
         self.assertIn("Metsälehti", [name for name, _ in scraper.sources(["forestry"])])
-
-    def test_jobly_pages_per_field(self):
-        pages = scraper.jobly_pages(["health"])
-        self.assertEqual([slug for _, slug, _ in pages], ["sairaanhoitaja", "lahihoitaja"])
-        self.assertEqual({category for category, _, _ in pages}, {"Health"})
-        self.assertIn("asentaja", [slug for _, slug, _ in scraper.jobly_pages([], personal=True)])
 
 
 class ScrapeByFieldTests(unittest.TestCase):

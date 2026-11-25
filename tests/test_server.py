@@ -110,6 +110,7 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual([(job["title"], job["private"]) for job in view["jobs"]], [("Warehouse worker", 1)])
         status, admin_view = self.request("GET", "/api/jobs")
         self.assertEqual(admin_view["jobs"], [])                                   # nobody else sees it
+        self.choose_fields(member, ["forestry"])          # sharing is limited to the member's own fields
         status, error = self.request("POST", "/api/jobs", {"title": "Warehouse worker", "share": True}, headers=member)
         self.assertEqual(status, 400)
         self.assertIn("Only forestry", error["error"])
@@ -132,7 +133,8 @@ class JobApiTests(unittest.TestCase):
 
         member = self.member_cookie()
         status, member_view = self.request("GET", "/api/jobs", headers=member)
-        self.assertEqual([job["title"] for job in member_view["jobs"]], ["Metsuri"])
+        self.assertEqual([job["title"] for job in member_view["jobs"]], ["Metsuri"])      # every field by default
+        self.choose_fields(member, ["forestry"])
         status, state = self.request("GET", "/api/state", headers=member)
         self.assertEqual(state["job_types"], ["Forestry"])
         status, _ = self.request("POST", f"/api/jobs/{created['id']}/status", {"status": "Saved"},
@@ -189,7 +191,7 @@ class JobApiTests(unittest.TestCase):
         self.assertIn("Sign in", error["error"])
 
     def test_api_rejects_non_object_request_bodies(self):
-        for path in ("/api/auth/link", "/api/cvs", "/api/account/profile"):
+        for path in ("/api/auth/link", "/api/cvs", "/api/account/fields"):
             status, error = self.request("POST", path, [])
             self.assertEqual(status, 400, path)
             self.assertIn("error", error, path)
@@ -463,7 +465,7 @@ class JobApiTests(unittest.TestCase):
         self.assertIn("Cross-site request refused", error["error"])
         self.assertEqual(db.list_jobs(), [])
 
-    def test_news_api_returns_sources_and_persists_reading_list_state(self):
+    def test_news_desk_is_removed_but_saved_stories_stay_in_the_export(self):
         item = {
             "source_id": "luke",
             "source": "Luke",
@@ -478,25 +480,16 @@ class JobApiTests(unittest.TestCase):
             "matched_topics": "Biotalous ja materiaalit, Data ja teknologia",
         }
         db.upsert_news_item(item)
+        item_id = db.list_news(1)[0]["id"]
+        db.update_news_state(item_id, {"is_saved": True}, 1)
 
-        status, listing = self.request("GET", "/api/news")
+        # The forestry News desk is gone; stories members saved earlier stay in their data export
+        for method, path in (("GET", "/api/news"), ("POST", "/api/news/refresh"), ("GET", "/api/account/profile")):
+            status, _ = self.request(method, path, {} if method == "POST" else None)
+            self.assertEqual(status, 404, path)
+        status, export = self.request("GET", "/api/account/export")
         self.assertEqual(status, 200)
-        self.assertEqual(len(listing["sources"]), 8)
-        self.assertEqual(listing["items"][0]["title"], item["title"])
-        self.assertIn("Finnish employers", listing["items"][0]["why_it_matters"])
-        self.assertIn("process skills", listing["items"][0]["career_angle"])
-
-        item_id = listing["items"][0]["id"]
-        status, result = self.request("POST", f"/api/news/{item_id}/state", {"is_saved": True})
-        self.assertEqual(status, 200)
-        self.assertTrue(result["ok"])
-        status, listing = self.request("GET", "/api/news")
-        self.assertEqual(status, 200)
-        self.assertEqual(listing["items"][0]["is_saved"], 1)
-
-        status, error = self.request("POST", f"/api/news/{item_id}/state", {"is_read": "yes"})
-        self.assertEqual(status, 400)
-        self.assertIn("boolean", error["error"])
+        self.assertEqual([story["title"] for story in export["news_reading_list"]], [item["title"]])
 
     # ------------------------------------------------------------ Phase 1 fixes
 
@@ -559,7 +552,11 @@ class JobApiTests(unittest.TestCase):
                        "company": "Example", "category": "Forestry"}, user_id=1)
         member = self.member_cookie()
         status, view = self.request("GET", "/api/jobs", headers=member)
-        self.assertEqual([job["title"] for job in view["jobs"]], ["Metsäasiantuntija"])     # default: forestry
+        self.assertEqual(sorted(job["title"] for job in view["jobs"]),                     # default: every field
+                         ["Metsäasiantuntija", "Ohjelmistokehittäjä"])
+        status, state = self.request("GET", "/api/state", headers=member)
+        self.assertEqual(state["user_fields"], [f["id"] for f in state["fields"]])
+        self.assertGreaterEqual(len(state["fields"]), 15)
 
         status, saved = self.choose_fields(member, ["it"], "basic")
         self.assertEqual(status, 200)
@@ -583,6 +580,7 @@ class JobApiTests(unittest.TestCase):
 
     def test_sharing_a_job_needs_one_of_the_members_fields(self):
         member = self.member_cookie()
+        self.choose_fields(member, ["forestry"])
         status, error = self.request("POST", "/api/jobs", {"title": "Kirjanpitäjä", "share": True}, headers=member)
         self.assertEqual(status, 400)
         self.assertIn("Only forestry", error["error"])
@@ -591,16 +589,13 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(db.get_job(created["id"])["category"], "Business")
 
-    def test_field_settings_are_validated_and_the_for_you_form_keeps_them(self):
+    def test_field_settings_are_validated(self):
         member = self.member_cookie()
         for body in ([], {"fields": [], "finnish_level": "none"}, {"fields": ["astronomy"], "finnish_level": "none"},
                      {"fields": ["it"], "finnish_level": "C1"}):
             status, _ = self.request("POST", "/api/account/fields", body, headers=member)
             self.assertEqual(status, 400, body)
         self.choose_fields(member, ["health"], "fluent")
-        status, _ = self.request("POST", "/api/account/profile",
-                                 {"audiences": ["student"], "topics": [], "region": "finland"}, headers=member)
-        self.assertEqual(status, 200)
         status, state = self.request("GET", "/api/state", headers=member)
         self.assertEqual((state["user_fields"], state["finnish_level"]), (["health"], "fluent"))
 

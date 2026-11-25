@@ -1,15 +1,23 @@
 # JobDesk
 
-Job and internship search for students in Finland, built around one question international students keep asking:
-**can I apply to this ad without fluent Finnish?** Each student has a private, invitation-only account. They choose
-their fields (forestry, IT, engineering, health and social care, business, culture), and see job ads from sources
-that allow automated reading. For each ad they see whether Finnish is required, an advantage, not needed or unclear,
-together with the sentence from the ad that says so. They can rank a batch of ads against their skills, draft
-application answers grounded in their own CV, and track their applications.
+Jobs, internships, summer jobs and thesis positions anywhere in Finland, in every career field, for students,
+graduates and early-career people, including international students. It is built around one question international
+students keep asking: **can I apply to this ad without fluent Finnish?** Members search the open ads by keyword
+(English or Finnish), field, level, type, work mode, region and town, with "Finnish not required" and "Summer jobs"
+one click away. For each ad they see whether Finnish is required, an advantage or not needed, with the sentence
+that says so. They can rank ads against their CV, draft application answers grounded in it, and track applications.
 
-It started as a forestry careers portal; the forestry pages (For you, News) are still there for members who
-choose forestry. A small standalone version of the Finnish checker, written for a Metropolia job application, lives
-in its own repository (finnish-check) and shares this repository's `core/` code.
+Ads come from feeds published for reuse (the state and municipal job portals and a few sector feeds), from
+employers through the **Post a job** form (approved by an administrator), and later from Työmarkkinatori's search
+API (`core/importers.py`, off until credentials are granted). No job board is scraped.
+
+**Career fields** are data: `taxonomy/fields.json` (18 fields on ISCO-08, the base of Statistics Finland's
+Ammattiluokitus) and `taxonomy/roles.json` (about 90 occupations with ISCO-08 unit groups, ESCO URIs to be filled in,
+and Finnish/English title patterns), loaded by `core/taxonomy.py`. Towns and regions are Statistics Finland's
+Kunnat/Maakunnat 2026 list (`taxonomy/places.json`, CC BY 4.0). Members see every field until they choose theirs.
+
+It started as a forestry careers portal. A small standalone version of the Finnish checker, written for a
+Metropolia job application, lives in its own repository (finnish-check) and shares this repository's `core/` code.
 
 Python 3 standard library, SQLite and plain HTML/CSS/JS: nothing to install. The AI features run in **mock mode**
 without an API key.
@@ -19,8 +27,12 @@ statement drafts for Metropolia). `docs/CHANGES-EXPLAINED.md` explains every cha
 
 ## Tests
 
-Run `python3 -m unittest discover -s tests -v`. Tests use temporary SQLite files and a local HTTP
-server; they cover authentication, ownership boundaries, forestry filtering and API behavior.
+Run `python3 -m unittest discover -s tests -v` (in a container, not on a personal computer: see `AGENTS.md`).
+Tests use temporary SQLite files and a local HTTP server; they cover authentication, ownership boundaries, the
+taxonomy and migrations, reading job details from ads, dedupe and expiry, the employer form, search and the API.
+
+**Demo data:** `JOBDESK_DATA=/tmp/jobdesk-demo python3 scripts/seed_demo.py` adds 22 fictional jobs (every level
+and type of employment, 14 fields, all over Finland) to a development database; `--remove` deletes them.
 
 ## Accessibility requirements
 
@@ -41,22 +53,36 @@ evaluated or certified against WCAG 2.1 Level AA.
   sentences from your CV, a word counter, a "make it yours" tip and Copy. An answer to an application question, built only from facts in your CV. Every sentence is
   checked against the facts it cites; unsupported sentences are marked and kept out of the answer box. The AI is used
   only if you turn on "AI drafting" under Account.
-- **Fields and Finnish level** (Account): choose your fields; Jobs, Match and What to study follow them. The
-  Finnish level orders the Shortlist (fluent speakers aren't affected). Field profiles are JSON files in `fields/`.
+- **Fields and Finnish level** (Account): choose your fields (all of them until you do); Discover, Match and What
+  to study follow them. The Finnish level orders the Shortlist (fluent speakers aren't affected). The fields are in
+  `taxonomy/`; the older keyword profiles in `fields/` still help classify ads for the six fields that have one.
 - **Home** (everyone): a short brief written from your own data (nearest deadline, overdue next steps, jobs not yet
   checked against your CV, your closest match), colour blocks for deadlines this week, applications in progress,
   preparing documents and what to study, a bar to paste a job link (it opens the Jobs page's add form), the jobs that fit
   your CV best, and the dates coming up. No AI and nothing stored: it reads the Jobs, CVs and Tracker data.
-- **Menu:** Home, Discover (Jobs, For you, News), My jobs (Shortlist), Applications (Tracker, Prepare, Draft an answer),
-  My CV; Profile (Account, What to study) opens from the avatar. On a phone the menu is a bottom tab bar.
-- **For you** (forestry members, under Discover): a weekly overview of keyword-matched jobs and recent stories, upcoming job deadlines and follow-ups, plus a combined list of saved jobs and News. Choose one or more audiences (students, researchers, forest owners or professionals), topics and a location to tune the overview. Focus preferences are private to the account. Recommendations are transparent keyword matches, not AI rankings.
-- **Jobs** comes in two pages built from the same code. **Discover → Jobs** lists the shared ads in your fields;
-  **Save** moves one to your jobs. **My jobs → Saved jobs** holds the ads you saved or added, with a count per
-  status, a status menu, **Shortlist** (the fit check, shown under the job) and **Prepare**. Each job is a row with
-  a ring (your AI fit score when there's a current one, otherwise the keyword match with your CV), the employer,
-  place and deadline, and tags for the type, the matching CV words and the Finnish requirement; "Why …?" opens the
-  sentence the Finnish tag is based on. Filters, "Sort by" chips (Shift-click adds a level) and the type order work
-  as before. Old `#/jobs?add=` links forward to `#/myjobs?add=`.
+- **Menu:** Home, Discover, My jobs (Shortlist), Applications (Tracker, Prepare, Draft an answer), My CV; Profile
+  (Account, What to study) opens from the avatar. On a phone the menu is a bottom tab bar.
+- **Discover** (`static/pages/discover.js`, `GET /api/search`): every open shared ad you can see, searched on the
+  server. Keywords match word starts in the title, employer, place and ad text (SQLite FTS5, diacritics folded; LIKE
+  where FTS5 is missing) and also find roles named in the other language ("nurse" finds *Sairaanhoitaja*). Quick
+  toggles: **Finnish not required** (the ad says so, or it is written in English or Swedish and doesn't ask for
+  Finnish), **Summer jobs**, Internships, Thesis, Entry level, Remote, each with its count. "More filters": field,
+  level, type, work mode, employer type, paid, alongside studies, and sort (newest or deadline). The filters are in
+  the address (`#/jobs?q=nurse&level=internship&no_finnish=1&page=2`), so a search can be bookmarked or shared;
+  25 a page. Each card shows the employer, town, deadline, level, type, work mode, Finnish, pay, study credits, work
+  permit notes, the source (with any credit line its terms require) and a link to the original ad. **Save** moves
+  one to My jobs. Old `#/jobs?add=` links forward to `#/myjobs?add=`.
+- **My jobs → Saved jobs** holds the ads you saved or added, with a count per status, a status menu, **Shortlist**
+  (the fit check, shown under the job) and **Prepare**. Each job is a row with a ring (your AI fit score when there's
+  a current one, otherwise the keyword match with your CV), the employer, place and deadline, and tags for the type,
+  the matching CV words and the Finnish requirement; "Why …?" opens the sentence the Finnish tag is based on.
+  Filters, "Sort by" chips (Shift-click adds a level) and the type order work as before.
+- **Post a job** (`/employers.html`, public, no account): employers send an ad with its fields, town, level, type,
+  dates, pay, TES, languages, permit notes and student details. Answers are checked on the server, the form has a
+  honeypot and is limited to 5 ads an hour per address and per email, and nothing is listed until an administrator
+  approves it under **Account → Employer ads to review**. Approved ads are listed as source "Employer" until their
+  deadline (60 days without one). The employer's contact details are never shown and are deleted 90 days after the
+  decision.
   **Add a job** (Saved jobs): paste a link and click **Read this link**. JobDesk reads the ad's schema.org
   `JobPosting` data (title, employer, place, posting and closing dates, description), which most job
   sites publish for search engines; without it, only the page title and text are read. You check
@@ -92,64 +118,43 @@ evaluated or certified against WCAG 2.1 Level AA.
   letter text, the CV PDF, and the email via Copy or "Open in email". The writing runs in the
   background queue. AI writes the text only in live mode with "AI with your CV" on; otherwise CV
   facts are copied in for you to rewrite.
-- **Listings:** "Check for new forestry jobs" reads Jobly's Finland-wide forestry, internship
-  (`harjoittelija`) and summer-job (`kesatyo`) category pages, waiting 10 s between
-  requests as Jobly's robots.txt asks. The source list follows the 2025 forestry internship
-  overview. It also checks
-  [Metsälehti](https://www.metsalehti.fi/tyopaikat/) (its jobs page when the RSS feed is empty),
-  [Metsähallitus](https://metsa.rekrytointi.com/paikat/?o=A_LOJ&list=2),
-  [Valtiolle](https://valtiolle.fi/fi/tyopaikat/) (all state agencies, including Luke, MMM, SYKE,
-  ELY centres and Maanmittauslaitos),
-  [Kuntarekry](https://kuntarekry.fi/fi/tyopaikat/) (municipalities, by keyword search),
-  [Metsäkeskus](https://www.metsakeskus.fi/fi/tietoa-meista/toihin-metsakeskukseen/avoimet-tyopaikat),
-  [University of Eastern Finland](https://www.uef.fi/fi/avoimet-tyopaikat),
-  [Metsä Group](https://metsagroup.wd103.myworkdayjobs.com/fi-FI/MetsaGroup_Careers),
-  [UPM](https://upm.wd103.myworkdayjobs.com/fi-FI/Careers) and
-  [Stora Enso](https://storaenso.wd502.myworkdayjobs.com/fi-FI/Stora_Enso_site_opportunities).
-  Sources are read in **both Finnish and English** (for example `valtiolle.fi/fi/tyopaikat/` and
-  `/en/jobs/`, UEF's Finnish and English pages), because English-only postings can be missing from
-  the Finnish listing. Duplicates are merged by posting number. Search keywords and filter words
-  come in Finnish/English pairs (metsä/forest, puukauppa/timber trade). When you add a source,
-  check its fi and en slugs, category tags and robots.txt; the notes are at the top of `scraper.py`.
-  Every automatic request is checked against the site's robots.txt first and skipped when disallowed.
-  Duunitori's search pages are off by default (`JOBDESK_ENABLE_DUUNITORI`), because its robots.txt
-  disallows generic crawlers.
-  RSS descriptions are checked
-  as well as titles, and postings are filtered for forestry, forest bioeconomy, natural resources,
-  forest-data and geospatial/GIS-related terms.
-  RSS descriptions are saved for matching. All results and community submissions are filtered for
-  forestry, forest bioeconomy, natural resources, forest data and geospatial/GIS-related terms.
-  Community listings are shared, so only public opportunity details should be entered. Older
-  non-forestry jobs may remain stored from the previous single-user setup, but members only see
-  forestry-related listings. Each job
-  shows a 0–100 **Match** against the member's own CVs, the matched words and that member's private
-  application status. Administrators refresh shared feeds.
-  **Administrator view:** the check also reads the administrator's earlier Jobly searches
-  (Industrial, Construction, Warehouse, IT-Data centre). Those jobs, and any non-forestry job the
-  administrator adds by hand, are stored in the administrator's account. They are tagged "Only you"
-  and never shown to members. `python3 server.py --prune-unrelated-jobs` (add `--apply` to delete,
-  after an automatic backup) removes stored jobs that nobody can see.
-- **News** (forestry members): a forestry and forest-bioeconomy news desk focused on Finland and Joensuu/North Karelia,
-  with research, industry, policy, climate/nature, markets and forest-tech coverage. Refreshes
-  Finnish-language feeds from [Luke](https://www.luke.fi/fi/feed),
-  [Metsäteollisuus ry](https://metsateollisuus.fi/feed/) and
-  [Tornator](https://www.tornator.fi/feed/), plus Finnish, regional, EU-policy, forest-tech and
-  European Forest Institute RSS searches. Search and filter by topic, read status, saved items and
-  date; reading-list state is private and persists. Similar headlines published within three days
-  are grouped with links to corroborating coverage. Results use source-provided RSS summaries and
-  transparent keyword matching, not generated analysis; open each publisher for the full article.
-  Refresh is manual and respects source-specific 30–60-minute intervals; source-level errors are
-  shown.
-- **Show text in English:** Jobs and News have an Original / English switch, remembered in the
-  browser (Home follows it). English machine-translates Finnish and Swedish titles and news
-  summaries on the device with the browser's built-in Translator API: nothing is sent to a server
+- **Listings (sources):** `sources.json` lists every source with its robots.txt and terms notes. By default only
+  feeds published for reuse are read: [Valtiolle](https://valtiolle.fi/fi/tyopaikat/) (all state agencies, in
+  Finnish and English), [Kuntarekry](https://kuntarekry.fi/fi/tyopaikat/) (municipalities and wellbeing services
+  counties, the whole feed), [Metsälehti](https://www.metsalehti.fi/tyopaikat/) and
+  [Metsähallitus](https://metsa.rekrytointi.com/paikat/?o=A_LOJ&list=2). Page readers and internal APIs (employer
+  career sites, Workday) are off; `JOBDESK_ENABLE_SOURCES` turns one on only with the site's permission. There are
+  no readers for job boards (Jobly, Duunitori, LinkedIn ...). Every automatic request is checked against robots.txt
+  first.
+  **Työmarkkinatori** (`core/importers.py`) is read once `JOBDESK_TMT_API_URL` and `JOBDESK_TMT_API_KEY` are set;
+  its ads carry the required credit line and are closed within a day of leaving the API. The timer
+  (`deploy/systemd/jobdesk-jobs.timer`) runs `server.py --check-jobs` at 06:00 and 15:00 Helsinki time; an
+  administrator can also start a check from Discover.
+- **Each job** is tagged with its career fields (title roles, keyword profiles, old category) and, read from the ad
+  with rules in Finnish, English and Swedish (`core/jobmeta.py`): level (thesis, internship, trainee, entry,
+  experienced), type (summer, full-time, part-time, fixed-term, permanent, apprenticeship, gig), work mode, town and
+  region (`core/places.py`), deadline and start date, pay and period, TES, Finnish/Swedish/English requirement,
+  work permit notes, study credits, paid or unpaid, alongside studies, and employer type. A value is set only when
+  the ad says it. An AI Finnish check of the current ad text, when there is one, wins over the rules.
+- **Duplicates and closing:** a posting already listed from another source (same address, or the same title,
+  employer and town) isn't added again (`core/dedupe.py`). A listing closes when its deadline passes, or when it
+  has been missing for 7 days from a feed that answered with postings in a complete check (a feed that fails
+  closes nothing). Closed listings leave Discover but stay in the Tracker of members who saved them; one that comes
+  back is opened again. Each job shows a 0–100 **Match** against the member's own CVs.
+  **Search scope:** Discover searches every field; a member's chosen fields are ticked as the default filter and
+  can be unticked (`field=all` in the address).
+  **Administrator view:** jobs the administrator stored earlier under their own job types (Industrial,
+  Construction, Warehouse, IT-Data centre) are tagged "Only you" and never shown to members. `python3 server.py --prune-unrelated-jobs` (add
+  `--apply` to delete, after an automatic backup) removes stored jobs that nobody can see.
+- **Show text in English:** Discover and My jobs have an Original / English switch, remembered in the
+  browser (Home follows it). English machine-translates Finnish and Swedish titles on the device with the browser's built-in Translator API: nothing is sent to a server
   and there is no cost. It needs desktop Chrome 138+ or Edge 148+; the first use downloads a
   language pack. Other browsers and phones show the original text with a note (their own
   "Translate page" option still works, helped by `lang` attributes). Each item's language is
   worked out on the server by counting common Finnish, English and Swedish words (`language.py`);
   items that already have English text are left alone.
-- **What to study:** groups the jobs you can see into role types (forest specialist, wood
-  procurement, research, GIS and forest data, nature, field work and so on) and lists the skills
+- **What to study:** groups the jobs you can see into the role types of your fields' keyword profiles
+  (`fields/*.json`; for example software, data and support for IT) and lists the skills
   their ads ask for, in Finnish and English, compared with your own CVs. "Study next" shows skills
   that two or more ads mention but none of your CVs shows; each skill shows how many ads ask for it.
   "Start a CV for this role" opens an unsaved draft based on your closest CV, with the role as target
@@ -275,18 +280,22 @@ applications and invitation records with the local database.
 What runs on the server (`deploy/systemd/`):
 
 - `jobdesk.service`: the app as the `jobdesk` user, on 127.0.0.1:8765, restarted if it stops.
+- `jobdesk-jobs.timer`: the job check (`server.py --check-jobs`) at 06:00 and 15:00 Helsinki time; it also closes
+  listings that are over and deletes old employer submissions.
 - `jobdesk-pull.timer`: `git pull` of the cv repo every 10 minutes.
 - `jobdesk-backup.timer`: a copy of the database every day in `/srv/jobdesk/backups`, 14 kept.
 - Caddy (`deploy/Caddyfile`): HTTPS, `noindex` and security headers; JobDesk handles accounts.
 
 ## Privacy
 
-Job ads, recruiter names and numbers, the tracker, and News reading-list state live in
+Job ads, recruiter names and numbers, the tracker, and employers' submissions live in
 `data/jobdesk.db` (git-ignored here too) and on the server in `/srv/jobdesk/data`, readable only by
 the `jobdesk` user. There are no passwords: sign-in links are single-use, expire after 15 minutes, are stored only as
 SHA-256 hashes and are rate-limited per email and per IP; sessions use HttpOnly, SameSite cookies and HTTPS
-Secure cookies on the server. CVs, applications, preferences and news read/save state are scoped to
-each user. Forestry listings and news are shared. Invitation codes are one-time, hashed at rest and
+Secure cookies on the server. CVs, applications and preferences are scoped to each user. Job listings are shared
+with members in the same fields. An employer's contact details are seen only by administrators and deleted 90 days
+after the decision on their ad. News stories members saved on the old News page stay in their data download and
+nowhere else. Invitation codes are one-time, hashed at rest and
 expire after seven days. The site sends `noindex` and refuses cross-site state changes. Oracle hosts
 the server, so the data is on their hardware.
 
@@ -296,11 +305,15 @@ the server, so the data is on their hardware.
 jobdesk/
 ├── server.py        HTTP server and API routes
 ├── config.py        paths, host, port (environment variables)
-├── db.py            SQLite: users, checks, jobs, applications
-├── scraper.py       Jobly, forestry-sector and Workday job feeds
+├── db.py            SQLite: users, checks, jobs, applications; numbered migrations (PRAGMA user_version)
+├── scraper.py       job feeds (sources.json), classification into fields, the job check
+├── taxonomy/        fields.json, roles.json (ISCO-08), places.json (Statistics Finland kunnat/maakunnat)
+├── core/taxonomy.py career fields and roles     core/jobmeta.py   job details read from the ad
+├── core/places.py   towns and regions           core/dedupe.py    same posting from two sources
+├── core/importers.py  API adapters (Työmarkkinatori)
+├── scripts/seed_demo.py  fictional demo jobs for development
 ├── language.py      Finnish / English / Swedish detection, used by the English switch
 ├── skills.py        What to study: skills asked for by role type vs. the member's CVs
-├── news.py          Forestry news RSS feeds and transparent topic matching
 ├── match.py         match score, blockers, employer and PDF links
 ├── prompt.py        new-CV questions and prompt
 ├── prep.py          Prep page: reads prep/*.yaml, fills in the job, applies saved answers

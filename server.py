@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JobDesk: job and internship search for students in Finland (originally the JobDesk forestry portal).
+"""JobDesk: jobs and internships in Finland for students, graduates and early-career people, in every field.
 
     python3 server.py            # opens http://localhost:8765
     python3 server.py --no-browser
@@ -39,13 +39,13 @@ import prompt   # noqa: E402
 import match    # noqa: E402
 import owner    # noqa: E402
 import scraper  # noqa: E402
-import news     # noqa: E402
 import skills   # noqa: E402
 import language  # noqa: E402
 import mailer   # noqa: E402
 import tasks    # noqa: E402
 from core import fields as core_fields  # noqa: E402
-from core import batch, documents, draft, finnish, fit, jobpage, llm, rank  # noqa: E402
+from core import batch, documents, draft, finnish, fit, jobmeta, jobpage, llm, rank  # noqa: E402
+from core import places as core_places  # noqa: E402
 
 STATIC = APP / "static"
 SHARED_DATA_OWNER = 1
@@ -179,15 +179,18 @@ def user_preferences(user):
 
 
 def user_fields(user, preferences=None):
-    """The member's chosen field ids, in profile order (default: config.DEFAULT_FIELDS)."""
+    """The member's chosen career field ids, in display order; every field (config.DEFAULT_FIELDS, "all"
+    by default) until they choose."""
     chosen = (preferences if preferences is not None else user_preferences(user)).get("fields")
-    chosen = chosen if isinstance(chosen, list) and chosen else config.DEFAULT_FIELDS
-    return [i for i in scraper.PROFILES if i in chosen] or list(config.DEFAULT_FIELDS)
+    default = scraper.default_field_ids()
+    if not (isinstance(chosen, list) and chosen):
+        return default
+    return [i for i in scraper.TAXONOMY.field_ids() if i in chosen] or default
 
 
 def is_personal(job):
-    """The administrator's own non-field jobs: their private Jobly categories and jobs they added
-    by hand outside every field. Visible to that administrator only."""
+    """The administrator's own non-field jobs: their private job types (scraper.PERSONAL_CATEGORIES) and
+    jobs they added by hand outside every field. Visible to that administrator only."""
     return job.get("source") == "Personal" or job.get("category") in scraper.PERSONAL_CATEGORIES
 
 
@@ -201,8 +204,8 @@ def can_see(job, user, owner_key="user_id", fields=None):
     return bool(scraper.relevant_fields(job, fields if fields is not None else user_fields(user)))
 
 
-def forestry_applications(user):
-    """The member's applications for jobs they can still see (name kept from the forestry-only days)."""
+def visible_applications(user):
+    """The member's applications for jobs they can still see."""
     fields = user_fields(user)
     return [application for application in db.list_applications(user["id"])
             if can_see(application, user, "job_owner", fields)]
@@ -323,7 +326,7 @@ def api_account_export(h, m):
         "account": {"name": user["name"], "email": user["email"]},
         "preferences": json.loads(user["preferences_json"] or "{}"),
         "cvs": db.list_cvs(h.user["id"]),
-        "applications": [safe_application(item) for item in forestry_applications(h.user)],
+        "applications": [safe_application(item) for item in visible_applications(h.user)],
         "fit_evaluations": [{"job_id": f["job_id"], "cv_id": f["cv_id"], "created_at": f["created_at"], **f["result"]}
                             for f in db.list_fits(h.user["id"])],
         "application_documents": [{"job_id": d["job_id"], "language": d["language"], "letter": d["letter"],
@@ -541,9 +544,11 @@ def api_state(h, m):
         "facts": {}, "facts_warning": None,
         "roles": [{"slug": role["slug"], "title": role["title"]} for role in roles],
         "statuses": db.STATUSES,
-        "job_types": [scraper.PROFILES[i]["category"] for i in fields]
-                     + (scraper.PERSONAL_CATEGORIES if user["is_admin"] else []),
-        "fields": [core_fields.summary(p) for p in scraper.PROFILES.values()],
+        "job_types": list(dict.fromkeys([scraper.category_for([i]) for i in fields]
+                     + (scraper.PERSONAL_CATEGORIES if user["is_admin"] else []))),
+        "fields": [{"id": f["id"], "label_en": f["en"], "label_fi": f["fi"], "category": scraper.category_for([f["id"]])}
+                   for f in scraper.TAXONOMY.fields],
+        "regions": core_places.load().regions,
         "user_fields": fields,
         "finnish_level": preferences.get("finnish_level") or "none",
         "llm_opt_in": preferences.get("llm_opt_in") is True,
@@ -556,31 +561,182 @@ def api_state(h, m):
     }
 
 
-@route("GET", "/api/jobs")
-def api_jobs(h, m):
-    roles = cv_roles(h.user["id"])
-    fields = user_fields(h.user)
-    jobs = [job for job in db.list_jobs(h.user["id"]) if can_see(job, h.user, fields=fields)]
-    stored = db.finnish_levels(finnish.PROMPT_VERSION)
-    fits = db.latest_fits(h.user["id"])
-    cv_hashes = {cv["id"]: fit.content_hash(cv["content"]) for cv in db.list_cvs(h.user["id"])} if fits else {}
-    safe_jobs = []
-    for job in jobs:
+def job_details(job, finnish_result=None):
+    """The details read from the ad (core/jobmeta.py) in the shape the pages use: the tag lists, place names,
+    and whether a member without Finnish can apply. An AI Finnish check of the current ad text, when there is
+    one, wins over the keyword rules."""
+    places = core_places.load()
+    details = db.tags_of(job)
+    level = job.get("lang_fi") or "unclear"
+    if finnish_result and finnish_result.get("method") == "llm" and finnish_result.get("level") in jobmeta.LANGUAGE_LEVELS:
+        level = finnish_result["level"]
+    details["lang_fi"] = level
+    details["finnish_not_required"] = jobmeta.finnish_not_required({**job, "lang_fi": level})
+    details["municipality"] = places.name(job.get("municipality_code") or "")
+    details["region"] = places.name(job.get("region_code") or "", "en")
+    details["attribution"] = (scraper.SOURCE_BY_NAME.get(job.get("source") or "") or {}).get("attribution", "")
+    return details
+
+
+def listed_jobs(user, fields=None):
+    """The jobs a member can see. Closed listings (deadline passed, or gone from their feed) are left out,
+    except those the member is tracking."""
+    fields = fields if fields is not None else user_fields(user)
+    return [job for job in db.list_jobs(user["id"]) if can_see(job, user, fields=fields)
+            and (job.get("listing_status") != "expired" or job.get("status"))]
+
+
+class JobPresenter:
+    """Turns stored job rows into what the pages get (no private columns; fields, Finnish, details, fit,
+    CV match). Built once per request: it loads the member's CV roles, fits and AI Finnish checks."""
+
+    def __init__(self, user, fields=None):
+        self.user = user
+        self.fields = fields if fields is not None else user_fields(user)
+        self.roles = cv_roles(user["id"])
+        self.stored = db.finnish_levels(finnish.PROMPT_VERSION)
+        self.fits = db.latest_fits(user["id"])
+        self.cv_hashes = ({cv["id"]: fit.content_hash(cv["content"]) for cv in db.list_cvs(user["id"])}
+                          if self.fits else {})
+
+    def finnish(self, job):
+        return finnish_for(job, self.stored)
+
+    def __call__(self, job):
         safe = {key: value for key, value in job.items()
                 if key not in {"user_id", "external_id", "contact_name", "contact_phone"}}
         safe["personal"] = is_personal(job)     # only ever true for the admin
-        matched = [] if safe["personal"] else scraper.relevant_fields(job, fields)
+        matched = [] if safe["personal"] else scraper.relevant_fields(job, self.fields)
         safe["fields"] = matched
         if matched:     # show the job under the member's own field, e.g. a Valtiolle job as "IT"
-            safe["category"] = scraper.PROFILES[matched[0]]["category"]
+            safe["category"] = scraper.category_for(matched)
+        safe.pop("field_ids", None)
         safe["languages"] = language.detect(job.get("title"), job.get("ad_text"))
-        safe["finnish"] = finnish_for(job, stored)
-        f = fits.get(job["id"])
+        safe["finnish"] = self.finnish(job)
+        safe.update(job_details(job, safe["finnish"]))
+        safe.pop("tags", None)
+        f = self.fits.get(job["id"])
         safe["fit"] = {"suitability": f["suitability"], "method": f["method"],
                        "stale": f["ad_hash"] != fit.content_hash(finnish_text(job)) or
-                                f["cv_hash"] != cv_hashes.get(f["cv_id"])} if f else None
-        safe_jobs.append(enrich(safe, roles))
-    return {"jobs": safe_jobs, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
+                                f["cv_hash"] != self.cv_hashes.get(f["cv_id"])} if f else None
+        return enrich(safe, self.roles)
+
+
+@route("GET", "/api/jobs")
+def api_jobs(h, m):
+    fields = user_fields(h.user)
+    present = JobPresenter(h.user, fields)
+    return {"jobs": [present(job) for job in listed_jobs(h.user, fields)],
+            "latest_check": db.latest_check(SHARED_DATA_OWNER)}
+
+
+# ---------------------------------------------------------------- search (Discover)
+SEARCH_PAGE_SIZE = 25
+SEARCH_SORTS = ("newest", "deadline")
+
+
+def search_filters(query_string):
+    """The filters in a search address (?q=nurse&level=internship,thesis&no_finnish=1&page=2). Unknown
+    values are dropped, so an old or edited link still works."""
+    from urllib.parse import parse_qs
+    raw = parse_qs(query_string or "", keep_blank_values=False)
+    one = lambda key: (raw.get(key) or [""])[0].strip()
+    many = lambda key, allowed: [v for v in dict.fromkeys(",".join(raw.get(key) or []).split(",")) if v in allowed]
+    places = core_places.load()
+    try:
+        page = max(1, min(int(one("page") or 1), 1000))
+    except ValueError:
+        page = 1
+    return {
+        "q": one("q")[:100],
+        # None: no field in the address, so the member's own fields are the default; [] for field=all
+        "field": None if "field" not in raw else ([] if one("field") == "all" else many("field", scraper.TAXONOMY.by_id)),
+        "level": many("level", jobmeta.LEVELS),
+        "type": many("type", jobmeta.EMPLOYMENT_TYPES),
+        "mode": many("mode", jobmeta.WORK_MODES),
+        "sector": many("sector", jobmeta.SECTORS),
+        "region": one("region") if one("region") in places.region_by_code else "",
+        "municipality": one("municipality") if one("municipality") in places.municipality_by_code else "",
+        "no_finnish": one("no_finnish") == "1",
+        "paid": one("paid") == "1",
+        "with_studies": one("with_studies") == "1",
+        "sort": one("sort") if one("sort") in SEARCH_SORTS else "newest",
+        "page": page,
+    }
+
+
+def _search_matches(job, f, tags, finnish_free, text_ids, roles):
+    if f["q"] and job["id"] not in text_ids and not scraper.TAXONOMY.title_matches_roles(job.get("title"), roles):
+        return False
+    if f["field"] and not set(f["field"]) & set(scraper.stored_fields(job) or []):
+        return False
+    for key, column in (("level", "levels"), ("type", "employment_types")):
+        if f[key] and not set(f[key]) & set(tags[column]):
+            return False
+    if f["mode"] and job.get("work_mode") not in f["mode"]:
+        return False
+    if f["sector"] and job.get("employer_sector") not in f["sector"]:
+        return False
+    if f["municipality"] and job.get("municipality_code") != f["municipality"]:
+        return False
+    if f["region"] and job.get("region_code") != f["region"]:
+        return False
+    if f["no_finnish"] and not finnish_free:
+        return False
+    if f["paid"] and job.get("paid") != 1:
+        return False
+    if f["with_studies"] and job.get("combinable_with_studies") != 1:
+        return False
+    return True
+
+
+def _sort_key(sort):
+    if sort == "deadline":      # soonest open deadline first; jobs without one at the end
+        return lambda job: (not job.get("deadline"), job.get("deadline") or "", -job["id"])
+    return lambda job: (job.get("posted") or job.get("first_seen") or "", job["id"])
+
+
+@route("GET", "/api/search")
+def api_search(h, m):
+    """Discover: open jobs in every career field that pass the filters in the address, newest first (or by
+    deadline), a page at a time, with counts of what the results contain (for the filter labels). Without
+    a field in the address the member's chosen fields are the filter (none chosen: every field)."""
+    f = search_filters(urlparse(h.path).query)
+    every_field = scraper.TAXONOMY.field_ids()
+    if f["field"] is None:
+        chosen = user_fields(h.user)
+        f["field"] = [] if set(chosen) >= set(every_field) else chosen
+        f["field_default"] = True
+    present = JobPresenter(h.user, every_field)
+    text_ids = (db.search_text(f["q"]) or set()) if f["q"] else set()
+    roles = scraper.TAXONOMY.roles_for_query(f["q"]) if f["q"] else []
+    results, facets = [], {"level": {}, "type": {}, "mode": {}, "region": {}, "field": {}, "no_finnish": 0, "summer": 0}
+    for job in listed_jobs(h.user, every_field):
+        if job.get("listing_status") == "expired" or job.get("private"):
+            continue                       # Discover lists open shared ads; saved and closed ones are in My jobs
+        tags = db.tags_of(job)
+        finnish_free = job_details(job, present.finnish(job))["finnish_not_required"]
+        if not _search_matches(job, f, tags, finnish_free, text_ids, roles):
+            continue
+        results.append(job)
+        for value in tags["levels"]:
+            facets["level"][value] = facets["level"].get(value, 0) + 1
+        for value in tags["employment_types"]:
+            facets["type"][value] = facets["type"].get(value, 0) + 1
+        if job.get("work_mode"):
+            facets["mode"][job["work_mode"]] = facets["mode"].get(job["work_mode"], 0) + 1
+        if job.get("region_code"):
+            facets["region"][job["region_code"]] = facets["region"].get(job["region_code"], 0) + 1
+        for value in scraper.stored_fields(job) or []:
+            facets["field"][value] = facets["field"].get(value, 0) + 1
+        facets["no_finnish"] += finnish_free
+        facets["summer"] += "summer" in tags["employment_types"]
+    results.sort(key=_sort_key(f["sort"]), reverse=f["sort"] == "newest")
+    pages = max(1, -(-len(results) // SEARCH_PAGE_SIZE))
+    page = min(f["page"], pages)
+    shown = results[(page - 1) * SEARCH_PAGE_SIZE: page * SEARCH_PAGE_SIZE]
+    return {"jobs": [present(job) for job in shown], "total": len(results), "page": page, "pages": pages,
+            "filters": {"field_default": False, **f, "page": page}, "facets": facets, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
 
 
 PREVIEW_LIMIT_PER_USER = 60     # job pages read per member per hour ("Read this link")
@@ -643,7 +799,7 @@ def api_preview_job(h, m):
         return {"readable": False, "url": url, "reason": "No job title was found on that page. Fill it in yourself."}
     matched = scraper.relevant_fields({**found, "source": "Community"})
     return {"readable": True, "url": url, **found,
-            "category": scraper.PROFILES[matched[0]]["category"] if matched else ""}
+            "category": scraper.category_for(matched) if matched else ""}
 
 
 @route("POST", "/api/jobs")
@@ -668,9 +824,9 @@ def api_add_job(h, m):
     matched = scraper.relevant_fields({**body, "source": "Community"}, member_fields)
     share = body.get("share") is True
     if share and not matched:
-        labels = " or ".join(scraper.PROFILES[i]["label_en"].lower() for i in member_fields)
+        labels = " or ".join(scraper.TAXONOMY.name(i).lower() for i in member_fields)
         return h.error(400, f"Only {labels} opportunities can be shared here. "
-                            "You can still save it for yourself, or choose more fields on the Account page.")
+                            "You can still save it for yourself, or choose more fields under Profile.")
     existing = find_saved_url(h.user, url) if url else None
     if existing and not existing.get("private"):
         # Already a shared listing (or shared by someone else): save that one instead of making a copy
@@ -682,7 +838,7 @@ def api_add_job(h, m):
     fields = {key: body.get(key, "").strip() for key in text_fields}
     fields.update(url=url, title=title)
     matched_any = matched or scraper.relevant_fields({**body, "source": "Community"})
-    fields["category"] = scraper.PROFILES[matched_any[0]]["category"] if matched_any else "Other"
+    fields["category"] = scraper.category_for(matched_any)
     if share:      # shared with members in the same field (the old community listings)
         fields.update(source="Community", external_id=external, private=False)
     else:          # the default: a job this member collects for themselves; nobody else sees it
@@ -691,7 +847,8 @@ def api_add_job(h, m):
             fields.update(source=existing["source"], external_id=existing["external_id"])
     fields["contact_name"] = ""
     fields["contact_phone"] = ""
-    job_id = db.add_manual(fields, h.user["id"])
+    job_id = db.add_manual(fields, h.user["id"], field_ids=scraper.classify_job(
+        {**fields, "source": "Community"}, "general", ()), meta=scraper.job_meta(fields))
     if not (existing or {}).get("status"):
         db.set_status(job_id, "Saved", {}, h.user["id"])     # it appears under Saved in My jobs and the Tracker
     return {"id": job_id, "existing": bool(existing)}
@@ -743,52 +900,20 @@ def api_job_status(h, m):
     return {"application_id": app_id}
 
 
-@route("GET", "/api/account/profile")
-def api_account_profile(h, m):
-    user = db.get_user(h.user["id"])
-    return {"preferences": json.loads(user["preferences_json"] or "{}")}
-
-
-@route("POST", "/api/account/profile")
-def api_update_account_profile(h, m):
-    body = h.json()
-    if not isinstance(body, dict):
-        return h.error(400, "Choose valid audiences, topics and a location.")
-    audiences = body.get("audiences")
-    topics = body.get("topics")
-    region = body.get("region")
-    allowed_audiences = {"student", "researcher", "owner", "professional", "exploring"}
-    allowed_topics = {"bioeconomy", "management", "research", "data", "nature", "materials", "policy"}
-    if (not isinstance(audiences, list) or not all(isinstance(item, str) and item in allowed_audiences
-                                                    for item in audiences) or
-            not isinstance(topics, list) or not all(isinstance(item, str) and item in allowed_topics
-                                                     for item in topics) or
-            not isinstance(region, str) or region not in {"anywhere", "finland", "north-karelia"}):
-        return h.error(400, "Choose valid audiences, topics and a location.")
-    preferences = {
-        **user_preferences(h.user),      # keep fields, Finnish level and anything else already saved
-        "audiences": list(dict.fromkeys(audiences)),
-        "topics": list(dict.fromkeys(topics)),
-        "region": region,
-    }
-    db.update_user_preferences(h.user["id"], preferences)
-    return {"preferences": preferences}
-
-
 @route("POST", "/api/account/fields")
 def api_update_account_fields(h, m):
-    """The member's fields (forestry, IT, ...) and their own Finnish level, used for jobs, Match,
+    """The member's career fields (taxonomy/fields.json) and their own Finnish level, used for jobs, Match,
     What to study and the shortlist order."""
     body = h.json()
     if not isinstance(body, dict):
         return h.error(400, "Choose at least one field and your Finnish level.")
     fields, level = body.get("fields"), body.get("finnish_level")
     if (not isinstance(fields, list) or not fields
-            or not all(isinstance(i, str) and i in scraper.PROFILES for i in fields)):
+            or not all(isinstance(i, str) and i in scraper.TAXONOMY.by_id for i in fields)):
         return h.error(400, "Choose at least one field.")
     if level not in FINNISH_LEVELS:
         return h.error(400, "Choose your Finnish level.")
-    preferences = {**user_preferences(h.user), "fields": [i for i in scraper.PROFILES if i in fields],
+    preferences = {**user_preferences(h.user), "fields": [i for i in scraper.TAXONOMY.field_ids() if i in fields],
                    "finnish_level": level}
     db.update_user_preferences(h.user["id"], preferences)
     return {"fields": preferences["fields"], "finnish_level": level}
@@ -1381,7 +1506,7 @@ def tracker_view(a):
 
 @route("GET", "/api/applications")
 def api_applications(h, m):
-    safe = [safe_application(application) for application in forestry_applications(h.user)]
+    safe = [safe_application(application) for application in visible_applications(h.user)]
     return {"applications": [tracker_view(a) for a in safe],
             "statuses": db.STATUSES}
 
@@ -1389,10 +1514,10 @@ def api_applications(h, m):
 @route("POST", r"/api/applications/(\d+)")
 def api_update_application(h, m):
     application_id = int(m.group(1))
-    application = next((item for item in forestry_applications(h.user)
+    application = next((item for item in visible_applications(h.user)
                         if item["id"] == application_id), None)
     if not application:
-        return h.error(404, "No such forestry application.")
+        return h.error(404, "No such application.")
     body = h.json()
     if not isinstance(body, dict):
         return h.error(400, "Application updates must be an object.")
@@ -1405,7 +1530,7 @@ def api_update_application(h, m):
 
 @route("GET", "/api/calendar.ics")
 def api_calendar(h, m):
-    applications = [safe_application(item) for item in forestry_applications(h.user)]
+    applications = [safe_application(item) for item in visible_applications(h.user)]
     return (ics.build(applications), "text/calendar; charset=utf-8",
             {"Content-Disposition": 'attachment; filename="jobdesk.ics"'})
 
@@ -1614,7 +1739,11 @@ def _skills_analysis(user):
     jobs = [{**job, "personal": is_personal(job)}
             for job in db.list_jobs(user["id"]) if can_see(job, user, fields=fields)]
     cvs = db.list_cvs(user["id"])
-    return skills.analyse(jobs, cvs, [scraper.PROFILES[i] for i in fields]), cvs
+    # Skills come from the keyword profiles of the member's fields that have one (fields/*.json); with none of
+    # those chosen, every profile is used so the page still lists common skills.
+    profiles = [scraper.PROFILES[scraper.TAXONOMY.by_id[i]["profile"]] for i in fields
+                if scraper.TAXONOMY.by_id[i].get("profile") in scraper.PROFILES]
+    return skills.analyse(jobs, cvs, profiles or list(scraper.PROFILES.values())), cvs
 
 
 @route("GET", "/api/skills")
@@ -1636,41 +1765,6 @@ def api_skills_draft(h, m):
     return {"cv": {**draft, "role_id": role["id"]}}
 
 
-# ---------------------------------------------------------------- forestry news
-
-@route("GET", "/api/news")
-def api_news(h, m):
-    states = {state["source_id"]: state for state in db.list_news_source_state(SHARED_DATA_OWNER)}
-    sources = [{**source, "state": states.get(source["id"])} for source in news.SOURCES]
-    stories = [{**item,
-                "languages": language.detect(item.get("title"), item.get("summary")),
-                "why_it_matters": news.story_context(item["category"]),
-                "career_angle": news.career_context(item["category"])}
-               for item in db.list_news(h.user["id"])]
-    return {"items": stories, "sources": sources}
-
-
-NEWS_REFRESH_LOCK = threading.Lock()
-
-
-@route("POST", "/api/news/refresh")
-def api_news_refresh(h, m):
-    with NEWS_REFRESH_LOCK:
-        return news.refresh(SHARED_DATA_OWNER)
-
-
-@route("POST", r"/api/news/(\d+)/state")
-def api_news_state(h, m):
-    body = h.json()
-    if not isinstance(body, dict):
-        return h.error(400, "News state must be an object.")
-    try:
-        db.update_news_state(int(m.group(1)), body, h.user["id"])
-    except ValueError as err:
-        return h.error(400, str(err))
-    return {"ok": True}
-
-
 # ---------------------------------------------------------------- scraper (runs in the background)
 
 SCRAPE = {"running": False, "message": "", "done": 0, "total": 0, "result": None}
@@ -1681,9 +1775,26 @@ def _scrape_thread():
     def progress(msg, done, total):
         SCRAPE.update(message=msg, done=done, total=total)
     try:
-        SCRAPE["result"] = scraper.run(progress, user_id=SHARED_DATA_OWNER, personal=True)
+        SCRAPE["result"] = scraper.run_exclusive(progress, user_id=SHARED_DATA_OWNER)
     finally:
         SCRAPE["running"] = False
+
+
+def scheduled_job_check():
+    """One job check for the systemd timer (deploy/systemd/jobdesk-jobs.timer). Exit code 0 when it ran or
+    another check was already running; 1 when the check failed."""
+    def progress(msg, done, total):
+        print(f"  [{done}/{total}] {msg}", flush=True)
+    result = scraper.run_exclusive(progress, user_id=SHARED_DATA_OWNER)
+    error = result.get("error")
+    if error == scraper.CHECK_BUSY:
+        print(f"Job check skipped: {error}")
+        return 0
+    print(f"Job check finished: {result['found']} jobs, {result['new']} new" + (f" (error: {error})" if error else ""))
+    purged = db.purge_submissions(date.today().isoformat())
+    if purged:
+        print(f"Deleted {purged} decided employer submissions older than {db.SUBMISSION_KEEP_DAYS} days")
+    return 1 if error else 0
 
 
 @route("POST", "/api/scrape")
@@ -1779,6 +1890,209 @@ def api_classify_status(h, m):
     return {**CLASSIFY.copy(), "waiting": len(classification_queue())}
 
 
+# ---------------------------------------------------------------- employers: post a job (public form)
+# Employers don't need an account. A submission waits for an administrator; approved ads are listed as
+# source "Employer" for members in the chosen fields, until their deadline (default 60 days after approval).
+SUBMIT_LIMIT_PER_IP = 5            # submissions per network address per hour
+SUBMIT_LIMIT_PER_EMAIL = 5
+EMPLOYER_LISTING_DAYS = 60
+DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _text(body, key, limit, required=False, name=None):
+    value = body.get(key, "")
+    if value is None:
+        value = ""
+    if not isinstance(value, str):
+        raise ValueError(f"{name or key} must be text.")
+    value = value.strip()
+    if required and not value:
+        raise ValueError(f"Enter {name or key}.")
+    if len(value) > limit:
+        raise ValueError(f"{(name or key).capitalize()} can be at most {limit:,} characters.")
+    return value
+
+
+def _choices(body, key, allowed, name, most=None):
+    value = body.get(key) or []
+    if not isinstance(value, list) or not all(isinstance(v, str) and v in allowed for v in value):
+        raise ValueError(f"Choose {name} from the list.")
+    value = list(dict.fromkeys(value))
+    if most and len(value) > most:
+        raise ValueError(f"Choose at most {most} {name}.")
+    return value
+
+
+def _one_of(body, key, allowed, name):
+    value = body.get(key) or ""
+    if value not in allowed and value != "":
+        raise ValueError(f"Choose {name} from the list.")
+    return value
+
+
+def _number(body, key, name, low, high, integer=False):
+    value = body.get(key)
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+        raise ValueError(f"{name} must be a number from {low} to {high}.")
+    return int(value) if integer else value
+
+
+def _flag(body, key):
+    value = body.get(key)
+    if value in (None, ""):
+        return None
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be yes or no.")
+    return 1 if value else 0
+
+
+def validate_submission(body, today=None):
+    """The employer form, checked. Returns (employer, contact_name, contact_email, ad) or raises ValueError."""
+    if not isinstance(body, dict):
+        raise ValueError("Fill in the form.")
+    today = today or date.today()
+    employer = _text(body, "employer", 120, True, "the employer's name")
+    contact_name = _text(body, "contact_name", 100, False, "your name")
+    contact_email = _text(body, "contact_email", 254, True, "an email address").lower()
+    if not EMAIL_RE.fullmatch(contact_email):
+        raise ValueError("Enter a valid email address.")
+    ad = {
+        "title": _text(body, "title", 150, True, "the job title"),
+        "description": _text(body, "description", 20_000, True, "the job description"),
+        "apply_url": _text(body, "apply_url", 500, True, "the address where people apply"),
+        "municipality_code": _one_of(body, "municipality_code", core_places.load().municipality_by_code, "the town"),
+        "work_mode": _one_of(body, "work_mode", jobmeta.WORK_MODES, "the work mode"),
+        "fields": _choices(body, "fields", scraper.TAXONOMY.by_id, "career fields", most=3),
+        "levels": _choices(body, "levels", jobmeta.LEVELS, "levels"),
+        "employment_types": _choices(body, "employment_types", jobmeta.EMPLOYMENT_TYPES, "types of employment"),
+        "permits": _choices(body, "permits", jobmeta.PERMITS, "work permit notes"),
+        "deadline": _text(body, "deadline", 10),
+        "start_date": _text(body, "start_date", 10),
+        "salary_min": _number(body, "salary_min", "The lowest pay", 1, 500_000),
+        "salary_max": _number(body, "salary_max", "The highest pay", 1, 500_000),
+        "salary_period": _one_of(body, "salary_period", ("hour", "month", "year"), "the pay period"),
+        "tes": _text(body, "tes", 80),
+        "lang_fi": _one_of(body, "lang_fi", ("required", "preferred", "not_needed"), "the Finnish requirement"),
+        "lang_sv": _one_of(body, "lang_sv", ("required", "preferred", "not_needed"), "the Swedish requirement"),
+        "lang_en": _one_of(body, "lang_en", ("required", "preferred", "not_needed"), "the English requirement"),
+        "paid": _flag(body, "paid"),
+        "internship_credits": _number(body, "internship_credits", "Study credits", 1, 60, integer=True),
+        "combinable_with_studies": _flag(body, "combinable_with_studies"),
+        "employer_sector": _one_of(body, "employer_sector", jobmeta.SECTORS, "the sector"),
+    }
+    if not ad["fields"]:
+        raise ValueError("Choose at least one career field.")
+    if len(ad["description"]) < 80:
+        raise ValueError("Describe the job in at least 80 characters.")
+    if not re.match(r"https?://", ad["apply_url"]) and not EMAIL_RE.fullmatch(ad["apply_url"]):
+        raise ValueError("Give a web address (https://…) or an email address for applications.")
+    if ad["deadline"]:
+        if not DATE_RE.fullmatch(ad["deadline"]):
+            raise ValueError("Give the deadline as a date.")
+        deadline = date.fromisoformat(ad["deadline"])
+        if not today <= deadline <= today + timedelta(days=365):
+            raise ValueError("The deadline must be within the next 12 months.")
+    if ad["start_date"] and ad["start_date"] != "asap" and not DATE_RE.fullmatch(ad["start_date"]):
+        raise ValueError("Give the start date as a date, or choose 'as soon as possible'.")
+    if (ad["salary_min"] or ad["salary_max"]) and not ad["salary_period"]:
+        raise ValueError("Say whether the pay is per hour, month or year.")
+    if ad["salary_min"] and ad["salary_max"] and ad["salary_max"] < ad["salary_min"]:
+        raise ValueError("The highest pay can't be lower than the lowest.")
+    if body.get("consent") is not True:
+        raise ValueError("Confirm that you may publish this ad and that it follows the law on equal treatment.")
+    return employer, contact_name, contact_email, ad
+
+
+@route("GET", "/api/employers/options")
+def api_employer_options(h, m):
+    """The choices on the public employer form."""
+    places = core_places.load()
+    return {
+        "fields": [{"id": f["id"], "en": f["en"], "fi": f["fi"]} for f in scraper.TAXONOMY.fields],
+        "regions": places.regions,
+        "municipalities": [{"code": p["code"], "fi": p["fi"], "sv": p["sv"], "region": p["region"]}
+                           for p in sorted(places.municipalities, key=lambda p: p["fi"])],
+        "levels": list(jobmeta.LEVELS), "employment_types": list(jobmeta.EMPLOYMENT_TYPES),
+        "work_modes": list(jobmeta.WORK_MODES), "permits": list(jobmeta.PERMITS), "sectors": list(jobmeta.SECTORS),
+    }
+
+
+@route("POST", "/api/employers/jobs")
+def api_employer_submit(h, m):
+    body = h.json()
+    if isinstance(body, dict) and body.get("website"):      # a field people don't see; bots fill it in
+        return {"ok": True, "message": "Thank you. We'll review the ad and email you when it is published."}
+    try:
+        employer, contact_name, contact_email, ad = validate_submission(body)
+    except ValueError as error:
+        return h.error(400, str(error))
+    if not _allowed("submit-ip:" + client_ip(h), SUBMIT_LIMIT_PER_IP) or \
+            not _allowed("submit-email:" + contact_email, SUBMIT_LIMIT_PER_EMAIL):
+        return h.error(429, "Too many ads sent in the last hour. Try again later.")
+    db.add_submission(employer, contact_name, contact_email, ad)
+    return {"ok": True, "message": "Thank you. We'll review the ad and email you when it is published."}
+
+
+def _admin_only(h):
+    return None if h.user["is_admin"] else h.error(403, "Administrator access is required.")
+
+
+@route("GET", "/api/admin/submissions")
+def api_submissions(h, m):
+    denied = _admin_only(h)
+    if denied:
+        return denied
+    places = core_places.load()
+    items = db.list_submissions()
+    for item in items:
+        item["data"]["municipality"] = places.name(item["data"].get("municipality_code") or "")
+    return {"submissions": items, "keep_days": db.SUBMISSION_KEEP_DAYS}
+
+
+def publish_submission(submission, today=None):
+    """Create the shared job for an approved submission and return its id. The employer's own answers
+    win; what they left blank is read from the description, as for any other ad."""
+    today = today or date.today()
+    ad = submission["data"]
+    places = core_places.load()
+    location = places.name(ad.get("municipality_code") or "") or ("Remote" if ad.get("work_mode") == "remote" else "")
+    job = {"source": "Employer", "external_id": f"employer-{submission['id']}", "url": ad["apply_url"]
+           if ad["apply_url"].startswith("http") else "", "title": ad["title"], "company": submission["employer"],
+           "location": location, "posted": today.isoformat(),
+           "deadline": ad.get("deadline") or (today + timedelta(days=EMPLOYER_LISTING_DAYS)).isoformat(),
+           "category": scraper.category_for(ad["fields"]), "private": False,
+           "ad_text": ad["description"] + ("" if ad["apply_url"].startswith("http")
+                                           else f"\n\nApply by email: {ad['apply_url']}")}
+    meta = scraper.job_meta({**job, "source": "Employer"})
+    for key, value in ad.items():
+        if key in db.META_COLUMNS or key in db.TAG_KINDS:
+            if value not in (None, "", []):
+                meta[key] = value
+    if ad.get("municipality_code"):
+        meta["region_code"] = places.region_of(ad["municipality_code"])
+    return db.add_manual(job, SHARED_DATA_OWNER, field_ids=ad["fields"], meta=meta)
+
+
+@route("POST", r"/api/admin/submissions/(\d+)")
+def api_decide_submission(h, m):
+    denied = _admin_only(h)
+    if denied:
+        return denied
+    body = h.json()
+    decision = body.get("decision") if isinstance(body, dict) else None
+    note = body.get("note", "") if isinstance(body, dict) else ""
+    if decision not in ("approve", "reject") or not isinstance(note, str) or len(note) > 500:
+        return h.error(400, "Choose approve or reject (and a note of up to 500 characters).")
+    submission = db.get_submission(int(m.group(1)))
+    if submission["status"] != "pending":
+        return h.error(409, "This ad has already been decided.")
+    job_id = publish_submission(submission) if decision == "approve" else None
+    db.decide_submission(submission["id"], decision == "approve", h.user["id"], note.strip(), job_id)
+    return {"ok": True, "job_id": job_id}
+
+
 # ---------------------------------------------------------------- HTTP plumbing
 
 class Handler(BaseHTTPRequestHandler):
@@ -1831,7 +2145,7 @@ class Handler(BaseHTTPRequestHandler):
             self.session_token = morsel.value if morsel else ""
             self.user = auth.session_user(self.session_token)
             public_auth = {"/api/auth/me", "/api/auth/config", "/api/auth/link", "/api/auth/verify"}
-            if path not in public_auth and not self.user:
+            if path not in public_auth and not path.startswith("/api/employers/") and not self.user:
                 return self.send(401, {"error": "Sign in to continue."})
         for meth, pattern, fn in ROUTES:
             mt = pattern.match(path)
@@ -1885,7 +2199,7 @@ def unrelated_jobs():
 
 
 def prune_unrelated_jobs(apply=False):
-    """List non-forestry jobs; with apply=True back up the database and delete them."""
+    """List jobs that belong to no career field; with apply=True back up the database and delete them."""
     jobs = unrelated_jobs()
     by_hand = [job for job in jobs if job["manual"]]
     tracked = [job for job in jobs if job["applications"]]
@@ -1963,6 +2277,8 @@ def main():
     if "--prune-unrelated-jobs" in sys.argv:
         prune_unrelated_jobs(apply="--apply" in sys.argv)
         return
+    if "--check-jobs" in sys.argv:          # run by deploy/systemd/jobdesk-jobs.timer
+        raise SystemExit(scheduled_job_check())
     imported_cvs = cv_import.import_admin_cv_repo()
     if imported_cvs:
         print(f"Imported {imported_cvs} existing CVs to the administrator account.")

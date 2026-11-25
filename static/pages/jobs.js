@@ -473,5 +473,5 @@ async function renderJobs(main, query, mode) {
   if (classifyBtn) pollClassify();
 }
 
-register({ id: "jobs", title: "Jobs", render: (main, query) => renderJobs(main, query, "discover") });
+// Discover (id "jobs") is pages/discover.js, which searches on the server; this page lists the member's own jobs
 register({ id: "myjobs", title: "Saved jobs", render: (main, query) => renderJobs(main, query, "mine") });

@@ -13,15 +13,13 @@ JOBDESK_OWNER_DIR         the administrator's private folder (default: owner/ in
 JOBDESK_PREP_DIR          prep templates (default: <owner dir>/prep when it exists, else prep/ in this repo)
 JOBDESK_CV_TEMPLATE_OWNER the name written in the shared LaTeX template's footer. Member PDFs replace
                           it with the member's own name; when unset, member PDFs are not built.
-JOBDESK_DEFAULT_FIELDS    fields for members who haven't chosen any (default forestry)
-JOBDESK_ENABLE_SOURCES    job sources that are off in sources.json to read anyway, e.g. "jobly" once the site has
+JOBDESK_DEFAULT_FIELDS    fields for members who haven't chosen any: "all" (default) or field ids
+JOBDESK_ENABLE_SOURCES    job sources that are off in sources.json to read anyway, e.g. "uef" once the site has
                           given written permission (default: none)
 JOBDESK_OPEN_SIGNUP       1 (default): anyone can create an account with their email; 0: invitation codes only
 JOBDESK_PUBLIC_URL        the site's address, used in sign-in links (default http://localhost:8765)
 JOBDESK_EMAIL_BACKEND     log (default, development), smtp or memory; see mailer.py
 JOBDESK_AI_DAILY_LIMIT    AI checks per member per day on the Shortlist page (default 200)
-JOBDESK_ENABLE_DUUNITORI  1 to read Duunitori search pages (default 0: its robots.txt disallows
-                          generic crawlers, and the robots.txt check would skip it anyway).
 """
 
 import os
@@ -44,11 +42,11 @@ PREP_DIR = Path(os.environ.get("JOBDESK_PREP_DIR")
 CV_TEMPLATE_OWNER = os.environ.get("JOBDESK_CV_TEMPLATE_OWNER", "").strip()
 FIELDS_DIR = APP / "fields"                 # field profiles (forestry, IT, ...): JSON, see core/fields.py
 SOURCES_FILE = APP / "sources.json"         # job sources, their fields and robots.txt/terms notes
-# Fields for members who haven't chosen yet (comma-separated ids; the pilot asks everyone on first login)
-DEFAULT_FIELDS = [f.strip() for f in os.environ.get("JOBDESK_DEFAULT_FIELDS", "forestry").split(",") if f.strip()]
-ENABLE_DUUNITORI = os.environ.get("JOBDESK_ENABLE_DUUNITORI", "0") == "1"
+TAXONOMY_DIR = APP / "taxonomy"             # career fields and roles (JSON, ISCO-08 based): see core/taxonomy.py
+# Fields for members who haven't chosen any: "all" (default) or comma-separated field ids
+DEFAULT_FIELDS = [f.strip() for f in os.environ.get("JOBDESK_DEFAULT_FIELDS", "all").split(",") if f.strip()]
 # Job sources that are off in sources.json (their terms forbid automated reuse, or haven't been checked) and that
-# this copy may read anyway, e.g. after written permission from the site: comma-separated source ids ("jobly,uef")
+# this copy may read anyway, e.g. after written permission from the site: comma-separated source ids ("uef,metsakeskus")
 ENABLE_SOURCES = {s.strip() for s in os.environ.get("JOBDESK_ENABLE_SOURCES", "").split(",") if s.strip()}
 # Sign-up: anyone with an email address (1, default), or invitation codes only (0, e.g. for a closed pilot)
 OPEN_SIGNUP = os.environ.get("JOBDESK_OPEN_SIGNUP", "1") == "1"

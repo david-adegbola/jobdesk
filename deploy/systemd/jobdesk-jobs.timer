@@ -1,0 +1,12 @@
+[Unit]
+Description=JobDesk: read the job feeds twice a day
+
+[Timer]
+# 06:00 and 15:00 Finnish time; the random delay spreads requests to the sources a little
+OnCalendar=*-*-* 06:00:00 Europe/Helsinki
+OnCalendar=*-*-* 15:00:00 Europe/Helsinki
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

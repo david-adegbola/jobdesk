@@ -1,12 +1,11 @@
 // JobDesk entry point: load the pages (each registers itself, in nav order), then start.
 import { start } from "./core.js";
 import "./pages/dashboard.js";
-import "./pages/home.js";
+import "./pages/discover.js";
 import "./pages/jobs.js";
 import "./pages/prepare.js";
 import "./pages/shortlist.js";
 import "./pages/draft.js";
-import "./pages/news.js";
 import "./pages/tracker.js";
 import "./pages/study.js";
 import "./pages/cvs.js";
