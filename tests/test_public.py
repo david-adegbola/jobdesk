@@ -32,6 +32,7 @@ class PublicPageTests(unittest.TestCase):
         self.add("Valtiolle", "summer", "Kesätyöntekijä, kirjasto", "Helsingin kaupunki", "Helsinki", "Kesätyö.")
         self.add("Valtiolle", "closed", "Kirjanpitäjä", "Verovirasto", "Helsinki", "Taloushallinto.")
         self.add("Työmarkkinatori", "tmt", "Lähihoitaja", "Hyvinvointialue", "Tampere", "Hoitotyö.")
+        self.add("Stora Enso", "off", "Myyntiassistentti", "Stora Enso", "Helsinki", "Switched-off source.")
         with db.connect() as conn:
             conn.execute("UPDATE jobs SET listing_status='expired' WHERE external_id='closed'")
             conn.execute("UPDATE jobs SET contact_name='Maija Rekrytoija', contact_phone='040 123 4567' WHERE external_id='nurse'")
@@ -63,9 +64,9 @@ class PublicPageTests(unittest.TestCase):
         self.assertEqual((status, headers["X-Robots-Tag"]), (200, "index, follow"))
         for title in ("Sairaanhoitaja", "Junior Software Developer", "Kesätyöntekijä, kirjasto", "Barista"):
             self.assertIn(title, body)
-        for title in ("Kirjanpitäjä", "Lähihoitaja", "Oma tallennettu työ", "Jaettu ilmoitus", "Asentaja"):
+        for title in ("Kirjanpitäjä", "Lähihoitaja", "Oma tallennettu työ", "Jaettu ilmoitus", "Asentaja", "Myyntiassistentti"):
             self.assertNotIn(title, body, title)
-        for key in ("private", "community", "personal", "tmt"):
+        for key in ("private", "community", "personal", "tmt", "off"):
             self.assertEqual(self.get(f"/job/{self.ids[key]}")[0], 404, key)
         sitemap = self.get("/sitemap.xml")[1]
         self.assertIn(f"/job/{self.ids['dev']}-junior-software-developer", sitemap)

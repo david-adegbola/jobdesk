@@ -110,7 +110,8 @@ def is_public(job, include_closed=False):
     if job.get("source") in PUBLIC_EXTRA_SOURCES:
         return True
     source = scraper.SOURCE_BY_NAME.get(job.get("source") or "")
-    return bool(source) and source.get("public_pages", True) is True
+    # Only sources that are switched on (their terms checked) and don't opt out of public pages
+    return bool(source) and scraper._enabled(source) and source.get("public_pages", True) is True
 
 
 def public_jobs():
