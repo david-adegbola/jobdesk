@@ -1595,7 +1595,31 @@ def api_document_letter(h, m):
 FOLLOW_UP_DAYS = 5
 
 
-def tracker_view(a):
+def card_facts(a, fit_result=None):
+    """What a Tracker card shows besides the stored fields: the Finnish town (and whether the posting also names
+    other towns or places abroad), the deadline state, and the CV comparison's rating when there is a current one
+    (never the keyword score, which saturates at 100 for long ads)."""
+    places = core_places.load()
+    codes, elsewhere = places.towns(a.get("location") or "")
+    days_left = None
+    if a.get("deadline"):
+        try:
+            days_left = (date.fromisoformat(a["deadline"][:10]) - date.today()).days
+        except ValueError:
+            pass
+    return {
+        "town": places.name(codes[0]) if codes else "",
+        "other_towns": len(codes) - 1 if codes else 0,
+        "abroad": elsewhere and bool(codes),
+        "place_text": "" if codes else (a.get("location") or ""),
+        "days_left": days_left,
+        "closed": days_left is not None and days_left < 0,
+        "closing_soon": days_left is not None and 0 <= days_left <= 3,
+        "rating": fit_result["suitability"] if fit_result and not fit_result.get("stale") else "",
+    }
+
+
+def tracker_view(a, fit_result=None):
     today = date.today()
     contact = a["contact"] or ""
     overdue = bool(a["next_action_date"]) and a["next_action_date"] < today.isoformat() and a["status"] not in ("Rejected", "Offer")
@@ -1607,14 +1631,61 @@ def tracker_view(a):
             idle = 0
         if idle >= FOLLOW_UP_DAYS:
             follow_up = f"No news for {idle} days. Call {contact}" if contact else f"No news for {idle} days. Follow up."
-    return {**a, "contact_display": contact, "overdue": overdue, "follow_up": follow_up}
+    return {**a, "contact_display": contact, "overdue": overdue, "follow_up": follow_up, **card_facts(a, fit_result)}
+
+
+TRACKER_DEFAULTS = {"collapsed": [], "expanded": [], "density": "comfortable", "sort": "deadline", "hide_closed": False}
+
+
+def tracker_preferences(user):
+    saved = user_preferences(user).get("tracker") or {}
+    return {**TRACKER_DEFAULTS, **{k: v for k, v in saved.items() if k in TRACKER_DEFAULTS}}
 
 
 @route("GET", "/api/applications")
 def api_applications(h, m):
-    safe = [safe_application(application) for application in visible_applications(h.user)]
-    return {"applications": [tracker_view(a) for a in safe],
-            "statuses": db.STATUSES}
+    present = JobPresenter(h.user)
+    applications = []
+    for application in visible_applications(h.user):
+        fit_result = None
+        f = present.fits.get(application["job_id"])
+        if f:
+            stale = (f["ad_hash"] != fit.content_hash(finnish_text(application))
+                     or f["cv_hash"] != present.cv_hashes.get(f["cv_id"]))
+            fit_result = {"suitability": f["suitability"], "stale": stale}
+        applications.append(tracker_view(safe_application(application), fit_result))
+    return {"applications": applications, "statuses": db.STATUSES, "preferences": tracker_preferences(h.user)}
+
+
+@route("POST", "/api/account/tracker")
+def api_tracker_preferences(h, m):
+    """The Tracker's look, kept per member: stages folded or opened, card density, sort, hiding closed ads."""
+    body = h.json()
+    if not isinstance(body, dict):
+        return h.error(400, "Send the settings as an object.")
+    current = tracker_preferences(h.user)
+    for key in ("collapsed", "expanded"):
+        if key in body:
+            value = body[key]
+            if not isinstance(value, list) or not all(v in db.STATUSES for v in value):
+                return h.error(400, f"{key} must list stages.")
+            current[key] = list(dict.fromkeys(value))
+    if "density" in body:
+        if body["density"] not in ("comfortable", "compact"):
+            return h.error(400, "density is comfortable or compact.")
+        current["density"] = body["density"]
+    if "sort" in body:
+        if body["sort"] not in ("deadline", "added", "match"):
+            return h.error(400, "sort is deadline, added or match.")
+        current["sort"] = body["sort"]
+    if "hide_closed" in body:
+        if not isinstance(body["hide_closed"], bool):
+            return h.error(400, "hide_closed must be true or false.")
+        current["hide_closed"] = body["hide_closed"]
+    preferences = user_preferences(h.user)
+    preferences["tracker"] = current
+    db.update_user_preferences(h.user["id"], preferences)
+    return {"ok": True, "preferences": current}
 
 
 @route("POST", r"/api/applications/(\d+)")

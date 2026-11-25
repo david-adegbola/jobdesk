@@ -78,6 +78,20 @@ class Places:
                     return code, self.region_of(code)
         return "", ""
 
+    def towns(self, location):
+        """(Finnish municipality codes named, in order; True when some part names no Finnish place, e.g. a
+        posting that also lists 'West Perth WA 6005, Australia')."""
+        codes, elsewhere = [], False
+        for part in _SPLIT.split(location or ""):
+            if not part.strip():
+                continue
+            municipality, region = self._lookup(part)
+            if municipality and municipality not in codes:
+                codes.append(municipality)
+            elif not municipality and not region and part.strip().lower() not in ("finland", "suomi", "remote", "etätyö"):
+                elsewhere = True
+        return codes, elsewhere
+
     def match(self, location):
         first_region = ""
         for part in _SPLIT.split(location or ""):
