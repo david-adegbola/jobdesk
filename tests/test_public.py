@@ -2,6 +2,7 @@ import json
 import re
 import unittest
 from datetime import date, timedelta
+from unittest.mock import patch
 
 import db
 import public
@@ -18,6 +19,9 @@ class PublicPageTests(unittest.TestCase):
 
     def setUp(self):
         self.setUp_server()
+        indexing = patch.object(public.config, "PUBLIC_INDEXING", True)      # the default is off
+        indexing.start()
+        self.addCleanup(indexing.stop)
         self.check = db.start_check(1)
         self.ids = {}
         long_text = "Hoitotyötä sisätautiosastolla. " * 60
@@ -139,6 +143,15 @@ class PublicPageTests(unittest.TestCase):
         css = self.get("/static/fonts/fonts.css")[1]
         for name in re.findall(r"url\(([^)]+)\)", css):
             self.assertEqual(self.request("GET", f"/static/fonts/{name}", headers={"Cookie": ""})[0], 200, name)
+
+    def test_until_indexing_is_switched_on_nothing_is_indexed(self):
+        with patch.object(public.config, "PUBLIC_INDEXING", False):
+            for path in ("/jobs", "/jobs/summer", f"/job/{self.ids['dev']}", "/employers.html"):
+                status, body, headers = self.get(path)
+                self.assertEqual((status, headers["X-Robots-Tag"]), (200, "noindex, nofollow"), path)
+                if path != "/employers.html":
+                    self.assertIn('<meta name="robots" content="noindex, nofollow">', body)
+            self.assertEqual(self.get("/robots.txt")[1], "User-agent: *\nDisallow: /\n")
 
     def test_the_rest_of_the_site_stays_out_of_search_engines(self):
         _, _, headers = self.request("GET", "/api/state", include_headers=True)

@@ -48,6 +48,9 @@ DEFAULT_FIELDS = [f.strip() for f in os.environ.get("JOBDESK_DEFAULT_FIELDS", "a
 # Job sources that are off in sources.json (their terms forbid automated reuse, or haven't been checked) and that
 # this copy may read anyway, e.g. after written permission from the site: comma-separated source ids ("uef,metsakeskus")
 ENABLE_SOURCES = {s.strip() for s in os.environ.get("JOBDESK_ENABLE_SOURCES", "").split(",") if s.strip()}
+# Public pages: 1 lets search engines index them (default 0: the pages work, but every page says noindex and
+# robots.txt disallows everything; turn on once the public privacy notice is published)
+PUBLIC_INDEXING = os.environ.get("JOBDESK_PUBLIC_INDEXING", "0") == "1"
 # Public pages: 1 shows the reserved advert spaces (empty; no ad code is loaded until a consent tool is chosen)
 AD_SLOTS = os.environ.get("JOBDESK_AD_SLOTS", "0") == "1"
 # Sign-up: anyone with an email address (1, default), or invitation codes only (0, e.g. for a closed pilot)

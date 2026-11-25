@@ -39,6 +39,11 @@ PUBLIC_EXTRA_SOURCES = {"Employer", "Demo"}       # not in sources.json; Demo on
 INDEX = "index, follow"
 NOINDEX = "noindex, follow"
 
+
+def indexable():
+    """What a page that may be indexed says: index, unless JOBDESK_PUBLIC_INDEXING is off (the default)."""
+    return INDEX if config.PUBLIC_INDEXING else "noindex, nofollow"
+
 LEVEL_NOUN = {"thesis": "Thesis positions", "internship": "Internships", "trainee": "Trainee programmes",
               "entry": "Entry-level jobs", "experienced": "Jobs for experienced people"}
 TYPE_NOUN = {"summer": "Summer jobs", "part_time": "Part-time jobs", "full_time": "Full-time jobs",
@@ -319,7 +324,7 @@ def landing(path, query=""):
     shown, page, pages = search.page_of(results, f["page"], PAGE_SIZE)
     h1, title, description = describe(f)
     canonical = path_for(f) + (f"?page={page}" if page > 1 else "")
-    robots = INDEX if results and not f["q"] and f["sort"] == "newest" else NOINDEX
+    robots = indexable() if results and not f["q"] and f["sort"] == "newest" else NOINDEX
     places = core_places.load()
 
     # Our own words about what is listed (not only the ads themselves)
@@ -469,7 +474,7 @@ def job_page(job_id):
             + f'</section>{_ad_slot("job")}'
             f'<p class="muted small">From {escape("the employer" if job.get("source") == "Employer" else job.get("source") or "")}'
             + (f' {escape(attribution)}' if attribution else "") + "</p>")
-    robots = NOINDEX if closed else INDEX
+    robots = NOINDEX if closed else indexable()
     head = "" if closed else f'\n  <script type="application/ld+json">{_json_ld(job)}</script>'
     description = " · ".join(x for x in [job.get("company") or "", _place(job), ", ".join(_tags(job)[:3])] if x)
     return 200, layout(f"{job['title']} · {job.get('company') or 'JobDesk'}", description, body, job_path(job),
@@ -520,6 +525,8 @@ def sitemap_xml():
 
 def robots_txt():
     base = config.PUBLIC_URL.rstrip("/")
+    if not config.PUBLIC_INDEXING:
+        return "User-agent: *\nDisallow: /\n"
     return ("User-agent: *\nAllow: /jobs\nAllow: /job/\nAllow: /employers.html\nAllow: /static/\n"
             "Disallow: /api/\nDisallow: /\n"
             f"\nSitemap: {base}/sitemap.xml\n")

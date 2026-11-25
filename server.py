@@ -2259,7 +2259,7 @@ class Handler(BaseHTTPRequestHandler):
                  ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml; charset=utf-8",
                  ".txt": "text/plain; charset=utf-8", ".woff2": "font/woff2"}
         # The employer form is public and should be found; the app itself (index.html) is not indexed
-        extra = {"X-Robots-Tag": "index, follow"} if rel == "employers.html" else {}
+        extra = {"X-Robots-Tag": public.indexable()} if rel == "employers.html" else {}
         if file.suffix == ".woff2":          # fonts never change under the same name
             extra["Cache-Control"] = "public, max-age=31536000, immutable"
         self.send(200, file.read_bytes(), types.get(file.suffix, "application/octet-stream"), extra)
