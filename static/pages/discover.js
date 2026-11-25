@@ -219,6 +219,37 @@ async function renderDiscover(main, query) {
     translation.apply();
   }
 
+  // Saved searches: save the current one; each can email new jobs after every job check (twice a day)
+  const savedFeedback = h("div", { "aria-live": "polite" });
+  const savedList = h("ul", { class: "saved-searches" });
+  const savedSummary = h("summary", null, "Saved searches");
+  const saved = h("details", { class: "discover-more" }, savedSummary, savedList);
+  const saveBtn = h("button", { type: "button", class: "secondary small", onclick: async () => {
+    saveBtn.disabled = true;
+    try {
+      const r = await api("/api/searches", { method: "POST", body: { query: toQuery({ ...f, page: 1 }) } });
+      drawSaved(r.searches);
+      saved.open = true;
+      savedFeedback.replaceChildren(message("Saved. We'll email you when new jobs match it; turn that off below."));
+    } catch (error) { savedFeedback.replaceChildren(message(error.message, true)); }
+    finally { saveBtn.disabled = false; }
+  } }, "Save this search");
+  function drawSaved(searches) {
+    savedSummary.textContent = `Saved searches (${searches.length})`;
+    savedList.replaceChildren(...(searches.length ? searches.map(s => h("li", { class: "saved-search" },
+      h("a", { href: `#/jobs${s.query ? `?${s.query}` : ""}` }, s.name),
+      h("label", { class: "check small" }, h("input", { type: "checkbox", checked: !!s.alerts, onchange: async e => {
+        try { drawSaved((await api(`/api/searches/${s.id}`, { method: "POST", body: { alerts: e.target.checked } })).searches); }
+        catch (error) { e.target.checked = !e.target.checked; savedFeedback.replaceChildren(message(error.message, true)); }
+      } }), " Email me new jobs"),
+      h("button", { type: "button", class: "link small", "aria-label": `Delete the saved search ${s.name}`, onclick: async () => {
+        try { drawSaved((await api(`/api/searches/${s.id}/delete`, { method: "POST", body: {} })).searches); }
+        catch (error) { savedFeedback.replaceChildren(message(error.message, true)); }
+      } }, "Delete")))
+      : [h("li", { class: "muted small" }, "Nothing saved yet. Search, then press “Save this search” to get new matches by email.")]));
+  }
+  api("/api/searches").then(r => drawSaved(r.searches)).catch(() => drawSaved([]));
+
   // Administrators can start a job check now (the timer runs one twice a day)
   const checkBtn = state.user.is_admin ? h("button", { type: "button", class: "secondary small", onclick: async () => {
     try { await api("/api/scrape", { method: "POST" }); pollCheck(); }
@@ -245,7 +276,8 @@ async function renderDiscover(main, query) {
       h("div", { class: "page-head-side" }, checkStatus, checkBtn || "")),
     searchForm,
     h("div", { class: "row chip-row discover-toggles", role: "group", "aria-label": "Quick filters" }, ...toggleButtons),
-    more, translation.element, count, results);
+    more, saved, h("div", { class: "row discover-count" }, count, saveBtn), savedFeedback,
+    translation.element, results);
   await load();
 }
 

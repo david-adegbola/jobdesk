@@ -407,11 +407,27 @@ def _migration_4_job_search(conn):
     """)
 
 
+def _migration_5_saved_searches(conn):
+    """Searches members save on Discover, optionally with an email when new jobs match. notified_up_to is the
+    highest job id already reported, so an alert only lists jobs that are new since the last one."""
+    conn.execute("""CREATE TABLE IF NOT EXISTS saved_searches (
+                      id INTEGER PRIMARY KEY,
+                      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                      name TEXT NOT NULL,
+                      query TEXT NOT NULL,                      -- the Discover address after #/jobs?
+                      alerts INTEGER NOT NULL DEFAULT 1,
+                      notified_up_to INTEGER NOT NULL DEFAULT 0,
+                      last_alert_at TEXT NOT NULL DEFAULT '',
+                      created_at TEXT NOT NULL)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS saved_searches_user ON saved_searches (user_id)")
+
+
 MIGRATIONS = [
     (1, "career fields stored per job", _migration_1_job_fields),
     (2, "job details read from the ad", _migration_2_job_details),
     (3, "employer job submissions", _migration_3_job_submissions),
     (4, "full-text job search", _migration_4_job_search),
+    (5, "saved searches and alerts", _migration_5_saved_searches),
 ]
 
 
@@ -511,6 +527,73 @@ def _duplicate_of(conn, job, meta, user_id):
            ORDER BY (canonical_url=?) DESC, id LIMIT 1""",
         (user_id, job["source"], url, url, key, key, url)).fetchone()
     return row["id"] if row else None
+
+
+# ---------------------------------------------------------------- saved searches
+SAVED_SEARCH_LIMIT = 10
+
+
+def list_saved_searches(user_id):
+    with connect() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM saved_searches WHERE user_id=? ORDER BY created_at, id", (user_id,))]
+
+
+def add_saved_search(user_id, name, query, alerts=True):
+    """Save a search. Raises ValueError at the limit or when the same search is already saved."""
+    with connect() as conn:
+        rows = conn.execute("SELECT query FROM saved_searches WHERE user_id=?", (user_id,)).fetchall()
+        if any(r["query"] == query for r in rows):
+            raise ValueError("You've already saved this search.")
+        if len(rows) >= SAVED_SEARCH_LIMIT:
+            raise ValueError(f"You can save up to {SAVED_SEARCH_LIMIT} searches. Delete one first.")
+        newest = conn.execute("SELECT COALESCE(MAX(id), 0) FROM jobs").fetchone()[0]
+        return conn.execute(
+            """INSERT INTO saved_searches (user_id, name, query, alerts, notified_up_to, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""", (user_id, name, query, 1 if alerts else 0, newest, now())).lastrowid
+
+
+def update_saved_search(search_id, user_id, name=None, alerts=None):
+    """Rename a saved search or switch its alert. KeyError when it isn't this member's."""
+    sets, args = [], []
+    if name is not None:
+        sets.append("name=?")
+        args.append(name)
+    if alerts is not None:
+        sets.append("alerts=?")
+        args.append(1 if alerts else 0)
+    with connect() as conn:
+        if alerts:          # switching alerts (back) on: report only jobs that come after now
+            sets.append("notified_up_to=MAX(notified_up_to, (SELECT COALESCE(MAX(id), 0) FROM jobs))")
+        result = conn.execute(f"UPDATE saved_searches SET {', '.join(sets) or 'id=id'} WHERE id=? AND user_id=?",
+                              args + [search_id, user_id])
+        if not result.rowcount:
+            raise KeyError(search_id)
+
+
+def delete_saved_search(search_id, user_id):
+    with connect() as conn:
+        if not conn.execute("DELETE FROM saved_searches WHERE id=? AND user_id=?", (search_id, user_id)).rowcount:
+            raise KeyError(search_id)
+
+
+def alert_searches():
+    """Saved searches with alerts on, of active members who have an email address, grouped by member."""
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT s.* FROM saved_searches s JOIN users u ON u.id = s.user_id
+               WHERE s.alerts=1 AND u.is_active=1 AND u.email IS NOT NULL AND u.email != ''
+               ORDER BY s.user_id, s.id""").fetchall()
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row["user_id"], []).append(dict(row))
+    return grouped
+
+
+def mark_alerted(search_id, up_to):
+    with connect() as conn:
+        conn.execute("UPDATE saved_searches SET notified_up_to=MAX(notified_up_to, ?), last_alert_at=? WHERE id=?",
+                     (up_to, now(), search_id))
 
 
 # ---------------------------------------------------------------- employer submissions
@@ -802,7 +885,7 @@ def delete_user(user_id):
     """Delete an account and everything personal in it, in one transaction.
 
     Deleted: CVs, applications, jobs they collected privately, prep answers, sessions, news reading state,
-    feedback, the account.
+    feedback, saved searches, the account.
     Kept: job listings the member shared with others (public ads, moved to the administrator account so they
     don't disappear for everyone else). The administrator account (id 1) owns shared data and can't be deleted."""
     if user_id == 1:
@@ -818,6 +901,7 @@ def delete_user(user_id):
                     "DELETE FROM tasks WHERE user_id=?",
                     "DELETE FROM documents WHERE user_id=?",
                     "DELETE FROM fit_evaluations WHERE user_id=?",
+                    "DELETE FROM saved_searches WHERE user_id=?",
                     "DELETE FROM jobs WHERE user_id=? AND private=1",       # their own collected jobs go too
                     "UPDATE jobs SET user_id=1 WHERE user_id=?",              # shared ads stay for others
                     "DELETE FROM users WHERE id=?"):       # cascades: sessions, cvs, cv_imports, news state, feedback

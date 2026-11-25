@@ -853,6 +853,11 @@ input.switch:checked::after { transform: translateX(22px); }
 .discover-fields p { margin: 0 0 4px; }
 .field.inline { display: inline-flex; gap: 8px; align-items: center; margin: 0; }
 .pager { justify-content: center; }
+.discover-count { justify-content: space-between; margin: 4px 0 8px; }
+.discover-count .job-count { margin: 0; }
+.saved-searches { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.saved-search { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; }
+.saved-search a { font-weight: 600; }
 @media (max-width: 600px) { .discover-search { grid-template-columns: 1fr; } }
 @media (prefers-color-scheme: dark) {
   .chip.toggle-key[aria-pressed="false"] { background: var(--forest-950); color: var(--forest-300); border-color: var(--forest-300); }

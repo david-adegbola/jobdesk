@@ -334,6 +334,8 @@ def api_account_export(h, m):
         "application_documents": [{"job_id": d["job_id"], "language": d["language"], "letter": d["letter"],
                                    "email": d["email"], "updated_at": d["updated_at"]}
                                   for d in db.list_all_documents(h.user["id"])],
+        "saved_searches": [{"name": s["name"], "query": s["query"], "alerts": bool(s["alerts"]),
+                            "created_at": s["created_at"]} for s in db.list_saved_searches(h.user["id"])],
         "news_reading_list": [
             {"id": item["id"], "title": item["title"], "url": item["url"],
              "is_read": bool(item["is_read"]), "is_saved": bool(item["is_saved"])}
@@ -657,6 +659,120 @@ def api_search(h, m):
     shown, page, pages = search.page_of(results, f["page"], SEARCH_PAGE_SIZE)
     return {"jobs": [present(job) for job in shown], "total": len(results), "page": page, "pages": pages,
             "filters": {"field_default": False, **f, "page": page}, "facets": facets, "latest_check": db.latest_check(SHARED_DATA_OWNER)}
+
+
+# ---------------------------------------------------------------- saved searches and alerts
+ALERT_JOBS_PER_SEARCH = 10
+
+
+def discover_matches(user, f):
+    """The open shared jobs a Discover search finds for this member (as GET /api/search, unpaged)."""
+    every_field = scraper.TAXONOMY.field_ids()
+    f = dict(f)
+    if f["field"] is None:
+        chosen = user_fields(user)
+        f["field"] = [] if set(chosen) >= set(every_field) else chosen
+    stored = db.finnish_levels(finnish.PROMPT_VERSION)
+    jobs = [job for job in listed_jobs(user, every_field)
+            if job.get("listing_status") != "expired" and not job.get("private")]
+    results, _ = search.run(jobs, f, lambda job: job_details(job, finnish_for(job, stored))["finnish_not_required"])
+    return results
+
+
+def _search_name(f):
+    return public.describe({**f, "field": f["field"] or []})[0] + (f' matching "{f["q"]}"' if f["q"] else "")
+
+
+@route("GET", "/api/searches")
+def api_searches(h, m):
+    return {"searches": db.list_saved_searches(h.user["id"]), "limit": db.SAVED_SEARCH_LIMIT}
+
+
+@route("POST", "/api/searches")
+def api_save_search(h, m):
+    body = h.json()
+    if not isinstance(body, dict) or not isinstance(body.get("query", ""), str):
+        return h.error(400, "Send the search to save.")
+    f = search.parse_filters(body.get("query", ""))
+    query = search.to_query(f)
+    name = body.get("name") if isinstance(body.get("name"), str) and body["name"].strip() else _search_name(f)
+    if len(name.strip()) > 120:
+        return h.error(400, "Give the search a name of up to 120 characters.")
+    try:
+        search_id = db.add_saved_search(h.user["id"], name.strip(), query, body.get("alerts", True) is not False)
+    except ValueError as error:
+        return h.error(400, str(error))
+    return {"ok": True, "id": search_id, "searches": db.list_saved_searches(h.user["id"])}
+
+
+@route("POST", r"/api/searches/(\d+)")
+def api_update_search(h, m):
+    body = h.json()
+    if not isinstance(body, dict):
+        return h.error(400, "Send what to change.")
+    name, alerts = body.get("name"), body.get("alerts")
+    if (name is not None and (not isinstance(name, str) or not name.strip() or len(name) > 120)) or \
+            (alerts is not None and not isinstance(alerts, bool)):
+        return h.error(400, "The name must be 1–120 characters and alerts yes or no.")
+    db.update_saved_search(int(m.group(1)), h.user["id"], name.strip() if name else None, alerts)
+    return {"ok": True, "searches": db.list_saved_searches(h.user["id"])}
+
+
+@route("POST", r"/api/searches/(\d+)/delete")
+def api_delete_search(h, m):
+    db.delete_saved_search(int(m.group(1)), h.user["id"])
+    return {"ok": True, "searches": db.list_saved_searches(h.user["id"])}
+
+
+def _alert_link(job):
+    if public.is_public(job):
+        return config.PUBLIC_URL.rstrip("/") + public.job_path(job)
+    return job.get("url") or f"{config.PUBLIC_URL.rstrip('/')}/#/jobs"
+
+
+def send_search_alerts():
+    """One email per member whose saved searches (with alerts on) found jobs added since their last alert.
+    Returns how many emails were sent."""
+    base = config.PUBLIC_URL.rstrip("/")
+    places = core_places.load()
+    sent = 0
+    for user_id, searches in db.alert_searches().items():
+        user = db.get_user(user_id)
+        sections, total, done = [], 0, []
+        for saved in searches:
+            f = search.parse_filters(saved["query"])
+            fresh = [job for job in discover_matches(user, f) if job["id"] > saved["notified_up_to"]]
+            newest = max([saved["notified_up_to"]] + [job["id"] for job in fresh])
+            done.append((saved["id"], newest))
+            if not fresh:
+                continue
+            total += len(fresh)
+            fresh.sort(key=lambda job: -job["id"])
+            lines = [f"{saved['name']}: {len(fresh)} new"]
+            for job in fresh[:ALERT_JOBS_PER_SEARCH]:
+                where = places.name(job.get("municipality_code") or "") or job.get("location") or ""
+                bits = [job.get("company") or "", where,
+                        f"closes {job['deadline']}" if job.get("deadline") else ""]
+                lines.append(f"- {job['title']}" + (f" ({', '.join(b for b in bits if b)})" if any(bits) else ""))
+                lines.append(f"  {_alert_link(job)}")
+            if len(fresh) > ALERT_JOBS_PER_SEARCH:
+                lines.append(f"  … and {len(fresh) - ALERT_JOBS_PER_SEARCH} more")
+            lines.append(f"  All of them: {base}/#/jobs?{saved['query']}")
+            sections.append("\n".join(lines))
+        if sections:
+            greeting = f"Hello {user['name']}," if user.get("name") else "Hello,"
+            text = (f"{greeting}\n\nNew jobs for your saved searches on JobDesk:\n\n" + "\n\n".join(sections)
+                    + "\n\nYou get this email because \"Email me new jobs\" is on for these searches. Turn it off, or"
+                      f" delete a search, under Discover → Saved searches: {base}/#/jobs\n")
+            try:
+                mailer.send(user["email"], f"{total} new {'job' if total == 1 else 'jobs'} for your saved searches", text)
+            except Exception as error:      # try again after the next check; the others still get theirs
+                print(f"Alert email to member {user_id} failed: {error}")
+                continue
+            sent += 1
+        for search_id, newest in done:
+            db.mark_alerted(search_id, newest)
+    return sent
 
 
 PREVIEW_LIMIT_PER_USER = 60     # job pages read per member per hour ("Read this link")
@@ -1696,8 +1812,18 @@ def _scrape_thread():
         SCRAPE.update(message=msg, done=done, total=total)
     try:
         SCRAPE["result"] = scraper.run_exclusive(progress, user_id=SHARED_DATA_OWNER)
+        if SCRAPE["result"].get("error") != scraper.CHECK_BUSY:
+            after_job_check()
     finally:
         SCRAPE["running"] = False
+
+
+def after_job_check():
+    """What follows every job check: email the members whose saved searches have new jobs, and delete old
+    employer submissions. Returns (alert emails sent, submissions deleted)."""
+    sent = send_search_alerts()
+    purged = db.purge_submissions(date.today().isoformat())
+    return sent, purged
 
 
 def scheduled_job_check():
@@ -1711,7 +1837,9 @@ def scheduled_job_check():
         print(f"Job check skipped: {error}")
         return 0
     print(f"Job check finished: {result['found']} jobs, {result['new']} new" + (f" (error: {error})" if error else ""))
-    purged = db.purge_submissions(date.today().isoformat())
+    sent, purged = after_job_check()
+    if sent:
+        print(f"Sent {sent} saved-search alert emails")
     if purged:
         print(f"Deleted {purged} decided employer submissions older than {db.SUBMISSION_KEEP_DAYS} days")
     return 1 if error else 0

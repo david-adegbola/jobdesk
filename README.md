@@ -72,6 +72,11 @@ evaluated or certified against WCAG 2.1 Level AA.
   25 a page. Each card shows the employer, town, deadline, level, type, work mode, Finnish, pay, study credits, work
   permit notes, the source (with any credit line its terms require) and a link to the original ad. **Save** moves
   one to My jobs. Old `#/jobs?add=` links forward to `#/myjobs?add=`.
+- **Saved searches** (Discover): "Save this search" keeps the current filters (up to 10 per member, named from the
+  filters, e.g. "Summer jobs in Tampere"). With "Email me new jobs" on (the default), every job check (timer or
+  administrator) emails one message per member listing the jobs added since the last alert, at most 10 per search,
+  each linked to its public page (or the original ad for members-only sources), with a link to turn alerts off.
+  A failed email is retried after the next check. Saved searches are in the data download and go with the account.
 - **My jobs → Saved jobs** holds the ads you saved or added, with a count per status, a status menu, **Shortlist**
   (the fit check, shown under the job) and **Prepare**. Each job is a row with a ring (your AI fit score when there's
   a current one, otherwise the keyword match with your CV), the employer, place and deadline, and tags for the type,

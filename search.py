@@ -46,6 +46,28 @@ def parse_filters(query_string):
     }
 
 
+def to_query(f):
+    """The filters written one way (page left out), so the same search saved twice is recognised."""
+    from urllib.parse import urlencode
+    params = []
+    if f.get("q"):
+        params.append(("q", f["q"]))
+    if f.get("field") is not None:
+        params.append(("field", ",".join(f["field"]) if f["field"] else "all"))
+    for key in ("level", "type", "mode", "sector"):
+        if f.get(key):
+            params.append((key, ",".join(sorted(f[key]))))
+    for key in ("region", "municipality"):
+        if f.get(key):
+            params.append((key, f[key]))
+    for key in ("no_finnish", "paid", "with_studies"):
+        if f.get(key):
+            params.append((key, "1"))
+    if f.get("sort") and f["sort"] != "newest":
+        params.append(("sort", f["sort"]))
+    return urlencode(params)
+
+
 def _matches(job, f, tags, finnish_free, text_ids, roles):
     if f["q"] and job["id"] not in text_ids and not scraper.TAXONOMY.title_matches_roles(job.get("title"), roles):
         return False
