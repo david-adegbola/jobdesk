@@ -249,6 +249,56 @@ def render_tex(cv):
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------- cover letters
+
+LETTER_FIELDS = ("name", "job_title", "location", "phone", "email", "date", "recipient", "subject", "greeting", "closing")
+
+
+def render_letter_tex(letter):
+    """A cover letter in the same layout: header, date, recipient, subject, greeting, paragraphs, closing and
+    signature. Same escaping and limits as CVs."""
+    language = letter.get("language")
+    if language not in HEADINGS:
+        raise ValueError("Choose Finnish or English for this letter.")
+    for field in LETTER_FIELDS:
+        value = letter.get(field)
+        if value is not None and not isinstance(value, str):
+            raise ValueError("Every letter field must be text.")
+    paragraphs = [p.strip() for p in letter.get("paragraphs") or [] if isinstance(p, str) and p.strip()]
+    if sum(len(p) for p in paragraphs) + sum(len(letter.get(f) or "") for f in LETTER_FIELDS) > MAX_TOTAL:
+        raise ValueError(f"The letter is longer than {MAX_TOTAL:,} characters; shorten it.")
+    name = (letter.get("name") or "").strip()
+    if not name:
+        raise ValueError("Add your name before building this letter.")
+    email = (letter.get("email") or "").strip()
+    shown_email = (rf"\href{{mailto:{email}}}{{{tex(email)}}}" if EMAIL.fullmatch(email) else tex(email)) if email else ""
+    contacts = r" \,·\, ".join(x for x in (tex((letter.get("location") or "").strip()), tex((letter.get("phone") or "").strip()),
+                                           shown_email) if x)
+    recipient = r"\\".join(tex(line) for line in _rows(letter.get("recipient") or ""))
+    lines = [r"\documentclass[11pt,a4paper]{article}", rf"\usepackage[{language}]{{jobdesk-cv}}",
+             rf"\hypersetup{{pdftitle={{{tex(letter.get('subject') or name)}}},pdfauthor={{{tex(name)}}}}}",
+             r"\begin{document}",
+             rf"\cvletterhead{{{tex(name)}}}{{{tex((letter.get('job_title') or '').strip())}}}{{{contacts}}}"]
+    if (letter.get("date") or "").strip():
+        lines.append(tex(letter["date"].strip()) + r"\par\medskip")
+    if recipient:
+        lines.append(recipient + r"\par\medskip")
+    if (letter.get("subject") or "").strip():
+        lines.append(rf"\textbf{{{tex(letter['subject'].strip())}}}\par\medskip")
+    if (letter.get("greeting") or "").strip():
+        lines.append(tex(letter["greeting"].strip()) + r"\par\vspace{0.5em}")
+    lines.append(r"\cvletterpara ".join(tex(p) for p in paragraphs) + r"\par\vspace{1em}")
+    if (letter.get("closing") or "").strip():
+        lines.append(tex(letter["closing"].strip()) + r"\par\vspace{2.2em}")
+    lines.append(tex(name) + r"\par")
+    lines.append(r"\end{document}")
+    return "\n".join(lines) + "\n"
+
+
+def build_letter(letter, pdflatex=None):
+    return compile_pdf(render_letter_tex(letter), pdflatex)
+
+
 # ---------------------------------------------------------------- compiling
 
 def _limits():

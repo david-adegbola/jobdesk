@@ -1582,12 +1582,12 @@ def api_document_letter(h, m):
         return (letter_text(doc["letter"]).encode("utf-8"), "text/plain; charset=utf-8",
                 {"Content-Disposition": f'attachment; filename="{name[:-4]}.txt"'})
     try:
-        pdf = cv_latex.build_letter_pdf(doc["letter"])
+        pdf = cv_pdf.build_letter(doc["letter"])          # the same JobDesk layout as members' CVs
     except FileNotFoundError:
         return h.error(503, "PDF building isn't available on this server. Download the text version instead.")
-    except (ValueError, cv_latex.PdfBuildError) as error:
+    except (ValueError, cv_pdf.PdfBuildError) as error:
         return h.error(422, str(error))
-    return pdf, "application/pdf", {"Content-Disposition": f'inline; filename="{name}"'}
+    return pdf, "application/pdf", {"Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "private, no-store"}
 
 
 # ---------------------------------------------------------------- tracker

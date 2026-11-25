@@ -1044,7 +1044,7 @@ class JobApiTests(unittest.TestCase):
         status, _ = self.request("POST", f"/api/documents/{doc_id}",
                                  {"letter": {"paragraphs": ["x" * 7000]}, "email": {}}, headers=cookie)
         self.assertEqual(status, 400)
-        with patch.object(server.cv_latex, "build_letter_pdf", side_effect=FileNotFoundError):
+        with patch.object(server.cv_pdf, "build_letter", side_effect=FileNotFoundError):
             status, error = self.request("GET", f"/api/documents/{doc_id}/letter.pdf", headers=cookie)
         self.assertEqual(status, 503)
 

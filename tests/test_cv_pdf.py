@@ -155,8 +155,38 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((status, "name" in error["error"]), (400, True))
 
 
+LETTER = {"language": "fi", "name": "Aino Mäkelä", "job_title": "Myyjä", "location": "Jyväskylä", "phone": "040 000 0000",
+          "email": "aino@example.test", "date": "25.11.2026", "recipient": "Esimerkki Oy\nRekrytointi",
+          "subject": "Hakemus: Myyjä, Esimerkki Oy", "greeting": "Hei Maija,",
+          "paragraphs": ["Haen myyjän paikkaa.", r"Kokeilu: \input{/etc/passwd} & 100% $x$"], "closing": "Ystävällisin terveisin"}
+
+
+class LetterTests(unittest.TestCase):
+    def test_letters_are_escaped_and_need_a_name(self):
+        tex = cv_pdf.render_letter_tex(LETTER)
+        self.assertIn(r"\cvletterhead{Aino Mäkelä}{Myyjä}", tex)
+        self.assertIn(r"Esimerkki Oy\\Rekrytointi", tex)
+        self.assertNotIn(r"\input{", tex)
+        self.assertIn(r"\textbackslash{}input\{/etc/passwd\} \& 100\% \$x\$", tex)
+        with self.assertRaisesRegex(ValueError, "name"):
+            cv_pdf.render_letter_tex({**LETTER, "name": " "})
+        with self.assertRaisesRegex(ValueError, "longer than"):
+            cv_pdf.render_letter_tex({**LETTER, "paragraphs": ["x" * (cv_pdf.MAX_TOTAL + 1)]})
+        with self.assertRaisesRegex(ValueError, "text"):
+            cv_pdf.render_letter_tex({**LETTER, "subject": 5})
+
+
 @unittest.skipUnless(HAS_TEX, "pdflatex is not installed (run in the TeX container)")
 class CompileTests(unittest.TestCase):
+    def test_a_letter_compiles_with_real_text(self):
+        pdf = cv_pdf.build_letter(LETTER)
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+        if HAS_PDFTOTEXT:
+            text = pdf_text(pdf)
+            for words in ("Aino Mäkelä", "Hakemus: Myyjä, Esimerkki Oy", "Ystävällisin terveisin", "/etc/passwd"):
+                self.assertIn(words, text)
+            self.assertNotIn("root:", text)
+
     def test_attacks_print_as_text_and_the_pdf_has_real_text(self):
         pdf = cv_pdf.compile_pdf(cv_pdf.render_tex(cv({"skills": "\n".join(f"Try: {a}" for a in ATTACKS),
                                                         "summary": "Effort, office, fluent Finnish. Mäkelä €5."}, "fi")))
