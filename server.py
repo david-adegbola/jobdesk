@@ -28,8 +28,10 @@ APP = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP))
 
 import config
+import base64     # noqa: E402
 import cv_import   # noqa: E402
 import cv_latex  # noqa: E402
+import cv_pdf    # noqa: E402
 import auth     # noqa: E402
 import db       # noqa: E402
 import facts    # noqa: E402
@@ -358,6 +360,10 @@ def api_account_export(h, m):
                                   for d in db.list_all_documents(h.user["id"])],
         "saved_searches": [{"name": s["name"], "query": s["query"], "alerts": bool(s["alerts"]),
                             "created_at": s["created_at"]} for s in db.list_saved_searches(h.user["id"])],
+        # The CV PDFs stored for this account (made when the member viewed or downloaded a CV), as base64
+        "cv_pdfs": [{"cv_id": int(path.name.split("-", 1)[0]), "file": path.name,
+                     "pdf_base64": base64.b64encode(path.read_bytes()).decode("ascii")}
+                    for path in cv_pdf.cached_files(h.user["id"])],
         "news_reading_list": [
             {"id": item["id"], "title": item["title"], "url": item["url"],
              "is_read": bool(item["is_read"]), "is_saved": bool(item["is_saved"])}
@@ -398,17 +404,17 @@ def api_cv_example(h, m):
 @route("GET", "/api/cvs/example.pdf")
 def api_cv_example_pdf(h, m):
     try:
-        pdf = cv_latex.build_pdf(cv_latex.example_cv())
+        pdf = cv_pdf.compile_pdf(cv_pdf.render_tex(cv_latex.example_cv()))
     except FileNotFoundError:
         return h.error(
             503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
         )
-    except cv_latex.PdfBuildError as error:
+    except cv_pdf.PdfBuildError as error:
         return h.error(422, str(error))
     return (
         pdf,
         "application/pdf",
-        {"Content-Disposition": 'inline; filename="JobDesk-CV-example.pdf"'},
+        {"Content-Disposition": 'inline; filename="Example_CV.pdf"'},
     )
 
 
@@ -438,20 +444,23 @@ def api_build_user_cv(h, m):
             pdf, "application/pdf",
             {"Content-Disposition": f'inline; filename="{filename}"'},
         )
+    # A member's own CV: the default JobDesk layout (cv_pdf), from the cache unless the CV changed.
+    # ?download=1 saves it; otherwise the browser shows it (the preview).
     try:
-        pdf = cv_latex.build_pdf(cv)
+        pdf = cv_pdf.build(cv, user_id)
     except FileNotFoundError:
         return h.error(
             503, "Formatted PDF building is not available on this server. Install the JobDesk LaTeX packages and try again.",
         )
-    except cv_latex.PdfBuildError as error:
+    except ValueError as error:
+        return h.error(400, str(error))
+    except cv_pdf.PdfBuildError as error:
         return h.error(422, str(error))
-    content = cv.get("content") or {}
-    filename = cv_latex.download_name(content.get("full_name"), "CV", content.get("target_role") or cv["title"],
-                                      cv["language"].upper())
+    disposition = "attachment" if "download=1" in (urlparse(h.path).query or "") else "inline"
     return (
         pdf, "application/pdf",
-        {"Content-Disposition": f'inline; filename="{filename}"'},
+        {"Content-Disposition": f'{disposition}; filename="{cv_pdf.download_name(cv)}"',
+         "Cache-Control": "private, no-store"},
     )
 
 

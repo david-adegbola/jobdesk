@@ -398,14 +398,14 @@ class JobApiTests(unittest.TestCase):
 
     def test_formatted_cv_pdf_is_generated_from_private_saved_cv(self):
         cv_id = db.save_cv(1, "Forestry CV", "en", {"full_name": "Admin"})
-        with patch.object(server.cv_latex, "build_pdf", return_value=b"%PDF-built CV") as build:
+        with patch.object(server.cv_pdf, "compile_pdf", return_value=b"%PDF-built CV") as build:
             status, pdf, headers = self.request(
                 "GET", f"/api/cvs/{cv_id}/formatted.pdf", include_headers=True,
             )
         self.assertEqual(status, 200)
         self.assertEqual(pdf, b"%PDF-built CV")
         self.assertEqual(headers["Content-Type"], "application/pdf")
-        self.assertEqual(headers["Content-Disposition"], 'inline; filename="Admin-CV-Forestry-CV-EN.pdf"')
+        self.assertEqual(headers["Content-Disposition"], 'inline; filename="Admin_CV.pdf"')
         build.assert_called_once()
 
         invite = "formatted-cv-private-invitation"
@@ -426,18 +426,15 @@ class JobApiTests(unittest.TestCase):
         self.assertEqual(example["content"]["full_name"], "Alex Example")
         self.assertEqual(db.list_cvs(1), [])
 
-        with patch.object(server.cv_latex, "build_pdf", return_value=b"%PDF-example") as build:
+        with patch.object(server.cv_pdf, "compile_pdf", return_value=b"%PDF-example") as build:
             status, pdf, headers = self.request(
                 "GET", "/api/cvs/example.pdf", include_headers=True,
             )
         self.assertEqual(status, 200)
         self.assertEqual(pdf, b"%PDF-example")
         self.assertEqual(headers["Content-Type"], "application/pdf")
-        self.assertEqual(
-            headers["Content-Disposition"],
-            'inline; filename="JobDesk-CV-example.pdf"',
-        )
-        build.assert_called_once_with(example)
+        self.assertEqual(headers["Content-Disposition"], 'inline; filename="Example_CV.pdf"')
+        build.assert_called_once_with(server.cv_pdf.render_tex(example))
         self.assertEqual(db.list_cvs(1), [])
 
         status, error = self.request("GET", "/api/cvs/example.pdf", headers={"Cookie": ""})
@@ -446,7 +443,7 @@ class JobApiTests(unittest.TestCase):
 
     def test_formatted_cv_route_reports_missing_latex_runtime(self):
         cv_id = db.save_cv(1, "Forestry CV", "en", {"full_name": "Admin"})
-        with patch.object(server.cv_latex, "build_pdf", side_effect=FileNotFoundError):
+        with patch.object(server.cv_pdf, "compile_pdf", side_effect=FileNotFoundError):
             status, error = self.request("GET", f"/api/cvs/{cv_id}/formatted.pdf")
         self.assertEqual(status, 503)
         self.assertIn("LaTeX packages", error["error"])

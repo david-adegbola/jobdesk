@@ -520,6 +520,8 @@ def privacy_page():
         ("Name and email address", "Your account, and signing in with a one-time link (no password is stored)", "Until you delete the account"),
         ("Your fields, Finnish level and AI setting", "Showing the right jobs and ordering your shortlist", "Until you change or delete them"),
         ("CVs, comparisons of jobs with your CV, tracked applications, documents you prepare", "The tools you use", "Until you delete them or the account"),
+        ("PDFs of your CVs, made on this server when you preview or download one (never sent anywhere else, no public link)",
+         "So the same CV isn't built twice", "Until the CV changes, or you delete it or the account"),
         ("Saved searches", "Searching again, and emailing you new jobs if you turned that on", "Until you delete them or the account"),
         ("“Was this right?” answers about the Finnish tag (the level shown, your answer, the quoted sentence)",
          "Measuring how accurate the Finnish check is", "Until you delete the account"),

@@ -254,7 +254,10 @@ register({
           h("button", { type: "submit" }, current.mode === "edit" ? "Save changes" : "Create CV")));
 
       if (current.mode === "edit") headActions.append(
-        h("a", { class: "btn secondary", href: `/api/cvs/${current.id}/formatted.pdf`, target: "_blank", rel: "noopener" }, "CV as PDF"),
+        h("a", { class: "btn secondary", href: `/api/cvs/${current.id}/formatted.pdf`, target: "_blank", rel: "noopener",
+          title: "Opens the PDF in a new tab (saved changes only)" }, "Preview PDF"),
+        h("a", { class: "btn secondary", href: `/api/cvs/${current.id}/formatted.pdf?download=1`,
+          title: "Saves the PDF, named after you (e.g. Aino_Makela_CV.pdf)" }, "Download PDF"),
         h("button", { type: "button", class: "secondary", "data-focus": `cv-copy:${current.id}`, onclick: () => leave(() => {
           editor = createEditorState({ ...current, id: undefined, title: `${current.title} (copy)` }, "copy"); draw();
         }) }, "Make a copy"),

@@ -1,0 +1,92 @@
+% jobdesk-cv.sty: the default JobDesk CV layout. Written for JobDesk from a visual description (centred name in
+% small capitals, a label column on the left, small-capital section titles with a rule, pale skill tags);
+% no code from other CV templates. MIT licence, see LICENSE in this folder.
+%
+% Options: en (default) or fi, which sets the hyphenation and the fixed words (page numbers, dates).
+% Macros (all arguments are already escaped by JobDesk; users never write LaTeX):
+%   \cvname{Name}{Target role}          the header
+%   \begin{cvrows} ... \end{cvrows}     rows with a label column; \cvrow{label}{text}
+%   \cvsection{Title}                   a section title with a rule
+%   \cvjob{Role}{Employer}              "Role at Employer" (bold); \cvat is the word "at"
+%   \cvtag{word}                        one skill tag
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{jobdesk-cv}[2026/11/25 JobDesk CV layout]
+
+\newif\ifcv@finnish
+\DeclareOption{fi}{\cv@finnishtrue}
+\DeclareOption{en}{\cv@finnishfalse}
+\ProcessOptions\relax
+
+% Text that copies out of the PDF as it reads (ATS): Unicode maps for every glyph, including ligatures
+\RequirePackage{cmap}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\input{glyphtounicode}
+\pdfgentounicode=1
+
+% "shorthands=off": the Finnish double quote must stay a plain character
+\ifcv@finnish
+  \RequirePackage[shorthands=off,finnish]{babel}
+  \newcommand{\cv@at}{,}\newcommand{\cv@page}{Sivu}\newcommand{\cv@of}{/}
+\else
+  \RequirePackage[shorthands=off,english]{babel}
+  \newcommand{\cv@at}{ at}\newcommand{\cv@page}{Page}\newcommand{\cv@of}{of}
+\fi
+
+\RequirePackage{libertine}                 % Linux Libertine (text) and Biolinum (titles)
+\RequirePackage[a4paper,top=1.6cm,bottom=2.2cm,left=1.8cm,right=1.8cm,footskip=1cm]{geometry}
+\RequirePackage[dvipsnames]{xcolor}
+\RequirePackage{tikz}
+\RequirePackage{titlesec}
+\RequirePackage{enumitem}
+\RequirePackage{fancyhdr}
+\RequirePackage{lastpage}
+\RequirePackage[hidelinks,pdfusetitle,unicode]{hyperref}
+\RequirePackage{ragged2e}
+
+\definecolor{cvlink}{RGB}{26,72,170}
+\definecolor{cvtagback}{RGB}{226,234,247}
+\definecolor{cvtagtext}{RGB}{52,86,150}
+\definecolor{cvrule}{gray}{0.25}
+\hypersetup{colorlinks=true,urlcolor=cvlink,linkcolor=cvlink}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\linespread{1.04}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\newcommand{\cv@footname}{}
+\fancyfoot[L]{\small\cv@footname}
+\fancyfoot[C]{\small\cv@page~\thepage~\cv@of~\pageref*{LastPage}}
+\fancyfoot[R]{\small\today}
+
+% Header: the name in large small capitals, the target role under it, then a rule
+\newcommand{\cvname}[2]{%
+  \gdef\cv@footname{#1}%
+  \begin{center}
+    {\Huge\scshape #1\par}
+    \ifx\relax#2\relax\else\vspace{2pt}{\Large #2\par}\fi
+  \end{center}
+  \vspace{-4pt}{\color{cvrule}\hrule height 0.5pt}\vspace{6pt}}
+
+% Rows with a label column (right-aligned small capitals) and the text beside it; rows break across pages
+\newlength{\cvlabelwidth}\setlength{\cvlabelwidth}{3.3cm}
+\newlist{cvrowlist}{description}{1}
+\setlist[cvrowlist]{leftmargin=\dimexpr\cvlabelwidth+10pt\relax,labelwidth=\cvlabelwidth,labelsep=10pt,
+  align=right,font=\normalfont\small\scshape,itemsep=3pt,topsep=2pt,parsep=2pt}
+\newenvironment{cvrows}{\begin{cvrowlist}}{\end{cvrowlist}}
+\newcommand{\cvrow}[2]{\item[#1]#2}
+
+% Section titles: small capitals with a full-width rule underneath
+\titleformat{\section}{\Large\scshape}{}{0pt}{}[{\color{cvrule}\titlerule}]
+\titlespacing*{\section}{0pt}{12pt}{4pt}
+\newcommand{\cvsection}[1]{\section*{#1}}
+
+\newcommand{\cvjob}[2]{{\sffamily\bfseries #1}\ifx\relax#2\relax\else\cv@at\ {\sffamily\bfseries #2}\fi}
+\newcommand{\cvtag}[1]{\tikz[baseline=(t.base)]\node[fill=cvtagback,text=cvtagtext,rounded corners=1.5pt,
+  inner xsep=3pt,inner ysep=1.5pt,font=\small](t){#1};\hspace{3pt}\allowbreak}
+\newcommand{\cvtags}[1]{\par\vspace{3pt}{\RaggedRight #1\par}}
+\newcommand{\cventrygap}{\vspace{6pt}}
+\endinput

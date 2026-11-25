@@ -893,7 +893,7 @@ def delete_user(user_id):
     """Delete an account and everything personal in it, in one transaction.
 
     Deleted: CVs, applications, jobs they collected privately, prep answers, sessions, news reading state,
-    feedback, saved searches, the account.
+    feedback, saved searches, stored CV PDFs, the account.
     Kept: job listings the member shared with others (public ads, moved to the administrator account so they
     don't disappear for everyone else). The administrator account (id 1) owns shared data and can't be deleted."""
     if user_id == 1:
@@ -914,6 +914,8 @@ def delete_user(user_id):
                     "UPDATE jobs SET user_id=1 WHERE user_id=?",              # shared ads stay for others
                     "DELETE FROM users WHERE id=?"):       # cascades: sessions, cvs, cv_imports, news state, feedback
             conn.execute(sql, (user_id,))
+    import cv_pdf               # and every CV PDF stored for the account
+    cv_pdf.remove_cached(user_id)
 
 
 def update_user_preferences(user_id, preferences):
@@ -1033,6 +1035,8 @@ def delete_cv(cv_id, user_id):
             "UPDATE applications SET cv_role='' WHERE user_id=? AND cv_role=?",
             (user_id, f"cv-{cv_id}"),
         )
+    import cv_pdf               # the CV's stored PDFs go with it
+    cv_pdf.remove_cached(user_id, cv_id)
 
 
 def rename_roles(mapping, user_id=1):
